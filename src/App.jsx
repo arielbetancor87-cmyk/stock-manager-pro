@@ -1137,7 +1137,7 @@ export default function App() {
                   var cartTotal = Object.values(sendCart).reduce(function(s,v){return s+Number(v);},0);
                   return (
                     <div>
-                      <div className="row g12" style={{padding:"10px 14px",background:"var(--card)",borderRadius:var_r2,border:"1px solid var(--brd)",marginBottom:14}}>
+                      <div className="row g12" style={{padding:"10px 14px",background:"var(--card)",borderRadius:14,border:"1px solid var(--brd)",marginBottom:14}}>
                         <Avatar name={tUser?tUser.name:"?"} color={tUser?tUser.color:"#999"} size={36}/>
                         <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{tUser?tUser.name:""}</div><div style={{fontSize:11,color:"var(--t3)"}}>Destinatario</div></div>
                         <button className="btn btn-xs b-ghost" onClick={function(){setSendStep(1);setSendCart({});}}>Cambiar</button>
@@ -1208,7 +1208,7 @@ export default function App() {
                           <div style={{fontSize:12,color:"var(--t3)",marginTop:4}}>.xlsx · .xls · .csv · .txt</div>
                           {impFile && <div style={{marginTop:10,background:"var(--in-l)",color:"var(--in-d)",borderRadius:20,padding:"4px 12px",display:"inline-flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700}}><Ic n="check" s={12}/>{impFile}</div>}
                         </div>
-                        <div style={{background:"var(--in-l)",border:"1px solid var(--in-t)",borderRadius:var_r,padding:"12px 14px",marginBottom:14,fontSize:12,color:"var(--in-d)"}}>
+                        <div style={{background:"var(--in-l)",border:"1px solid var(--in-t)",borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:12,color:"var(--in-d)"}}>
                           <div style={{fontWeight:700,marginBottom:8}}>Columnas que detecta automáticamente:</div>
                           <div className="row g8" style={{flexWrap:"wrap"}}>
                             {[["SKU / Código","Obligatorio"],["Nombre","Obligatorio"],["Categoría","Opcional"],["Precio","Opcional"]].map(function(c){
@@ -1228,7 +1228,7 @@ export default function App() {
                           {"BF100 - 212 Rosa x 80 ml.\t$ 40.990,00"}
                         </div>
                         <textarea
-                          style={{width:"100%",height:160,padding:"12px 14px",borderRadius:var_r,border:"1.5px solid var(--brd)",background:"var(--card)",color:"var(--t1)",fontFamily:"var(--mf)",fontSize:12,resize:"none",outline:"none",lineHeight:1.7}}
+                          style={{width:"100%",height:160,padding:"12px 14px",borderRadius:10,border:"1.5px solid var(--brd)",background:"var(--card)",color:"var(--t1)",fontFamily:"var(--mf)",fontSize:12,resize:"none",outline:"none",lineHeight:1.7}}
                           placeholder={"KCG1 - KALOE Crema Gel x 50gr.\t$ 11.900,00"}
                           value={impTxt} onChange={function(e){setImpTxt(e.target.value);setImpRows([]);}}
                         />
@@ -1433,7 +1433,7 @@ export default function App() {
                 var prod=allProds.find(function(p){return p.id===txModal.pid;});
                 return (
                   <div>
-                    <div className="row g12" style={{padding:"12px 14px",background:"var(--bg2)",borderRadius:var_r,border:"1px solid var(--brd)",marginBottom:14}}>
+                    <div className="row g12" style={{padding:"12px 14px",background:"var(--bg2)",borderRadius:10,border:"1px solid var(--brd)",marginBottom:14}}>
                       <ProdThumb prod={prod} size={44}/>
                       <div style={{flex:1}}><div style={{fontWeight:700,fontSize:14}}>{prod?prod.name:""}</div><div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{prod?prod.sku:""} · {fmtARS(prod?prod.price:0)}</div></div>
                       <div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:15,color:"var(--in)"}}>{fmtARS(prod?(prod.price*txQty):0)}</div>
@@ -1503,6 +1503,3 @@ export default function App() {
   );
 }
 
-// CSS variables used inline (can't use CSS vars in inline styles directly in some cases)
-var var_r  = "10px";
-var var_r2 = "14px";
