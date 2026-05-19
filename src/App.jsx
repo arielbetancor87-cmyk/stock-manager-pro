@@ -409,8 +409,8 @@ export default function App() {
     setAllLogs(function(p){ return [entry, ...p.slice(0,199)]; });
   }
 
-  function myInv()      { return allInv[me.id]   || {stock:[], consign:[]}; }
-  function myContacts() { return (allCons[me.id]  || []).map(function(id){ return users.find(function(u){ return u.id===id; }); }).filter(Boolean); }
+  function myInv()      { return (me && allInv[me.id]) || {stock:[], consign:[]}; }
+  function myContacts() { return me ? ((allCons[me.id]||[]).map(function(id){ return users.find(function(u){ return u.id===id; }); }).filter(Boolean)) : []; }
   function myStock()    { return myInv().stock.filter(function(i){ return i.avail>0; }); }
   function myCons()     { return myInv().consign.filter(function(i){ return i.avail>0; }); }
 
