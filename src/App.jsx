@@ -363,7 +363,7 @@ export default function App() {
   var [impTab,  setImpTab]  = useState("file");
   var [impTxt,  setImpTxt]  = useState("");
   var [impRows, setImpRows] = useState([]);
-  var [impQty,  setImpQty]  = useState(1);
+  var [impQty,  setImpQty]  = useState(0);
   var [impFile, setImpFile] = useState(null);
 
   // ── CONTACTS ────────────────────────────────────────────────────────────────
@@ -701,23 +701,32 @@ export default function App() {
     var valid=impRows.filter(function(r){return r.ok;});
     if (!valid.length){ toast("Sin filas válidas","","e"); return; }
     var count=0;
+    var newProds = [];
     for (var i=0;i<valid.length;i++){
       var row=valid[i];
       var existing=products.find(function(p){ return p.sku===row.sku; });
       var pid;
       if (!existing){
         var ins=await sb.from("products").insert({sku:row.sku,name:row.name,price:row.price,emoji:"✨",category:row.cat,created_by:me.id}).select().single();
-        if (ins.data){ setProducts(function(p){ return [...p,ins.data]; }); pid=ins.data.id; }
-      } else { await sb.from("products").update({price:row.price}).eq("id",existing.id); pid=existing.id; }
+        if (ins.data){ newProds.push(ins.data); pid=ins.data.id; }
+      } else {
+        // Update price
+        await sb.from("products").update({price:row.price,name:row.name,category:row.cat}).eq("id",existing.id);
+        pid=existing.id;
+      }
       if (pid){
-        var inv=inventory.find(function(ii){ return ii.product_id===pid; });
-        if (inv){ await sb.from("inventory").update({qty_available:inv.qty_available+row.qty}).eq("id",inv.id); }
-        else { await sb.from("inventory").insert({user_id:me.id,product_id:pid,qty_available:row.qty,qty_sold:0}); }
+        // Only touch inventory if qty > 0
+        if (row.qty > 0) {
+          var inv=inventory.find(function(ii){ return ii.product_id===pid; });
+          if (inv){ await sb.from("inventory").update({qty_available:inv.qty_available+row.qty}).eq("id",inv.id); }
+          else { await sb.from("inventory").insert({user_id:me.id,product_id:pid,qty_available:row.qty,qty_sold:0}); }
+        }
         count++;
       }
     }
-    toast("Importación exitosa!",count+" productos cargados","s");
-    setImpRows([]); setImpTxt(""); setImpFile(null); setTab("stock");
+    if (newProds.length>0) setProducts(function(p){ return [...p,...newProds]; });
+    toast("Importación exitosa!",count+" productos al catálogo","s");
+    setImpRows([]); setImpTxt(""); setImpFile(null); setTab("catalog");
     await loadData(me.id,me.role);
   }
 
@@ -992,7 +1001,7 @@ export default function App() {
                     ):(
                       <div><div style={{fontFamily:"var(--mf)",fontSize:11,background:"var(--bg2)",border:"1px solid var(--brd)",borderRadius:8,padding:"10px 12px",marginBottom:10,color:"var(--t2)",lineHeight:1.9}}>{"KCG1 - KALOE Crema Gel x 50gr.\t$ 11.900,00"}<br/>{"BF100 - 212 Rosa x 80 ml.\t$ 40.990,00"}</div><textarea style={{width:"100%",height:160,padding:"12px 14px",borderRadius:10,border:"1.5px solid var(--brd)",background:"var(--card)",color:"var(--t1)",fontFamily:"var(--mf)",fontSize:12,resize:"none",outline:"none",lineHeight:1.7}} placeholder={"KCG1 - Producto\t11900"} value={impTxt} onChange={function(e){setImpTxt(e.target.value);setImpRows([]);}} /><button className="btn b-in" style={{marginTop:8,width:"100%",justifyContent:"center",padding:12}} onClick={doParseTxt} disabled={!impTxt.trim()}><Ic n="search" s={14}/>Previsualizar</button></div>
                     )}
-                    {impRows.length>0&&(<div style={{marginTop:14,marginBottom:14}}><div style={{fontSize:11,fontWeight:700,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>{impRows.filter(function(r){return r.ok;}).length} OK · {impRows.filter(function(r){return !r.ok;}).length} errores</div>{impRows.slice(0,15).map(function(row,i){ return (<div key={i} className={"prev-row "+(row.ok?"prev-ok":"prev-err")}><div style={{width:7,height:7,borderRadius:"50%",background:row.ok?"var(--em)":"var(--cr)",flexShrink:0}}/>{row.ok?(<div className="row g8" style={{flex:1,flexWrap:"wrap"}}><span style={{fontFamily:"var(--mf)",fontSize:11,fontWeight:700,color:"var(--in-d)"}}>{row.sku}</span><span style={{flex:1,fontSize:12}}>{row.name}</span><span style={{fontFamily:"var(--mf)",fontSize:11,fontWeight:700,color:"var(--am-d)"}}>{fmtARS(row.price)}</span></div>):(<div className="row g8" style={{flex:1}}><span style={{flex:1,fontFamily:"var(--mf)",fontSize:11,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.raw}</span><span style={{fontSize:11,color:"var(--cr)",flexShrink:0}}>{row.err}</span></div>)}</div>); })}<button className="cta cta-em" onClick={doConfirmImport} disabled={!impRows.some(function(r){return r.ok;})}><Ic n="check" s={18}/>Importar {impRows.filter(function(r){return r.ok;}).length}</button></div>)}
+                    {impRows.length>0&&(<div style={{marginTop:14,marginBottom:14}}><div style={{fontSize:11,fontWeight:700,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>{impRows.filter(function(r){return r.ok;}).length} OK · {impRows.filter(function(r){return !r.ok;}).length} errores</div>{impRows.slice(0,15).map(function(row,i){ return (<div key={i} className={"prev-row "+(row.ok?"prev-ok":"prev-err")}><div style={{width:7,height:7,borderRadius:"50%",background:row.ok?"var(--em)":"var(--cr)",flexShrink:0}}/>{row.ok?(<div className="row g8" style={{flex:1,flexWrap:"wrap"}}><span style={{fontFamily:"var(--mf)",fontSize:11,fontWeight:700,color:"var(--in-d)"}}>{row.sku}</span><span style={{flex:1,fontSize:12}}>{row.name}</span><span style={{fontFamily:"var(--mf)",fontSize:11,fontWeight:700,color:"var(--am-d)"}}>{fmtARS(row.price)}</span><span style={{fontSize:10,color:"var(--t3)",background:"var(--bg2)",borderRadius:5,padding:"2px 6px"}}>{row.qty>0?row.qty+" u.":"solo catálogo"}</span></div>):(<div className="row g8" style={{flex:1}}><span style={{flex:1,fontFamily:"var(--mf)",fontSize:11,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.raw}</span><span style={{fontSize:11,color:"var(--cr)",flexShrink:0}}>{row.err}</span></div>)}</div>); })}<button className="cta cta-em" onClick={doConfirmImport} disabled={!impRows.some(function(r){return r.ok;})}><Ic n="check" s={18}/>Importar {impRows.filter(function(r){return r.ok;}).length}</button></div>)}
                   </div>
                 </div>
               </div>
