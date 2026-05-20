@@ -1085,7 +1085,7 @@ export default function App() {
           {/* ══ CATÁLOGO ══ */}
           {tab==="catalog"&&(
             <div>
-              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">{allProds.length||products.length} productos · {isAdmin?"ABM completo":"solo lectura"}</div></div>{isAdmin&&<div className="row g8">
+              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">{products.length} productos · {isAdmin?"ABM completo":"solo lectura"}</div></div>{isAdmin&&<div className="row g8">
                   <button className="btn btn-xs b-em" onClick={function(){setTab("importar");}}><Ic n="upload" s={13}/>Importar</button>
                   <div style={{position:"relative"}}>
                     <button className="btn btn-xs b-in" onClick={function(){document.getElementById("bulk-price-input").click();}}><Ic n="chart" s={13}/>Act. Precios</button>
