@@ -467,8 +467,21 @@ export default function App() {
     setAuthErr("");
     var res = await sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass});
     if (res.error) { setAuthErr(res.error.message==="Invalid login credentials"?"Email o contraseña incorrectos.":res.error.message); shake(); return; }
-    var pr = await sb.from("users").select("*").eq("id",res.data.user.id).single();
-    if (pr.data) { setMe(pr.data); await loadData(pr.data.id, pr.data.role); toast("Bienvenida, "+pr.data.name+"!","","s"); }
+    // Retry loop: wait for RLS session to settle
+    var pr = null;
+    for (var attempt=0; attempt<3; attempt++) {
+      await new Promise(function(r){ setTimeout(r, 600); });
+      pr = await sb.from("users").select("*").eq("id",res.data.user.id).single();
+      if (pr.data) break;
+    }
+    if (pr && pr.data) {
+      setMe(pr.data);
+      await loadData(pr.data.id, pr.data.role);
+      toast("Bienvenido, "+pr.data.name+"!","","s");
+    } else {
+      setAuthErr("No se encontró tu perfil. Intentá de nuevo en unos segundos.");
+      shake();
+    }
   }
 
   // ── REGISTER ────────────────────────────────────────────────────────────────
