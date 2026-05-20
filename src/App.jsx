@@ -340,6 +340,7 @@ export default function App() {
   var [fPhoto,   setFPhoto]   = useState(null);
   var [fStock,   setFStock]   = useState("0");
   var [delConf,  setDelConf]  = useState(null);
+  var [showInactive, setShowInactive] = useState(false);
 
   // ── QUICK LOAD ──────────────────────────────────────────────────────────────
   var [qlMode,   setQlMode]   = useState("add");
@@ -642,6 +643,66 @@ export default function App() {
     }
   }
 
+  // ── BULK PRICE UPDATE (admin) ────────────────────────────────────────────────
+  async function doBulkPriceUpdate(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var ext = file.name.split(".").pop().toLowerCase();
+    var reader = new FileReader();
+    reader.onload = async function(ev) {
+      try {
+        var rows = [];
+        if (ext==="xlsx"||ext==="xls") {
+          var wb = XLSX.read(ev.target.result, {type:"binary"});
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          var data = XLSX.utils.sheet_to_json(ws, {header:1, raw:false});
+          var cs=-1, cp=-1, sr=0;
+          if (data.length>0) {
+            var h=data[0].map(function(x){ return (x||"").toString().toLowerCase(); });
+            h.forEach(function(x,i){ if(/sku|cod/.test(x)) cs=i; else if(/prec|price|val/.test(x)) cp=i; });
+            if (cs>=0&&cp>=0) sr=1; else { cs=0; cp=1; sr=1; }
+          }
+          data.slice(sr).forEach(function(row){
+            if (!row||!row.length) return;
+            var sku=(row[cs]||"").toString().trim().toUpperCase();
+            var priceRaw=(row[cp]||"0").toString().replace(/[^\d.,]/g,"");
+            if (priceRaw.includes(",")) priceRaw=priceRaw.replace(/\./g,"").replace(",",".");
+            var price=parseFloat(priceRaw)||0;
+            if (sku&&price>0) rows.push({sku:sku,price:price});
+          });
+        } else {
+          ev.target.result.split("\n").forEach(function(line){
+            var p=line.trim().split(/[,\t]/);
+            if (p.length>=2) {
+              var sku=p[0].trim().toUpperCase();
+              var priceRaw=p[1].replace(/[^\d.,]/g,"");
+              if (priceRaw.includes(",")) priceRaw=priceRaw.replace(/\./g,"").replace(",",".");
+              var price=parseFloat(priceRaw)||0;
+              if (sku&&price>0) rows.push({sku:sku,price:price});
+            }
+          });
+        }
+        var updated=0;
+        for (var i=0;i<rows.length;i++) {
+          var r=rows[i];
+          var res=await sb.from("products").update({price:r.price,updated_at:new Date().toISOString()}).eq("sku",r.sku);
+          if (!res.error) updated++;
+        }
+        toast("Precios actualizados!",updated+" productos actualizados","s");
+        await loadData(me.id,me.role);
+      } catch(err){ toast("Error al procesar archivo",""+err.message,"e"); }
+    };
+    if (ext==="xlsx"||ext==="xls") reader.readAsBinaryString(file); else reader.readAsText(file);
+  }
+
+  // ── TOGGLE PRODUCT ACTIVE/INACTIVE ──────────────────────────────────────────
+  async function toggleProduct(prod) {
+    var newVal = !prod.is_active;
+    await sb.from("products").update({is_active:newVal}).eq("id",prod.id);
+    setProducts(function(p){ return p.map(function(x){ return x.id===prod.id?Object.assign({},x,{is_active:newVal}):x; }); });
+    toast(newVal?"Producto activado":"Producto desactivado","","i");
+  }
+
   // ── PHOTO UPLOAD ─────────────────────────────────────────────────────────────
   async function handlePhoto(e, setter) {
     var file=e.target.files&&e.target.files[0];
@@ -773,7 +834,8 @@ export default function App() {
     return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q)||(p.category||"").toLowerCase().includes(q);
   });
 
-  var catFiltered = products.filter(function(p){ var q=srchCat.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
+  var catAll = isAdmin && showInactive ? products.concat([]) : products.filter(function(p){ return p.is_active!==false; });
+  var catFiltered = catAll.filter(function(p){ var q=srchCat.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q)||(p.category||"").toLowerCase().includes(q); });
   var conFiltered = contacts.filter(function(c){ var q=srchCon.toLowerCase(); return !q||c.name.toLowerCase().includes(q)||c.email.toLowerCase().includes(q); });
   var logFiltered = logs.filter(function(l){ var q=srchLog.toLowerCase(); var p=l.product; return !q||(p&&p.name.toLowerCase().includes(q))||l.source.includes(q); });
   var sendFiltered = myStock.filter(function(i){ var p=i.products||products.find(function(x){ return x.id===i.product_id; }); if(!p) return false; var q=sendSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
@@ -885,7 +947,19 @@ export default function App() {
                         return (<div key={tx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--card)",borderRadius:10,marginBottom:8,border:"1px solid var(--brd)"}}>
                           <div style={{fontSize:26}}>{p?p.emoji:"📦"}</div>
                           <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{p?p.name:"Producto"}</div><div style={{fontSize:11,color:"var(--t3)"}}>{tx.qty} u. de {tx.from_user?tx.from_user.name:""}</div></div>
-                          <button className="btn b-em" style={{fontSize:12,padding:"8px 12px"}} onClick={function(){confirmTransfer(tx);}}>✓ Confirmar</button>
+                          <div className="row g8">
+                              <button className="btn b-em btn-xs" onClick={function(){confirmTransfer(tx);}}>✓ Aceptar</button>
+                              <button className="btn b-cr btn-xs" onClick={async function(){
+                                // Return stock to sender
+                                var srcInv = await sb.from("inventory").select("*").eq("user_id",tx.from_user_id).eq("product_id",tx.product_id).single();
+                                if (srcInv.data) { await sb.from("inventory").update({qty_available:srcInv.data.qty_available+tx.qty}).eq("id",srcInv.data.id); }
+                                else { await sb.from("inventory").insert({user_id:tx.from_user_id,product_id:tx.product_id,qty_available:tx.qty,qty_sold:0}); }
+                                await sb.from("transfers").update({status:"rejected"}).eq("id",tx.id);
+                                await sb.from("notifications").insert({to_user_id:tx.from_user_id,from_name:me.name,type:"info",message:me.name+" devolvió el envío de "+tx.qty+"x "+(tx.product?tx.product.name:"producto")+". Stock restituido."});
+                                toast("Envío devuelto","Stock restituido al remitente","i");
+                                await loadData(me.id,me.role);
+                              }}>✗ Devolver</button>
+                            </div>
                         </div>);
                       })}
                     </div>
@@ -1011,7 +1085,14 @@ export default function App() {
           {/* ══ CATÁLOGO ══ */}
           {tab==="catalog"&&(
             <div>
-              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">{allProds.length||products.length} productos · {isAdmin?"ABM completo":"solo lectura"}</div></div>{isAdmin&&<button className="btn btn-xs b-em" onClick={function(){setTab("importar");}}><Ic n="upload" s={13}/>Importar</button>}</div>
+              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">{allProds.length||products.length} productos · {isAdmin?"ABM completo":"solo lectura"}</div></div>{isAdmin&&<div className="row g8">
+                  <button className="btn btn-xs b-em" onClick={function(){setTab("importar");}}><Ic n="upload" s={13}/>Importar</button>
+                  <div style={{position:"relative"}}>
+                    <button className="btn btn-xs b-in" onClick={function(){document.getElementById("bulk-price-input").click();}}><Ic n="chart" s={13}/>Act. Precios</button>
+                    <input id="bulk-price-input" type="file" accept=".xlsx,.xls,.csv,.txt" style={{display:"none"}} onChange={doBulkPriceUpdate}/>
+                  </div>
+                  <button className="btn btn-xs b-ghost" onClick={function(){setShowInactive(function(v){return !v;});}}>{showInactive?"Ocultar inactivos":"Ver inactivos"}</button>
+                </div>}</div>
               <div className="pc">
                 <SearchBar value={srchCat} onChange={setSrchCat} placeholder="Buscar por nombre, SKU o categoría..."/>
                 {isAdmin&&(
@@ -1032,7 +1113,18 @@ export default function App() {
                 <div className="card">
                   <div className="card-h"><div className="card-title">Catálogo ({catFiltered.length})</div></div>
                   {catFiltered.length===0?<div className="empty">Sin productos.{srchCat?" Intenta otra búsqueda.":" El administrador aún no cargó productos."}</div>:(
-                    <div className="tw"><table><thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th>{isAdmin&&<th></th>}</tr></thead><tbody>{catFiltered.map(function(p){ return (<tr key={p.id} className="tr"><td><ProdThumb prod={p} size={34}/></td><td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td><td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td><td style={{fontFamily:"var(--mf)",fontSize:12,fontWeight:700}}>{fmtARS(p.price)}</td>{isAdmin&&<td><div className="row g8" style={{justifyContent:"flex-end"}}><button className="btn btn-xs b-in" onClick={function(){startEdit(p);}}><Ic n="edit" s={12}/></button>{delConf===p.id?<div className="row g8"><button className="btn btn-xs b-cr" onClick={function(){doDelProd(p.id,p.sku);}}>Sí</button><button className="btn btn-xs b-ghost" onClick={function(){setDelConf(null);}}>No</button></div>:<button className="btn btn-xs b-cr" onClick={function(){setDelConf(p.id);}}><Ic n="trash" s={12}/></button>}</div></td>}</tr>); })}</tbody></table></div>
+                    <div className="tw"><table><thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th>{isAdmin&&<th></th>}</tr></thead><tbody>{catFiltered.map(function(p){ return (<tr key={p.id} className="tr"><td><ProdThumb prod={p} size={34}/></td><td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td><td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td><td style={{fontFamily:"var(--mf)",fontSize:12,fontWeight:700}}>{fmtARS(p.price)}</td>{isAdmin&&<td><div className="row g8" style={{justifyContent:"flex-end"}}><button className="btn btn-xs b-in" onClick={function(){startEdit(p);}}><Ic n="edit" s={12}/></button>{delConf===p.id
+                                  ?<div className="row g8">
+                                    <button className="btn btn-xs b-cr" onClick={function(){doDelProd(p.id,p.sku);}}>Sí, eliminar</button>
+                                    <button className="btn btn-xs b-ghost" onClick={function(){setDelConf(null);}}>No</button>
+                                  </div>
+                                  :<div className="row g8">
+                                    <button className="btn btn-xs" style={{background:p.is_active===false?"var(--em-t)":"var(--cr-t)",color:p.is_active===false?"var(--em-d)":"var(--cr)",border:"1px solid "+(p.is_active===false?"rgba(16,185,129,.2)":"rgba(239,68,68,.2)"),borderRadius:8,padding:"5px 9px",fontSize:11,fontWeight:700,cursor:"pointer"}} onClick={function(){toggleProduct(p);}}>
+                                      {p.is_active===false?"Activar":"Desactivar"}
+                                    </button>
+                                    <button className="btn btn-xs b-cr" onClick={function(){setDelConf(p.id);}}><Ic n="trash" s={12}/></button>
+                                  </div>
+                                }</div></td>}</tr>); })}</tbody></table></div>
                   )}
                 </div>
               </div>
