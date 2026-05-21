@@ -396,9 +396,19 @@ export default function App() {
   // ── SUPABASE DATA LOADERS ────────────────────────────────────────────────────
   var loadData = useCallback(async function(userId, userRole) {
     try {
-      // Products (all users) - fetch all, no limit
-      var pr = await sb.from("products").select("*").eq("is_active",true).order("name").range(0, 9999);
-      if (pr.data) setProducts(pr.data);
+      // Products - paginate to get ALL (bypass 1000 row limit)
+      var allProds = [];
+      var PAGE = 800;
+      var from = 0;
+      while (true) {
+        var pr = await sb.from("products").select("*").eq("is_active",true).order("name").range(from, from+PAGE-1);
+        if (pr.data && pr.data.length > 0) {
+          allProds = allProds.concat(pr.data);
+          if (pr.data.length < PAGE) break; // last page
+          from += PAGE;
+        } else { break; }
+      }
+      setProducts(allProds);
 
       // My inventory
       var inv = await sb.from("inventory").select("*, products(*)").eq("user_id",userId);
