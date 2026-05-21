@@ -396,8 +396,8 @@ export default function App() {
   // ── SUPABASE DATA LOADERS ────────────────────────────────────────────────────
   var loadData = useCallback(async function(userId, userRole) {
     try {
-      // Products (all users)
-      var pr = await sb.from("products").select("*").eq("is_active",true).order("name");
+      // Products (all users) - fetch all, no limit
+      var pr = await sb.from("products").select("*").eq("is_active",true).order("name").range(0, 9999);
       if (pr.data) setProducts(pr.data);
 
       // My inventory
@@ -793,36 +793,53 @@ export default function App() {
   function doParseTxt(){ if (!impTxt.trim()){ toast("Pega texto primero","","e"); return; } var rows=parseLines(impTxt,impQty); setImpRows(rows); toast(rows.filter(function(r){return r.ok;}).length+" detectados","Revisa y confirma","s"); }
 
   async function doConfirmImport() {
-    var valid=impRows.filter(function(r){return r.ok;});
+    var valid = impRows.filter(function(r){ return r.ok; });
     if (!valid.length){ toast("Sin filas válidas","","e"); return; }
-    var count=0;
-    var newProds = [];
-    for (var i=0;i<valid.length;i++){
-      var row=valid[i];
-      var existing=products.find(function(p){ return p.sku===row.sku; });
-      var pid;
-      if (!existing){
-        var ins=await sb.from("products").insert({sku:row.sku,name:row.name,price:row.price,emoji:"✨",category:row.cat,created_by:me.id}).select().single();
-        if (ins.data){ newProds.push(ins.data); pid=ins.data.id; }
-      } else {
-        // Update price
-        await sb.from("products").update({price:row.price,name:row.name,category:row.cat}).eq("id",existing.id);
-        pid=existing.id;
-      }
-      if (pid){
-        // Only touch inventory if qty > 0
-        if (row.qty > 0) {
-          var inv=inventory.find(function(ii){ return ii.product_id===pid; });
-          if (inv){ await sb.from("inventory").update({qty_available:inv.qty_available+row.qty}).eq("id",inv.id); }
-          else { await sb.from("inventory").insert({user_id:me.id,product_id:pid,qty_available:row.qty,qty_sold:0}); }
-        }
-        count++;
-      }
+
+    toast("Importando...","Procesando "+valid.length+" productos. No cierres la página.","i");
+
+    var BATCH = 50; // insert 50 at a time
+    var totalInserted = 0;
+    var totalUpdated  = 0;
+
+    // Separate new vs existing
+    var toInsert = [];
+    var toUpdate = [];
+    valid.forEach(function(row){
+      var ex = products.find(function(p){ return p.sku===row.sku; });
+      if (ex) { toUpdate.push({id:ex.id, price:row.price, name:row.name, category:row.cat}); }
+      else     { toInsert.push({sku:row.sku, name:row.name, price:row.price, emoji:"✨", category:row.cat, created_by:me.id, is_active:true}); }
+    });
+
+    // Batch INSERT new products
+    var insertedProds = [];
+    for (var i=0; i<toInsert.length; i+=BATCH) {
+      var batch = toInsert.slice(i, i+BATCH);
+      var res = await sb.from("products").insert(batch).select();
+      if (res.data) { insertedProds = insertedProds.concat(res.data); totalInserted += res.data.length; }
+      if (res.error) { console.error("Insert batch error:", res.error.message); }
+      // Small delay to avoid rate limiting
+      await new Promise(function(r){ setTimeout(r, 100); });
     }
-    if (newProds.length>0) setProducts(function(p){ return [...p,...newProds]; });
-    toast("Importación exitosa!",count+" productos al catálogo","s");
+
+    // Batch UPDATE existing prices (upsert by sku)
+    for (var i=0; i<toUpdate.length; i+=BATCH) {
+      var batch = toUpdate.slice(i, i+BATCH);
+      for (var j=0; j<batch.length; j++) {
+        await sb.from("products").update({price:batch[j].price, name:batch[j].name, category:batch[j].category, updated_at:new Date().toISOString()}).eq("id",batch[j].id);
+      }
+      totalUpdated += batch.length;
+      await new Promise(function(r){ setTimeout(r, 80); });
+    }
+
+    if (insertedProds.length>0) setProducts(function(p){ return [...p,...insertedProds]; });
+
+    var msg = "";
+    if (totalInserted>0) msg += totalInserted+" nuevos";
+    if (totalUpdated>0)  msg += (msg?", ":"")+totalUpdated+" actualizados";
+    toast("Importación completada!", msg, "s");
     setImpRows([]); setImpTxt(""); setImpFile(null); setTab("catalog");
-    await loadData(me.id,me.role);
+    await loadData(me.id, me.role);
   }
 
   // ── CONTACTS ──────────────────────────────────────────────────────────────────
