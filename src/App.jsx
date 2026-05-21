@@ -341,6 +341,7 @@ export default function App() {
   var [fStock,   setFStock]   = useState("0");
   var [delConf,  setDelConf]  = useState(null);
   var [showInactive, setShowInactive] = useState(false);
+  var [bulkSel, setBulkSel] = useState({});  // {prodId: true}
 
   // ── QUICK LOAD ──────────────────────────────────────────────────────────────
   var [qlMode,   setQlMode]   = useState("add");
@@ -641,6 +642,39 @@ export default function App() {
       toast("Producto creado!",qlName.trim()+" con "+qlQty+" u.","s");
       setQlSku(""); setQlName(""); setQlPrice(""); setQlQty(1); setQlPhoto(null); setQlMode("add");
     }
+  }
+
+  // ── BULK ACTIONS ─────────────────────────────────────────────────────────────
+  var bulkCount = Object.keys(bulkSel).length;
+
+  function toggleBulkSel(id) {
+    setBulkSel(function(p){ var n=Object.assign({},p); if(n[id]) delete n[id]; else n[id]=true; return n; });
+  }
+
+  function selectAllBulk() {
+    var all={};
+    catFiltered.forEach(function(p){ all[p.id]=true; });
+    setBulkSel(all);
+  }
+
+  async function doBulkDeactivate() {
+    var ids = Object.keys(bulkSel);
+    for (var i=0;i<ids.length;i++) {
+      await sb.from("products").update({is_active:false}).eq("id",ids[i]);
+    }
+    setProducts(function(p){ return p.map(function(x){ return bulkSel[x.id]?Object.assign({},x,{is_active:false}):x; }); });
+    toast("Desactivados",ids.length+" productos desactivados","i");
+    setBulkSel({});
+  }
+
+  async function doBulkActivate() {
+    var ids = Object.keys(bulkSel);
+    for (var i=0;i<ids.length;i++) {
+      await sb.from("products").update({is_active:true}).eq("id",ids[i]);
+    }
+    setProducts(function(p){ return p.map(function(x){ return bulkSel[x.id]?Object.assign({},x,{is_active:true}):x; }); });
+    toast("Activados",ids.length+" productos activados","s");
+    setBulkSel({});
   }
 
   // ── BULK PRICE UPDATE (admin) ────────────────────────────────────────────────
@@ -1085,14 +1119,17 @@ export default function App() {
           {/* ══ CATÁLOGO ══ */}
           {tab==="catalog"&&(
             <div>
-              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">{products.length} productos · {isAdmin?"ABM completo":"solo lectura"}</div></div>{isAdmin&&<div className="row g8">
-                  <button className="btn btn-xs b-em" onClick={function(){setTab("importar");}}><Ic n="upload" s={13}/>Importar</button>
-                  <div style={{position:"relative"}}>
-                    <button className="btn btn-xs b-in" onClick={function(){document.getElementById("bulk-price-input").click();}}><Ic n="chart" s={13}/>Act. Precios</button>
+              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">{products.filter(function(p){return p.is_active!==false;}).length} activos · {products.length} total</div></div></div>
+              {isAdmin&&(
+                <div style={{padding:"0 12px 10px",display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button className="btn b-em" style={{flex:"1 1 120px",justifyContent:"center"}} onClick={function(){setTab("importar");}}><Ic n="upload" s={14}/>Importar productos</button>
+                  <div style={{position:"relative",flex:"1 1 160px"}}>
+                    <button className="btn b-in" style={{width:"100%",justifyContent:"center"}} onClick={function(){document.getElementById("bulk-price-input").click();}}><Ic n="chart" s={14}/>Actualizar precios Excel</button>
                     <input id="bulk-price-input" type="file" accept=".xlsx,.xls,.csv,.txt" style={{display:"none"}} onChange={doBulkPriceUpdate}/>
                   </div>
-                  <button className="btn btn-xs b-ghost" onClick={function(){setShowInactive(function(v){return !v;});}}>{showInactive?"Ocultar inactivos":"Ver inactivos"}</button>
-                </div>}</div>
+                  <button className="btn b-ghost" style={{flex:"0 0 auto"}} onClick={function(){setShowInactive(function(v){return !v;});}}>{showInactive?"Ocultar inactivos":"Ver inactivos"}</button>
+                </div>
+              )}
               <div className="pc">
                 <SearchBar value={srchCat} onChange={setSrchCat} placeholder="Buscar por nombre, SKU o categoría..."/>
                 {isAdmin&&(
@@ -1111,20 +1148,66 @@ export default function App() {
                   </div>
                 )}
                 <div className="card">
-                  <div className="card-h"><div className="card-title">Catálogo ({catFiltered.length})</div></div>
-                  {catFiltered.length===0?<div className="empty">Sin productos.{srchCat?" Intenta otra búsqueda.":" El administrador aún no cargó productos."}</div>:(
-                    <div className="tw"><table><thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th>{isAdmin&&<th></th>}</tr></thead><tbody>{catFiltered.map(function(p){ return (<tr key={p.id} className="tr"><td><ProdThumb prod={p} size={34}/></td><td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td><td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td><td style={{fontFamily:"var(--mf)",fontSize:12,fontWeight:700}}>{fmtARS(p.price)}</td>{isAdmin&&<td><div className="row g8" style={{justifyContent:"flex-end"}}><button className="btn btn-xs b-in" onClick={function(){startEdit(p);}}><Ic n="edit" s={12}/></button>{delConf===p.id
-                                  ?<div className="row g8">
-                                    <button className="btn btn-xs b-cr" onClick={function(){doDelProd(p.id,p.sku);}}>Sí, eliminar</button>
-                                    <button className="btn btn-xs b-ghost" onClick={function(){setDelConf(null);}}>No</button>
-                                  </div>
-                                  :<div className="row g8">
+                  <div className="card-h">
+                    <div className="card-title">Catálogo ({catFiltered.length})</div>
+                    {isAdmin&&bulkCount>0&&(
+                      <div className="row g8">
+                        <span style={{fontSize:12,fontWeight:700,color:"var(--in-d)",background:"var(--in-l)",padding:"3px 10px",borderRadius:20}}>{bulkCount} selec.</span>
+                        <button className="btn btn-xs b-em" onClick={doBulkActivate}>✓ Activar</button>
+                        <button className="btn btn-xs b-cr" onClick={doBulkDeactivate}>✗ Desactivar</button>
+                        <button className="btn btn-xs b-ghost" onClick={function(){setBulkSel({});}}>Limpiar</button>
+                      </div>
+                    )}
+                    {isAdmin&&bulkCount===0&&(
+                      <button className="btn btn-xs b-ghost" onClick={selectAllBulk}>Sel. todo</button>
+                    )}
+                  </div>
+                  {catFiltered.length===0
+                    ?<div className="empty">Sin productos.{srchCat?" Intenta otra búsqueda.":" El administrador aún no cargó productos."}</div>
+                    :(
+                    <div className="tw"><table>
+                      <thead><tr>
+                        {isAdmin&&<th style={{width:36,paddingLeft:12}}><input type="checkbox" checked={bulkCount===catFiltered.length&&catFiltered.length>0} onChange={function(e){if(e.target.checked) selectAllBulk(); else setBulkSel({});}}/></th>}
+                        <th></th><th>SKU</th><th>Producto</th><th>Precio</th>{isAdmin&&<th></th>}
+                      </tr></thead>
+                      <tbody>
+                        {catFiltered.map(function(p){
+                          var sel = !!bulkSel[p.id];
+                          return (
+                            <tr key={p.id} className="tr" style={{opacity:p.is_active===false?0.5:1,background:sel?"var(--in-l)":""}}>
+                              {isAdmin&&<td style={{paddingLeft:12}}><input type="checkbox" checked={sel} onChange={function(){toggleBulkSel(p.id);}}/></td>}
+                              <td><ProdThumb prod={p} size={34}/></td>
+                              <td>
+                                <span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span>
+                                {p.is_active===false&&<span style={{fontSize:9,color:"var(--cr)",background:"var(--cr-l)",borderRadius:5,padding:"1px 5px",marginLeft:4,fontWeight:700}}>INACTIVO</span>}
+                              </td>
+                              <td>
+                                <div style={{fontWeight:600,fontSize:12}}>{p.name}</div>
+                                <div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div>
+                              </td>
+                              <td style={{fontFamily:"var(--mf)",fontSize:12,fontWeight:700}}>{fmtARS(p.price)}</td>
+                              {isAdmin&&(
+                                <td>
+                                  <div className="row g8" style={{justifyContent:"flex-end"}}>
+                                    <button className="btn btn-xs b-in" onClick={function(){startEdit(p);}}><Ic n="edit" s={12}/></button>
                                     <button className="btn btn-xs" style={{background:p.is_active===false?"var(--em-t)":"var(--cr-t)",color:p.is_active===false?"var(--em-d)":"var(--cr)",border:"1px solid "+(p.is_active===false?"rgba(16,185,129,.2)":"rgba(239,68,68,.2)"),borderRadius:8,padding:"5px 9px",fontSize:11,fontWeight:700,cursor:"pointer"}} onClick={function(){toggleProduct(p);}}>
-                                      {p.is_active===false?"Activar":"Desactivar"}
+                                      {p.is_active===false?"Activar":"Desact."}
                                     </button>
-                                    <button className="btn btn-xs b-cr" onClick={function(){setDelConf(p.id);}}><Ic n="trash" s={12}/></button>
+                                    {delConf===p.id
+                                      ?<div className="row g8">
+                                        <button className="btn btn-xs b-cr" onClick={function(){doDelProd(p.id,p.sku);}}>Confirmar</button>
+                                        <button className="btn btn-xs b-ghost" onClick={function(){setDelConf(null);}}>No</button>
+                                      </div>
+                                      :<button className="btn btn-xs b-cr" onClick={function(){setDelConf(p.id);}}><Ic n="trash" s={12}/></button>
+                                    }
                                   </div>
-                                }</div></td>}</tr>); })}</tbody></table></div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table></div>
                   )}
                 </div>
               </div>
