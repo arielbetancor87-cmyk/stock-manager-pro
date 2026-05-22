@@ -1014,14 +1014,18 @@ export default function App() {
 
         {/* HEADER */}
         <div className="hdr">
-          <Avatar name={me.name} color="rgba(255,255,255,.25)" size={42} style={{border:"2px solid rgba(255,255,255,.4)",fontSize:16}}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div className="hdr-name" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{me.name}</div>
-            <div className="hdr-role">{me.role==="superadmin"?"👑 Administrador":me.role}</div>
+          <div style={{display:"flex",alignItems:"center",gap:12,position:"relative",zIndex:1}}>
+            <Avatar name={me.name} color="rgba(255,255,255,.25)" size={46} style={{border:"2px solid rgba(255,255,255,.4)"}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="hdr-name">{me.name}</div>
+              <div className="hdr-role">{me.role==="superadmin"?"👑 Administrador":me.role}</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+              <div className="saved-dot"><div style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",flexShrink:0}}/> online</div>
+              {totalBadge>0?<div className="notif-badge" onClick={function(){setTab("contacts");}}><Ic n="bell" s={14}/>{totalBadge}</div>:null}
+              <button style={{width:36,height:36,borderRadius:12,border:"none",background:"rgba(255,255,255,.2)",cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}} onClick={doLogout}><Ic n="logout" s={17}/></button>
+            </div>
           </div>
-          <div className="saved-dot"><div style={{width:6,height:6,borderRadius:"50%",background:"var(--em)",flexShrink:0}}/> online</div>
-          {totalBadge>0?<div className="notif-badge" onClick={function(){setTab("contacts");}}><Ic n="bell" s={14}/>{totalBadge}</div>:null}
-          <button className="ic-btn" style={{marginLeft:6}} onClick={doLogout}><Ic n="logout" s={17}/></button>
         </div>
 
         <div className="main">
@@ -1165,6 +1169,18 @@ export default function App() {
             <div>
               <div className="ph"><div><div className="ph-h">Importar</div><div className="ph-s">Carga tu lista desde Excel</div></div>{impRows.some(function(r){return r.ok;})&&<button className="btn b-em" style={{fontSize:12,padding:"8px 14px"}} onClick={doConfirmImport}><Ic n="check" s={14}/>Confirmar ({impRows.filter(function(r){return r.ok;}).length})</button>}</div>
               <div className="pc">
+                {/* Admin tools moved here */}
+                {isAdmin&&(
+                  <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+                    <div style={{position:"relative"}}>
+                      <button className="btn b-in" style={{width:"100%",justifyContent:"center",padding:"14px"}} onClick={function(){document.getElementById("bulk-price-input2").click();}}><Ic n="chart" s={16}/>Actualizar precios desde Excel (SKU + Precio)</button>
+                      <input id="bulk-price-input2" type="file" accept=".xlsx,.xls,.csv,.txt" style={{display:"none"}} onChange={doBulkPriceUpdate}/>
+                    </div>
+                    <div style={{fontSize:11,color:"var(--t3)",background:"var(--bg)",border:"1px solid var(--brd)",borderRadius:10,padding:"10px 14px",lineHeight:1.7}}>
+                      <strong>Formato Excel para precios:</strong> columna SKU + columna Precio. El sistema detecta los encabezados automáticamente.
+                    </div>
+                  </div>
+                )}
                 <div className="card">
                   <div className="card-h"><div className="card-title">Modo de importación</div></div>
                   <div style={{padding:"12px 14px 0"}}>
@@ -1185,17 +1201,10 @@ export default function App() {
           {/* ══ CATÁLOGO ══ */}
           {tab==="catalog"&&(
             <div>
-              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">{products.filter(function(p){return p.is_active!==false;}).length} activos · {products.length} total</div></div></div>
-              {isAdmin&&(
-                <div style={{padding:"0 12px 10px",display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <button className="btn b-em" style={{flex:"1 1 120px",justifyContent:"center"}} onClick={function(){setTab("importar");}}><Ic n="upload" s={14}/>Importar productos</button>
-                  <div style={{position:"relative",flex:"1 1 160px"}}>
-                    <button className="btn b-in" style={{width:"100%",justifyContent:"center"}} onClick={function(){document.getElementById("bulk-price-input").click();}}><Ic n="chart" s={14}/>Actualizar precios Excel</button>
-                    <input id="bulk-price-input" type="file" accept=".xlsx,.xls,.csv,.txt" style={{display:"none"}} onChange={doBulkPriceUpdate}/>
-                  </div>
-                  <button className="btn b-ghost" style={{flex:"0 0 auto"}} onClick={function(){setShowInactive(function(v){return !v;});}}>{showInactive?"Ocultar inactivos":"Ver inactivos"}</button>
-                </div>
-              )}
+              <div className="ph">
+                <div><div className="ph-h">Catálogo</div><div className="ph-s">{products.filter(function(p){return p.is_active!==false;}).length} activos · {products.length} total</div></div>
+                {isAdmin&&<button className="btn btn-xs b-ghost" onClick={function(){setShowInactive(function(v){return !v;});}}>{showInactive?"Ver activos":"Ver inactivos"}</button>}
+              </div>
               <div className="pc">
                 <SearchBar value={srchCat} onChange={setSrchCat} placeholder="Buscar por nombre, SKU o categoría..."/>
                 {isAdmin&&(
