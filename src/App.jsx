@@ -1106,10 +1106,9 @@ export default function App() {
                       <thead><tr><th>Producto</th><th>Cant.</th><th>Para</th><th>Estado</th></tr></thead>
                       <tbody>{sentTx.map(function(tx){ var p=tx.product; var tu=tx.to_user; return (<tr key={tx.id} className="tr"><td><div style={{fontWeight:600,fontSize:12}}>{p?p.name:""}</div></td><td><span style={{fontFamily:"var(--mf)",fontWeight:700,color:"var(--am-d)"}}>{tx.qty}</span></td><td><span style={{fontSize:11}}>{tu?tu.name:""}</span></td><td>
                               <div className="row g8">
-                                {tx.status==="anulado"
+                              {tx.status==="anulado"
                                   ?<span style={{background:"var(--cr-t)",color:"var(--cr)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>❌ Anulado</span>
-                                  :<><span style={{background:"var(--am-t)",color:"var(--am-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>Pendiente</span>
-                                  <button className="btn btn-xs b-cr" onClick={function(){anularTransfer(tx);}}>✕ Anular</button></>
+                                  :<div className="row g8"><span style={{background:"var(--am-t)",color:"var(--am-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>Pendiente</span><button className="btn btn-xs b-cr" onClick={function(){anularTransfer(tx);}}>✕ Anular</button></div>
                                 }
                               </div>
                             </td></tr>); })}</tbody>
