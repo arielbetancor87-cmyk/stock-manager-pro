@@ -338,6 +338,9 @@ export default function App() {
   var [srchCat,   setSrchCat]   = useState("");
   var [srchCon,   setSrchCon]   = useState("");
   var [srchLog,   setSrchLog]   = useState("");
+  var [ganancia,  setGanancia]  = useState(function(){ try{ return parseFloat(localStorage.getItem("smp_ganancia")||"30"); }catch(e){ return 30; } });
+  var [editGan,   setEditGan]   = useState(false);
+  var [ganInput,  setGanInput]  = useState("30");
   var [srchPrice, setSrchPrice] = useState("");
   var [priceMin,  setPriceMin]  = useState("");
   var [priceMax,  setPriceMax]  = useState("");
@@ -1028,12 +1031,13 @@ export default function App() {
     {id:"stock",   lbl:"Stock",    ico:"box"},
     {id:"cargar",  lbl:"Cargar",   ico:"plus"},
     {id:"enviar",  lbl:"Enviar",   ico:"send"},
-    {id:"catalog", lbl:"Catálogo", ico:"list"},
-    {id:"precios", lbl:"Precios",  ico:"search"},
+    {id:"precios", lbl:"Catálogo", ico:"list"},
+    {id:"ventas",  lbl:"Ventas",   ico:"chart"},
     {id:"contacts",lbl:"Red",      ico:"users"},
   ];
   if (isAdmin) {
-    TABS.splice(3, 0, {id:"importar", lbl:"Importar", ico:"upload"});
+    TABS.splice(3, 0, {id:"catalog", lbl:"Catálogo", ico:"list"});
+    TABS.splice(4, 0, {id:"importar", lbl:"Importar", ico:"upload"});
     TABS.push({id:"admin", lbl:"Admin", ico:"shield"});
   }
 
@@ -1327,10 +1331,145 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ VENTAS ══ */}
+          {tab==="ventas"&&(function(){
+            var now = new Date();
+            var mesActual = now.getMonth();
+            var anioActual = now.getFullYear();
+
+            // Logs del mes actual
+            var logsDelMes = logs.filter(function(l){
+              var d = new Date(l.created_at);
+              return d.getMonth()===mesActual && d.getFullYear()===anioActual;
+            });
+
+            // Agrupar por producto
+            var byProd = {};
+            logsDelMes.forEach(function(l){
+              var pid = l.product_id;
+              var p = l.product || products.find(function(x){ return x.id===pid; });
+              if (!byProd[pid]) byProd[pid] = {prod:p, qty:0, total:0};
+              byProd[pid].qty += l.qty || 1;
+              byProd[pid].total += (l.sale_price || (p?p.price:0)) * (l.qty||1);
+            });
+            var ventaItems = Object.values(byProd).sort(function(a,b){ return b.total-a.total; });
+
+            var totalVentas = ventaItems.reduce(function(s,v){ return s+v.total; }, 0);
+            var totalUnidades = ventaItems.reduce(function(s,v){ return s+v.qty; }, 0);
+            var gananciaTotal = totalVentas * (ganancia/100);
+
+            var meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+            return (
+              <div>
+                <div className="ph">
+                  <div><div className="ph-h">Mis Ventas</div><div className="ph-s">{meses[mesActual]} {anioActual}</div></div>
+                </div>
+                <div className="pc">
+
+                  {/* Summary cards */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                    <div className="metric-card">
+                      <div className="metric-val" style={{color:"var(--em-d)",fontSize:28}}>{fmtARS(totalVentas)}</div>
+                      <div className="metric-lbl">Total vendido</div>
+                    </div>
+                    <div className="metric-card">
+                      <div className="metric-val" style={{color:"var(--in-d)",fontSize:28}}>{totalUnidades}</div>
+                      <div className="metric-lbl">Unidades vendidas</div>
+                    </div>
+                  </div>
+
+                  {/* Ganancia card */}
+                  <div className="card" style={{marginBottom:16,border:"2px solid var(--in-t)"}}>
+                    <div className="card-h" style={{background:"var(--in-l)"}}>
+                      <div className="card-title" style={{color:"var(--in-d)"}}>💰 Mi Ganancia Estimada</div>
+                      <button className="btn btn-xs b-in" onClick={function(){ setGanInput(String(ganancia)); setEditGan(true); }}>Editar %</button>
+                    </div>
+                    <div style={{padding:"18px 16px"}}>
+                      {editGan?(
+                        <div>
+                          <label className="fl">Porcentaje de ganancia (%)</label>
+                          <div className="row g8" style={{marginBottom:8}}>
+                            <input className="fi" type="number" min="0" max="100" step="0.5" value={ganInput} onChange={function(e){setGanInput(e.target.value);}} style={{flex:1}}/>
+                            <span style={{fontSize:22,fontWeight:800,color:"var(--in-d)"}}>%</span>
+                          </div>
+                          <div style={{fontSize:11,color:"var(--t3)",marginBottom:12}}>
+                            Si comprás a $100 y vendés a ${(100*(1+parseFloat(ganInput||0)/100)).toFixed(0)}, tu ganancia es el {ganInput||0}%
+                          </div>
+                          <div className="row g8">
+                            <button className="btn b-ghost" onClick={function(){setEditGan(false);}}>Cancelar</button>
+                            <button className="btn b-pri" onClick={function(){
+                              var val = parseFloat(ganInput)||0;
+                              setGanancia(val);
+                              try{ localStorage.setItem("smp_ganancia", String(val)); }catch(e){}
+                              setEditGan(false);
+                            }}>Guardar</button>
+                          </div>
+                        </div>
+                      ):(
+                        <div>
+                          <div className="row g8" style={{marginBottom:10,alignItems:"baseline"}}>
+                            <div style={{fontSize:40,fontWeight:900,fontFamily:"var(--mf)",color:"var(--in-d)"}}>{fmtARS(gananciaTotal)}</div>
+                          </div>
+                          <div style={{fontSize:12,color:"var(--t3)"}}>
+                            Basado en <strong>{ganancia}% de ganancia</strong> sobre {fmtARS(totalVentas)} vendidos
+                          </div>
+                          <div style={{marginTop:12,background:"var(--bg)",borderRadius:10,overflow:"hidden",height:8}}>
+                            <div style={{height:"100%",width:Math.min(100,ganancia)+"%",background:"linear-gradient(90deg,var(--in),var(--pu2))",borderRadius:10,transition:"width .4s"}}/>
+                          </div>
+                          <div className="row jb" style={{fontSize:10,color:"var(--t4)",marginTop:4}}>
+                            <span>0%</span><span style={{fontWeight:700,color:"var(--in-d)"}}>{ganancia}%</span><span>100%</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ventas del mes */}
+                  <div className="card">
+                    <div className="card-h">
+                      <div className="card-title"><div className="card-ico" style={{background:"var(--em-l)",color:"var(--em-d)"}}><Ic n="clock" s={14}/></div>Detalle del mes</div>
+                      <span className="badge b-em">{ventaItems.length} productos</span>
+                    </div>
+                    {ventaItems.length===0
+                      ?<div className="empty">Sin ventas registradas este mes.<br/>Usá el botón "Venta" en tu Stock para registrarlas.</div>
+                      :(
+                      <div className="tw"><table>
+                        <thead><tr><th></th><th>Producto</th><th>Unid.</th><th>Total</th><th>Ganancia</th></tr></thead>
+                        <tbody>
+                          {ventaItems.map(function(item,idx){
+                            var p = item.prod;
+                            var gan = item.total*(ganancia/100);
+                            return (
+                              <tr key={idx} className="tr">
+                                <td><ProdThumb prod={p} size={32}/></td>
+                                <td><div style={{fontWeight:600,fontSize:12,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"—"}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p?p.sku:""}</div></td>
+                                <td><span style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:14,color:"var(--in-d)"}}>{item.qty}</span></td>
+                                <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12,color:"var(--em-d)"}}>{fmtARS(item.total)}</span></td>
+                                <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12,color:"var(--in-d)"}}>{fmtARS(gan)}</span></td>
+                              </tr>
+                            );
+                          })}
+                          <tr style={{background:"var(--in-l)"}}>
+                            <td colSpan={2} style={{fontWeight:800,fontSize:12,color:"var(--in-d)",padding:"12px"}}>TOTAL</td>
+                            <td><span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:14,color:"var(--in-d)"}}>{totalUnidades}</span></td>
+                            <td><span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:12,color:"var(--em-d)"}}>{fmtARS(totalVentas)}</span></td>
+                            <td><span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:12,color:"var(--in-d)"}}>{fmtARS(gananciaTotal)}</span></td>
+                          </tr>
+                        </tbody>
+                      </table></div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ══ PRECIOS ══ */}
           {tab==="precios"&&(
             <div>
-              <div className="ph"><div><div className="ph-h">Lista de Precios</div><div className="ph-s">Catálogo completo con filtro de precios</div></div></div>
+              <div className="ph"><div><div className="ph-h">Catálogo</div><div className="ph-s">Lista de precios con filtro</div></div></div>
               <div className="pc">
                 {/* Search + price filter */}
                 <SearchBar value={srchPrice} onChange={setSrchPrice} placeholder="Buscar por nombre, SKU o categoría..."/>
