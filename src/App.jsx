@@ -338,6 +338,9 @@ export default function App() {
   var [srchCat,   setSrchCat]   = useState("");
   var [srchCon,   setSrchCon]   = useState("");
   var [srchLog,   setSrchLog]   = useState("");
+  var [srchPrice, setSrchPrice] = useState("");
+  var [priceMin,  setPriceMin]  = useState("");
+  var [priceMax,  setPriceMax]  = useState("");
 
   // ── CATALOG ABM ─────────────────────────────────────────────────────────────
   var [editP,    setEditP]    = useState(null);
