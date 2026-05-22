@@ -969,7 +969,7 @@ export default function App() {
   var sendFiltered = myStock.filter(function(i){ var p=i.products||products.find(function(x){ return x.id===i.product_id; }); if(!p) return false; var q=sendSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
   var qlFiltered = products.filter(function(p){ var q=qlSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
   var pendingTx = transfers.filter(function(t){ return t.to_user_id===me?.id&&t.status==="pending"; });
-  var sentTx = transfers.filter(function(t){ return t.from_user_id===me?.id&&(t.status==="pending"||t.status==="anulado"); }).slice(0,10);
+  var sentTx = transfers.filter(function(t){ return t.from_user_id===me?.id&&t.status==="pending"; }).slice(0,10);
   var myNotifs = notifs.filter(function(n){ return n.to_user_id===me?.id; });
 
   // ── LOADING SCREEN ────────────────────────────────────────────────────────────
