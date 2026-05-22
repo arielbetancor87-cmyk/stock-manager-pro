@@ -410,6 +410,22 @@ export default function App() {
   var pendingTransfers = transfers.filter(function(t){ return t.to_user_id===me?.id && t.status==="pending"; }).length;
   var totalBadge = unreadNotifs + pendingTransfers;
 
+  // ── DELETE USER (admin only) ─────────────────────────────────────────────────
+  var [delUserConf, setDelUserConf] = useState(null);
+
+  async function doDeleteUser(userId, userName) {
+    // Delete from public.users (CASCADE will handle related data)
+    var r = await sb.from("users").delete().eq("id", userId);
+    if (r.error) { toast("Error",""+r.error.message,"e"); return; }
+    setAllUsers(function(p){ return p.filter(function(u){ return u.id!==userId; }); });
+    // Also remove from contacts
+    await sb.from("contacts").delete().eq("contact_id", userId);
+    await sb.from("contacts").delete().eq("user_id", userId);
+    toast("Usuario eliminado", userName, "i");
+    setDelUserConf(null);
+    await loadData(me.id, me.role);
+  }
+
   // ── SUPABASE DATA LOADERS ────────────────────────────────────────────────────
   var loadData = useCallback(async function(userId, userRole) {
     try {
@@ -1044,7 +1060,7 @@ export default function App() {
     {id:"stock",   lbl:"Stock",    ico:"box"},
     {id:"cargar",  lbl:"Cargar",   ico:"plus"},
     {id:"enviar",  lbl:"Enviar",   ico:"send"},
-    {id:"precios", lbl:"Catálogo", ico:"list"},
+    {id:"precios", lbl:"Precios",  ico:"search"},
     {id:"ventas",  lbl:"Ventas",   ico:"chart"},
     {id:"contacts",lbl:"Red",      ico:"users"},
   ];
@@ -1608,7 +1624,18 @@ export default function App() {
                 <div className="card">
                   <div className="card-h"><div className="card-title"><Ic n="users" s={14}/>Usuarios registrados ({allUsers.length})</div></div>
                   {allUsers.length===0?<div className="empty">Sin usuarios aún</div>:(
-                    <div className="tw"><table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Registro</th></tr></thead><tbody>{allUsers.map(function(u){ return (<tr key={u.id} className="tr"><td><div className="row g8"><Avatar name={u.name} color={u.color} size={28}/><span style={{fontWeight:600,fontSize:12}}>{u.name}</span></div></td><td style={{fontSize:11,color:"var(--t3)"}}>{u.email}</td><td><span style={{background:u.role==="superadmin"?"var(--am-t)":"var(--in-t)",color:u.role==="superadmin"?"var(--am-d)":"var(--in-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>{u.role==="superadmin"?"👑 Admin":"Usuario"}</span></td><td style={{fontSize:10,color:"var(--t3)"}}>{new Date(u.created_at).toLocaleDateString("es-AR")}</td></tr>); })}</tbody></table></div>
+                    <div className="tw"><table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Registro</th><th></th></tr></thead><tbody>{allUsers.map(function(u){ return (<tr key={u.id} className="tr"><td><div className="row g8"><Avatar name={u.name} color={u.color} size={28}/><span style={{fontWeight:600,fontSize:12}}>{u.name}</span></div></td><td style={{fontSize:11,color:"var(--t3)"}}>{u.email}</td><td><span style={{background:u.role==="superadmin"?"var(--am-t)":"var(--in-t)",color:u.role==="superadmin"?"var(--am-d)":"var(--in-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>{u.role==="superadmin"?"👑 Admin":"Usuario"}</span></td><td style={{fontSize:10,color:"var(--t3)"}}>{new Date(u.created_at).toLocaleDateString("es-AR")}</td>
+                              <td>
+                                {u.id!==me.id&&u.role!=="superadmin"&&(
+                                  delUserConf===u.id
+                                  ?<div className="row g8">
+                                    <button className="btn btn-xs b-cr" onClick={function(){doDeleteUser(u.id,u.name);}}>Confirmar</button>
+                                    <button className="btn btn-xs b-ghost" onClick={function(){setDelUserConf(null);}}>No</button>
+                                  </div>
+                                  :<button className="btn btn-xs b-cr" onClick={function(){setDelUserConf(u.id);}}><Ic n="trash" s={11}/>Eliminar</button>
+                                )}
+                              </td>
+                            </tr>); })}</tbody></table></div>
                   )}
                 </div>
               </div>
