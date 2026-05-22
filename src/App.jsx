@@ -394,9 +394,11 @@ export default function App() {
   var [shareSel,  setShareSel]  = useState({});
   var [editStock, setEditStock] = useState(null);
   var [editQty,   setEditQty]   = useState(0);
-  var [retModal,  setRetModal]  = useState(null);  // transfer for return
-  var [retQty,    setRetQty]    = useState(1);
+  var [retModal,    setRetModal]    = useState(null);
+  var [retQty,      setRetQty]      = useState(1);
   var [consignSrch, setConsignSrch] = useState("");
+  var [consignTab,  setConsignTab]  = useState("recibido"); // "recibido" | "enviado"
+  var [recvInvMap,  setRecvInvMap]  = useState({});  // {productId: qty} of recipients
 
   // ── HELPERS ──────────────────────────────────────────────────────────────────
   function toast(title, body, type) {
@@ -413,45 +415,65 @@ export default function App() {
   var pendingTransfers = transfers.filter(function(t){ return t.to_user_id===me?.id && t.status==="pending"; }).length;
   var totalBadge = unreadNotifs + pendingTransfers;
 
-  // ── DEVOLVER CONSIGNA ────────────────────────────────────────────────────────
+  // ── DEVOLVER CONSIGNA (receptor devuelve al emisor) ─────────────────────────
   async function doReturnConsigna() {
     var tx = retModal;
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
-    if (retQty<=0 || retQty>tx.qty){ toast("Cantidad inválida","","e"); return; }
+    if (retQty<=0){ toast("Cantidad inválida","","e"); return; }
 
-    // Restar del inventario del receptor
-    var myInvRow = inventory.find(function(i){ return i.product_id===tx.product_id; });
-    if (myInvRow && myInvRow.qty_available >= retQty) {
-      await sb.from("inventory").update({qty_available: myInvRow.qty_available - retQty}).eq("id", myInvRow.id);
+    // Quien devuelve: puede ser el receptor (me.id===tx.to_user_id)
+    // o el admin forzando desde enviado (me.id===tx.from_user_id)
+    var receiverId = tx.to_user_id;
+    var senderId   = tx.from_user_id;
+
+    // 1. Restar del inventario del receptor
+    var rcvInv = await sb.from("inventory").select("*").eq("user_id", receiverId).eq("product_id", tx.product_id).single();
+    if (rcvInv.data && rcvInv.data.qty_available >= retQty) {
+      await sb.from("inventory").update({qty_available: rcvInv.data.qty_available - retQty}).eq("id", rcvInv.data.id);
+    } else {
+      toast("El receptor no tiene suficiente stock disponible","","e"); return;
     }
 
-    // Restituir al emisor original
-    var srcInv = await sb.from("inventory").select("*").eq("user_id", tx.from_user_id).eq("product_id", tx.product_id).single();
+    // 2. Restituir al emisor
+    var srcInv = await sb.from("inventory").select("*").eq("user_id", senderId).eq("product_id", tx.product_id).single();
     if (srcInv.data) {
       await sb.from("inventory").update({qty_available: srcInv.data.qty_available + retQty}).eq("id", srcInv.data.id);
     } else {
-      await sb.from("inventory").insert({user_id: tx.from_user_id, product_id: tx.product_id, qty_available: retQty, qty_sold:0});
+      await sb.from("inventory").insert({user_id: senderId, product_id: tx.product_id, qty_available: retQty, qty_sold:0});
     }
 
-    // Actualizar transfer: si devuelve todo → rejected, si parcial → crear nuevo transfer reducido
-    if (retQty >= tx.qty) {
+    // 3. Actualizar cantidad del transfer
+    var newQty = tx.qty - retQty;
+    if (newQty <= 0) {
       await sb.from("transfers").update({status:"rejected"}).eq("id", tx.id);
     } else {
-      // Partial: update original qty
-      await sb.from("transfers").update({qty: tx.qty - retQty}).eq("id", tx.id);
+      await sb.from("transfers").update({qty: newQty}).eq("id", tx.id);
     }
 
-    // Notificar al emisor
-    await sb.from("notifications").insert({
-      to_user_id: tx.from_user_id,
-      from_name: me.name,
-      type: "confirm",
-      message: "↩️ "+me.name+" devolvió "+retQty+"x "+(prod?prod.name:"producto")+" de consignación."
-    });
+    // 4. Notificar al emisor si quien devuelve es el receptor
+    if (me.id === receiverId) {
+      await sb.from("notifications").insert({
+        to_user_id: senderId,
+        from_name: me.name,
+        type: "confirm",
+        message: "↩️ "+me.name+" devolvió "+retQty+"x "+(prod?prod.name:"producto")+". Stock restituido a tu inventario."
+      });
+    }
 
-    toast("Devolución registrada", retQty+"x "+(prod?prod.name:"")+" devuelto", "s");
+    toast("Devolución registrada", retQty+"x "+(prod?prod.name:"")+" restituido", "s");
     setRetModal(null);
     await loadData(me.id, me.role);
+  }
+
+  // ── LOAD RECIPIENT INVENTORY FOR CONSIGNA (sender view) ──────────────────────
+  async function loadRecvInv(sentTransfers) {
+    var map = {};
+    for (var i=0; i<sentTransfers.length; i++) {
+      var tx = sentTransfers[i];
+      var r = await sb.from("inventory").select("qty_available").eq("user_id", tx.to_user_id).eq("product_id", tx.product_id).single();
+      map[tx.id] = r.data ? r.data.qty_available : 0;
+    }
+    setRecvInvMap(map);
   }
 
   // ── DELETE USER (admin only) ─────────────────────────────────────────────────
@@ -1121,17 +1143,26 @@ export default function App() {
       <div className="app">
 
         {/* HEADER */}
-        <div className="hdr">
-          <div style={{display:"flex",alignItems:"center",gap:12,position:"relative",zIndex:1}}>
-            <Avatar name={me.name} color="rgba(255,255,255,.25)" size={46} style={{border:"2px solid rgba(255,255,255,.4)"}}/>
-            <div style={{flex:1,minWidth:0}}>
-              <div className="hdr-name">{me.name}</div>
-              <div className="hdr-role">{me.role==="superadmin"?"👑 Administrador":me.role}</div>
+        <div className="hdr" style={{paddingBottom:22}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",position:"relative",zIndex:1}}>
+            <div>
+              <div style={{fontSize:20,fontWeight:900,color:"#fff",letterSpacing:"-.02em",marginBottom:2}}>
+                ¡Hola, {me.name.split(" ")[0]}! 👋
+              </div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,.75)",fontWeight:500}}>
+                {me.role==="superadmin"?"👑 Administrador":"Usuario"}
+              </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              <div className="saved-dot"><div style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",flexShrink:0}}/> online</div>
-              {totalBadge>0?<div className="notif-badge" onClick={function(){setTab("contacts");}}><Ic n="bell" s={14}/>{totalBadge}</div>:null}
-              <button style={{width:36,height:36,borderRadius:12,border:"none",background:"rgba(255,255,255,.2)",cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}} onClick={doLogout}><Ic n="logout" s={17}/></button>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {totalBadge>0?(
+                <div style={{position:"relative",cursor:"pointer"}} onClick={function(){setTab("contacts");}}>
+                  <button style={{width:42,height:42,borderRadius:14,border:"none",background:"rgba(255,255,255,.2)",cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}><Ic n="bell" s={20}/></button>
+                  <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,background:"#ff4757",borderRadius:"50%",fontSize:10,fontWeight:900,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid transparent"}}>{totalBadge}</div>
+                </div>
+              ):(
+                <button style={{width:42,height:42,borderRadius:14,border:"none",background:"rgba(255,255,255,.2)",cursor:"pointer",color:"rgba(255,255,255,.7)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={function(){setTab("contacts");}}><Ic n="bell" s={20}/></button>
+              )}
+              <button style={{width:42,height:42,borderRadius:14,border:"none",background:"rgba(255,255,255,.2)",cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={doLogout}><Ic n="logout" s={19}/></button>
             </div>
           </div>
         </div>
@@ -1541,89 +1572,156 @@ export default function App() {
 
           {/* ══ CONSIGNA ══ */}
           {tab==="consigna"&&(function(){
-            // All confirmed transfers sent BY me to others
-            var enviados = transfers.filter(function(t){
-              return t.from_user_id===me.id && t.status==="confirmed";
+            var filt = consignSrch.toLowerCase();
+            var txEnviados = transfers.filter(function(t){
+              return t.from_user_id===me.id && t.status==="confirmed" && t.qty>0;
             });
-            // Group by recipient
-            var byUser = {};
-            enviados.forEach(function(tx){
-              var uid2 = tx.to_user_id;
-              if (!byUser[uid2]) byUser[uid2] = {user: tx.to_user, items:[]};
-              byUser[uid2].items.push(tx);
+            var txRecibidos = transfers.filter(function(t){
+              return t.to_user_id===me.id && t.status==="confirmed" && t.qty>0;
             });
-            var grupos = Object.values(byUser);
-            var filtrado = consignSrch.toLowerCase();
+
+            // Active tab data
+            var activeTx = consignTab==="recibido" ? txRecibidos : txEnviados;
+            var filtered = activeTx.filter(function(t){
+              if (!filt) return true;
+              var p=t.product; var u=consignTab==="recibido"?t.from_user:t.to_user;
+              return (p&&(p.name.toLowerCase().includes(filt)||p.sku.toLowerCase().includes(filt)))||(u&&u.name&&u.name.toLowerCase().includes(filt));
+            });
+
+            // Summary metrics for enviado
+            var uniqueClients = [...new Set(txEnviados.map(function(t){return t.to_user_id;}))].length;
+            var totalUnidades = txEnviados.reduce(function(s,t){return s+t.qty;},0);
+            var totalValor    = txEnviados.reduce(function(s,t){var p=t.product;return s+(p?p.price:0)*t.qty;},0);
+            var pendDevol     = txRecibidos.filter(function(t){
+              var inv=inventory.find(function(i){return i.product_id===t.product_id;});
+              return inv&&inv.qty_available>0;
+            }).length;
 
             return (
               <div>
-                <div className="ph">
-                  <div>
-                    <div className="ph-h">Consignaciones</div>
-                    <div className="ph-s">Productos enviados y asignados</div>
+                {/* Header with metrics */}
+                <div style={{background:"var(--grad)",padding:"0 16px 20px",marginTop:-1}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,paddingTop:4}}>
+                    {[
+                      {val:totalUnidades, lbl:"En consigna", sub:"No vendidos",    ico:"📦"},
+                      {val:uniqueClients,  lbl:"Clientes",    sub:"Con consignas",  ico:"👥"},
+                      {val:pendDevol,      lbl:"Pendientes",  sub:"De devolución",  ico:"🔄"},
+                      {val:fmtARS(totalValor), lbl:"Valor total", sub:"En consigna", ico:"💲", small:true}
+                    ].map(function(m,i){
+                      return (
+                        <div key={i} style={{background:"rgba(255,255,255,.15)",backdropFilter:"blur(12px)",borderRadius:16,padding:"14px 12px",border:"1px solid rgba(255,255,255,.2)"}}>
+                          <div style={{fontSize:22,marginBottom:4}}>{m.ico}</div>
+                          <div style={{fontSize:m.small?14:22,fontWeight:900,color:"#fff",fontFamily:"var(--mf)",lineHeight:1}}>{m.val}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.9)",marginTop:4}}>{m.lbl}</div>
+                          <div style={{fontSize:10,color:"rgba(255,255,255,.6)"}}>{m.sub}</div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-                <div className="pc">
-                  <SearchBar value={consignSrch} onChange={setConsignSrch} placeholder="Buscar producto o cliente..."/>
 
-                  {enviados.length===0
-                    ?<div className="empty"><div style={{fontSize:40,marginBottom:10}}>📦</div><div style={{fontWeight:700,marginBottom:6}}>Sin consignaciones activas</div><div style={{fontSize:12}}>Cuando envíes productos y los confirmen, aparecerán aquí.</div></div>
-                    :grupos.map(function(grupo){
-                      var u = grupo.user;
-                      var itemsFilt = grupo.items.filter(function(tx){
-                        if (!filtrado) return true;
-                        var p=tx.product;
-                        return (p&&p.name.toLowerCase().includes(filtrado))||(u&&u.name&&u.name.toLowerCase().includes(filtrado));
-                      });
-                      if (!itemsFilt.length) return null;
-                      var totalUnid = itemsFilt.reduce(function(s,t){ return s+t.qty; },0);
-                      var totalVal  = itemsFilt.reduce(function(s,t){ var p=t.product; return s+(p?p.price:0)*t.qty; },0);
+                <div style={{padding:"14px 14px 24px"}}>
+                  {/* Search */}
+                  <div style={{display:"flex",gap:8,marginBottom:14}}>
+                    <div style={{flex:1,position:"relative"}}>
+                      <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--t3)"}}><Ic n="search" s={16}/></span>
+                      <input style={{width:"100%",padding:"12px 12px 12px 40px",borderRadius:14,border:"2px solid var(--brd)",background:"#fff",fontFamily:"var(--hf)",fontSize:13,outline:"none",color:"var(--t1)"}} placeholder="Buscar por producto, cliente o SKU..." value={consignSrch} onChange={function(e){setConsignSrch(e.target.value);}}/>
+                    </div>
+                  </div>
+
+                  {/* Tabs */}
+                  <div className="ql-tabs" style={{marginBottom:16}}>
+                    <div className={"ql-tab"+(consignTab==="enviado"?" on":"")} onClick={function(){setConsignTab("enviado");}}>
+                      📤 Enviado ({txEnviados.length})
+                    </div>
+                    <div className={"ql-tab"+(consignTab==="recibido"?" on":"")} onClick={function(){setConsignTab("recibido");}}>
+                      📥 Recibido ({txRecibidos.length})
+                    </div>
+                  </div>
+
+                  {/* Section title */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:17,fontWeight:900,color:"var(--t1)"}}>Consigna</div>
+                    <div style={{fontSize:12,color:"var(--t3)",marginTop:2}}>Solo se muestran productos no vendidos</div>
+                  </div>
+
+                  {/* Items */}
+                  {filtered.length===0
+                    ?<div className="empty"><div style={{fontSize:44,marginBottom:10}}>📦</div><div style={{fontWeight:700,marginBottom:4}}>Sin consignas activas</div><div style={{fontSize:12}}>Los productos confirmados aparecerán aquí.</div></div>
+                    :filtered.map(function(tx){
+                      var p = tx.product||products.find(function(x){return x.id===tx.product_id;});
+                      var otherUser = consignTab==="recibido" ? tx.from_user : tx.to_user;
+                      var myInvR = consignTab==="recibido" ? inventory.find(function(i){return i.product_id===tx.product_id;}) : null;
+                      var qtyDisp = myInvR ? myInvR.qty_available : tx.qty;
+                      var qtySold = Math.max(0, tx.qty - qtyDisp);
+                      var canReturn = consignTab==="recibido" ? qtyDisp>0 : true;
+                      var dateStr = tx.confirmed_at ? new Date(tx.confirmed_at).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}) : "";
                       return (
-                        <div key={grupo.user?grupo.user.id:"?"} className="card">
-                          <div className="card-h">
-                            <div className="card-title">
-                              <div style={{width:32,height:32,borderRadius:10,background:u?u.color:"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:"#fff",flexShrink:0}}>
-                                {u?u.name.charAt(0).toUpperCase():"?"}
-                              </div>
-                              {u?u.name:"Usuario desconocido"}
+                        <div key={tx.id} style={{background:"#fff",borderRadius:18,border:"1.5px solid var(--brd)",marginBottom:12,overflow:"hidden",boxShadow:"var(--sh)"}}>
+                          <div style={{display:"flex",gap:14,padding:"14px 14px 0"}}>
+                            {/* Product image */}
+                            <div style={{width:72,height:72,borderRadius:14,overflow:"hidden",flexShrink:0,background:"var(--bg)"}}>
+                              <ProdThumb prod={p} size={72}/>
                             </div>
-                            <div className="row g8">
-                              <span className="badge b-am">{totalUnid} u.</span>
-                              <span className="badge b-em">{fmtARS(totalVal)}</span>
+                            {/* Info */}
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:800,fontSize:14,color:"var(--t1)",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"—"}</div>
+                              <div style={{fontSize:11,color:"var(--t3)",marginBottom:6}}>SKU: {p?p.sku:"—"}</div>
+                              {/* Client badge */}
+                              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
+                                <div style={{display:"inline-flex",alignItems:"center",gap:5,background:otherUser?otherUser.color+"22":"var(--in-l)",borderRadius:20,padding:"3px 10px 3px 6px",border:"1.5px solid "+(otherUser?otherUser.color+"44":"var(--brd)")}}>
+                                  <div style={{width:18,height:18,borderRadius:"50%",background:otherUser?otherUser.color:"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{otherUser?otherUser.name.charAt(0).toUpperCase():"?"}</div>
+                                  <span style={{fontSize:11,fontWeight:700,color:otherUser?otherUser.color:"var(--in-d)"}}>{otherUser?otherUser.name:"?"}</span>
+                                </div>
+                              </div>
+                              {dateStr&&<div style={{fontSize:10,color:"var(--t4)",display:"flex",alignItems:"center",gap:4}}><Ic n="clock" s={11}/>Enviado: {dateStr}</div>}
+                            </div>
+                            {/* Quantities */}
+                            <div style={{display:"flex",gap:12,flexShrink:0,alignItems:"flex-start",paddingTop:4}}>
+                              <div style={{textAlign:"center"}}>
+                                <div style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:3}}>Enviada</div>
+                                <div style={{fontSize:22,fontWeight:900,fontFamily:"var(--mf)",color:"var(--t1)",lineHeight:1}}>{tx.qty}</div>
+                              </div>
+                              <div style={{textAlign:"center"}}>
+                                <div style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:3}}>Pendiente</div>
+                                <div style={{fontSize:22,fontWeight:900,fontFamily:"var(--mf)",color:qtyDisp>0?"#ff6b35":"var(--em-d)",lineHeight:1}}>{consignTab==="recibido"?qtyDisp:tx.qty}</div>
+                              </div>
                             </div>
                           </div>
-                          <div className="tw"><table>
-                            <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Cant.</th><th>Total</th><th></th></tr></thead>
-                            <tbody>
-                              {itemsFilt.map(function(tx){
-                                var p = tx.product || products.find(function(x){ return x.id===tx.product_id; });
-                                var val = (p?p.price:0)*tx.qty;
-                                return (
-                                  <tr key={tx.id} className="tr">
-                                    <td><ProdThumb prod={p} size={34}/></td>
-                                    <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p?p.sku:"—"}</span></td>
-                                    <td><div style={{fontWeight:600,fontSize:12}}>{p?p.name:"—"}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p?p.category:""}</div></td>
-                                    <td style={{fontFamily:"var(--mf)",fontSize:12,fontWeight:600}}>{fmtARS(p?p.price:0)}</td>
-                                    <td><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--am-d)",fontSize:14}}>{tx.qty}</span></td>
-                                    <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12,color:"var(--em-d)"}}>{fmtARS(val)}</span></td>
-                                    <td>
-                                      <button className="btn btn-xs b-cr" onClick={function(){setRetModal(tx);setRetQty(tx.qty);}}>
-                                        <Ic n="undo" s={11}/>Devolver
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table></div>
-                          <div style={{padding:"10px 16px",background:"var(--bg)",borderTop:"1px solid var(--brd)",display:"flex",justifyContent:"flex-end",gap:16,fontSize:12}}>
-                            <span style={{color:"var(--t3)"}}>Total en consigna:</span>
-                            <span style={{fontWeight:800,color:"var(--em-d)",fontFamily:"var(--mf)"}}>{fmtARS(totalVal)}</span>
+                          {/* Progress bar (receiver view) */}
+                          {consignTab==="recibido"&&tx.qty>0&&(
+                            <div style={{padding:"8px 14px 0"}}>
+                              <div style={{height:5,borderRadius:3,background:"var(--brd)",overflow:"hidden"}}>
+                                <div style={{height:"100%",width:((qtySold/tx.qty)*100)+"%",background:"linear-gradient(90deg,var(--em),var(--em-d))",borderRadius:3,transition:"width .4s"}}/>
+                              </div>
+                              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--t4)",marginTop:3}}>
+                                <span>{qtySold} vendidas</span><span>{qtyDisp} disponibles</span>
+                              </div>
+                            </div>
+                          )}
+                          {/* Action button */}
+                          <div style={{padding:"10px 14px 14px"}}>
+                            {canReturn?(
+                              <button onClick={function(){setRetModal(tx);setRetQty(consignTab==="recibido"?qtyDisp:tx.qty);}} style={{width:"100%",padding:"11px",borderRadius:12,border:"2px solid var(--in)",background:"#fff",color:"var(--in-d)",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,transition:"all .15s"}}>
+                                <Ic n="undo" s={15}/>Devolver
+                              </button>
+                            ):(
+                              <div style={{textAlign:"center",padding:"8px",fontSize:12,color:"var(--em-d)",fontWeight:700,background:"var(--em-l)",borderRadius:10}}>✅ Todo vendido</div>
+                            )}
                           </div>
                         </div>
                       );
                     })
                   }
+
+                  {/* Info note */}
+                  <div style={{background:"var(--in-l)",border:"1.5px solid var(--brd)",borderRadius:14,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start",marginTop:8}}>
+                    <div style={{fontSize:16,flexShrink:0}}>ℹ️</div>
+                    <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.6}}>
+                      Los productos vendidos no se muestran en esta sección.<br/>
+                      <span style={{fontWeight:700,color:"var(--in-d)",cursor:"pointer"}} onClick={function(){setTab("ventas");}}>Para ver el historial de ventas, andá a Ventas →</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
@@ -1802,12 +1900,18 @@ export default function App() {
                       <ProdThumb prod={prod} size={44}/>
                       <div style={{flex:1}}>
                         <div style={{fontWeight:700,fontSize:14}}>{prod?prod.name:"Producto"}</div>
-                        <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>En manos de: <strong>{toUser?toUser.name:"?"}</strong> · {retModal.qty} u. totales</div>
+                        <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{retModal.to_user_id===me.id?"De:":"Para:"} <strong>{retModal.to_user_id===me.id?(retModal.from_user?retModal.from_user.name:"?"):(retModal.to_user?retModal.to_user.name:"?")}</strong> · {retModal.qty} u. pendientes</div>
                       </div>
                     </div>
                     <div className="fld">
-                      <label className="fl">¿Cuántas unidades devuelven? (máx. {retModal.qty})</label>
-                      <QtyControl val={retQty} set={setRetQty} min={1} max={retModal.qty} big={true}/>
+                      {(function(){
+                        var myI2 = retModal.to_user_id===me.id ? inventory.find(function(i){return i.product_id===retModal.product_id;}) : null;
+                        var maxRet = myI2 ? myI2.qty_available : retModal.qty;
+                        return (<div>
+                          <label className="fl">¿Cuántas unidades? (máx. {maxRet} disponibles)</label>
+                          <QtyControl val={Math.min(retQty,maxRet)} set={setRetQty} min={1} max={maxRet} big={true}/>
+                        </div>);
+                      })()}
                     </div>
                     <div style={{background:"var(--em-l)",border:"1px solid var(--em-t)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"var(--em-d)",marginTop:8}}>
                       ✅ Se restituirán <strong>{retQty} u.</strong> a tu stock y se notificará al remitente.
