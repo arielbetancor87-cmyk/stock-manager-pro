@@ -589,6 +589,31 @@ export default function App() {
     await loadData(me.id,me.role);
   }
 
+  // ── ANULAR ENVÍO (solo admin o emisor, antes de confirmación) ───────────────
+  async function anularTransfer(tx) {
+    var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
+    // Restituir stock al emisor
+    var srcInv = await sb.from("inventory").select("*").eq("user_id",tx.from_user_id).eq("product_id",tx.product_id).single();
+    if (srcInv.data) {
+      await sb.from("inventory").update({qty_available:srcInv.data.qty_available+tx.qty}).eq("id",srcInv.data.id);
+    } else {
+      await sb.from("inventory").insert({user_id:tx.from_user_id,product_id:tx.product_id,qty_available:tx.qty,qty_sold:0});
+    }
+    // Cambiar estado a "anulado"
+    await sb.from("transfers").update({status:"anulado"}).eq("id",tx.id);
+    // Notificar al destinatario si era pendiente
+    if (tx.status==="pending") {
+      await sb.from("notifications").insert({
+        to_user_id: tx.to_user_id,
+        from_name: me.name,
+        type: "info",
+        message: "❌ "+me.name+" anuló el envío de "+tx.qty+"x "+(prod?prod.name:"producto")+". Stock devuelto al remitente."
+      });
+    }
+    toast("Envío anulado","Stock restituido correctamente","i");
+    await loadData(me.id, me.role);
+  }
+
   // ── CONFIRM TRANSFER ─────────────────────────────────────────────────────────
   async function confirmTransfer(tx) {
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
@@ -941,7 +966,7 @@ export default function App() {
   var sendFiltered = myStock.filter(function(i){ var p=i.products||products.find(function(x){ return x.id===i.product_id; }); if(!p) return false; var q=sendSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
   var qlFiltered = products.filter(function(p){ var q=qlSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
   var pendingTx = transfers.filter(function(t){ return t.to_user_id===me?.id&&t.status==="pending"; });
-  var sentTx = transfers.filter(function(t){ return t.from_user_id===me?.id&&t.status==="pending"; });
+  var sentTx = transfers.filter(function(t){ return t.from_user_id===me?.id&&(t.status==="pending"||t.status==="anulado"); }).slice(0,10);
   var myNotifs = notifs.filter(function(n){ return n.to_user_id===me?.id; });
 
   // ── LOADING SCREEN ────────────────────────────────────────────────────────────
@@ -997,14 +1022,17 @@ export default function App() {
 
   // ── TABS ─────────────────────────────────────────────────────────────────────
   var TABS = [
-    {id:"stock",    lbl:"Stock",    ico:"box"},
-    {id:"cargar",   lbl:"Cargar",   ico:"plus"},
-    {id:"enviar",   lbl:"Enviar",   ico:"send"},
-    {id:"importar", lbl:"Importar", ico:"upload"},
-    {id:"catalog",  lbl:"Catálogo", ico:"list"},
-    {id:"contacts", lbl:"Red",      ico:"users"},
+    {id:"stock",   lbl:"Stock",    ico:"box"},
+    {id:"cargar",  lbl:"Cargar",   ico:"plus"},
+    {id:"enviar",  lbl:"Enviar",   ico:"send"},
+    {id:"catalog", lbl:"Catálogo", ico:"list"},
+    {id:"precios", lbl:"Precios",  ico:"search"},
+    {id:"contacts",lbl:"Red",      ico:"users"},
   ];
-  if (isAdmin) TABS.push({id:"admin",lbl:"Admin",ico:"shield"});
+  if (isAdmin) {
+    TABS.splice(3, 0, {id:"importar", lbl:"Importar", ico:"upload"});
+    TABS.push({id:"admin", lbl:"Admin", ico:"shield"});
+  }
 
   // ── MAIN APP ──────────────────────────────────────────────────────────────────
   return (
@@ -1076,7 +1104,15 @@ export default function App() {
                     <div className="card-h"><div className="card-title">📤 Enviados (esperando confirmación)</div><span className="badge b-am">{sentTx.length}</span></div>
                     <div className="tw"><table>
                       <thead><tr><th>Producto</th><th>Cant.</th><th>Para</th><th>Estado</th></tr></thead>
-                      <tbody>{sentTx.map(function(tx){ var p=tx.product; var tu=tx.to_user; return (<tr key={tx.id} className="tr"><td><div style={{fontWeight:600,fontSize:12}}>{p?p.name:""}</div></td><td><span style={{fontFamily:"var(--mf)",fontWeight:700,color:"var(--am-d)"}}>{tx.qty}</span></td><td><span style={{fontSize:11}}>{tu?tu.name:""}</span></td><td><span style={{background:"var(--am-t)",color:"var(--am-d)",borderRadius:5,padding:"2px 8px",fontSize:10,fontWeight:700}}>Pendiente</span></td></tr>); })}</tbody>
+                      <tbody>{sentTx.map(function(tx){ var p=tx.product; var tu=tx.to_user; return (<tr key={tx.id} className="tr"><td><div style={{fontWeight:600,fontSize:12}}>{p?p.name:""}</div></td><td><span style={{fontFamily:"var(--mf)",fontWeight:700,color:"var(--am-d)"}}>{tx.qty}</span></td><td><span style={{fontSize:11}}>{tu?tu.name:""}</span></td><td>
+                              <div className="row g8">
+                                {tx.status==="anulado"
+                                  ?<span style={{background:"var(--cr-t)",color:"var(--cr)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>❌ Anulado</span>
+                                  :<><span style={{background:"var(--am-t)",color:"var(--am-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>Pendiente</span>
+                                  <button className="btn btn-xs b-cr" onClick={function(){anularTransfer(tx);}}>✕ Anular</button></>
+                                }
+                              </div>
+                            </td></tr>); })}</tbody>
                     </table></div>
                   </div>
                 )}
@@ -1285,6 +1321,82 @@ export default function App() {
                     </table></div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ PRECIOS ══ */}
+          {tab==="precios"&&(
+            <div>
+              <div className="ph"><div><div className="ph-h">Lista de Precios</div><div className="ph-s">Catálogo completo con filtro de precios</div></div></div>
+              <div className="pc">
+                {/* Search + price filter */}
+                <SearchBar value={srchPrice} onChange={setSrchPrice} placeholder="Buscar por nombre, SKU o categoría..."/>
+                <div className="card" style={{marginBottom:14}}>
+                  <div className="card-h"><div className="card-title">💲 Filtrar por precio</div></div>
+                  <div style={{padding:"12px 14px"}}>
+                    <div className="row g8">
+                      <div style={{flex:1}}>
+                        <label className="fl">Precio mínimo ($)</label>
+                        <input className="fi" type="number" placeholder="0" value={priceMin} onChange={function(e){setPriceMin(e.target.value);}}/>
+                      </div>
+                      <div style={{flex:1}}>
+                        <label className="fl">Precio máximo ($)</label>
+                        <input className="fi" type="number" placeholder="Sin límite" value={priceMax} onChange={function(e){setPriceMax(e.target.value);}}/>
+                      </div>
+                    </div>
+                    {(priceMin||priceMax||srchPrice)&&(
+                      <button className="btn btn-xs b-ghost" style={{marginTop:10}} onClick={function(){setPriceMin("");setPriceMax("");setSrchPrice("");}}>
+                        Limpiar filtros
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {(function(){
+                  var filtered = products.filter(function(p){
+                    if (p.is_active===false) return false;
+                    var q = srchPrice.toLowerCase();
+                    if (q && !p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q) && !(p.category||"").toLowerCase().includes(q)) return false;
+                    if (priceMin && p.price < parseFloat(priceMin)) return false;
+                    if (priceMax && p.price > parseFloat(priceMax)) return false;
+                    return true;
+                  });
+                  return (
+                    <div className="card">
+                      <div className="card-h">
+                        <div className="card-title">Productos ({filtered.length})</div>
+                        {filtered.length<products.length&&<span className="badge b-in">filtrado</span>}
+                      </div>
+                      {filtered.length===0
+                        ?<div className="empty">Sin productos con ese criterio.</div>
+                        :(
+                        <div className="tw"><table>
+                          <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Categoría</th><th>Precio</th></tr></thead>
+                          <tbody>
+                            {filtered.map(function(p){
+                              var myInvRow = inventory.find(function(i){ return i.product_id===p.id; });
+                              return (
+                                <tr key={p.id} className="tr">
+                                  <td><ProdThumb prod={p} size={34}/></td>
+                                  <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td>
+                                  <td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div></td>
+                                  <td><span style={{fontSize:11,color:"var(--t3)"}}>{p.category}</span></td>
+                                  <td>
+                                    <div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:13,color:"var(--in-d)"}}>{fmtARS(p.price)}</div>
+                                    {myInvRow&&myInvRow.qty_available>0&&(
+                                      <div style={{fontSize:10,color:"var(--em-d)",fontWeight:700,marginTop:2}}>📦 {myInvRow.qty_available} en stock</div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table></div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
