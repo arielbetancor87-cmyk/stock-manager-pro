@@ -391,7 +391,9 @@ export default function App() {
   var [txQty,    setTxQty]    = useState(1);
   var [txTo,     setTxTo]     = useState("");
   var [shareM,   setShareM]   = useState(false);
-  var [shareSel, setShareSel] = useState({});
+  var [shareSel,  setShareSel]  = useState({});
+  var [editStock, setEditStock] = useState(null);  // invRow being edited
+  var [editQty,   setEditQty]   = useState(0);
 
   // ── HELPERS ──────────────────────────────────────────────────────────────────
   function toast(title, body, type) {
@@ -935,6 +937,17 @@ export default function App() {
     toast("Contacto agregado",target.data.name,"s"); setCtQ("");
   }
 
+  // ── EDITAR STOCK MANUALMENTE ─────────────────────────────────────────────────
+  async function doEditStock() {
+    if (editQty < 0) { toast("La cantidad no puede ser negativa","","e"); return; }
+    var r = await sb.from("inventory").update({qty_available: editQty}).eq("id", editStock.id).select("*, products(*)").single();
+    if (r.error) { toast("Error",""+r.error.message,"e"); return; }
+    setInventory(function(p){ return p.map(function(i){ return i.id===editStock.id ? r.data : i; }); });
+    var prod = editStock.products || products.find(function(x){ return x.id===editStock.product_id; });
+    toast("Stock actualizado", (prod?prod.name:"")+" → "+editQty+" u.", "s");
+    setEditStock(null);
+  }
+
   // ── WHATSAPP SHARE ────────────────────────────────────────────────────────────
   function shareOne(prod) {
     var inv=inventory.find(function(i){ return i.product_id===prod.id; });
@@ -1128,7 +1141,7 @@ export default function App() {
                   {stockFiltered.length===0?<div className="empty">Sin existencias.{srchStock?" Intenta otra búsqueda.":" Carga productos en Cargar."}</div>:(
                     <div className="tw"><table>
                       <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
-                      <tbody>{stockFiltered.map(function(item){ var p=item.products||products.find(function(x){ return x.id===item.product_id; }); if(!p) return null; return (<tr key={item.id} className="tr"><td><ProdThumb prod={p} size={36}/></td><td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td><td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td><td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td><td><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--em-d)",fontSize:14}}>{item.qty_available}</span></td><td><div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}><button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button><button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button><button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button></div></td></tr>); })}</tbody>
+                      <tbody>{stockFiltered.map(function(item){ var p=item.products||products.find(function(x){ return x.id===item.product_id; }); if(!p) return null; return (<tr key={item.id} className="tr"><td><ProdThumb prod={p} size={36}/></td><td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td><td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td><td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td><td><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--em-d)",fontSize:14}}>{item.qty_available}</span></td><td><div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}><button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button><button className="btn btn-xs b-in" onClick={function(){setEditStock(item);setEditQty(item.qty_available);}} title="Corregir stock"><Ic n="edit" s={11}/></button><button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button><button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button></div></td></tr>); })}</tbody>
                     </table></div>
                   )}
                 </div>
@@ -1609,6 +1622,45 @@ export default function App() {
           {TABS.map(function(t){ return (<div key={t.id} className={"tab"+(tab===t.id?" on":"")} onClick={function(){setTab(t.id);}}><div className="tab-bub"><Ic n={t.ico} s={20}/></div><span className="tab-lbl">{t.lbl}</span></div>); })}
         </nav>
       </div>
+
+      {/* EDIT STOCK MODAL */}
+      {editStock&&(
+        <div className="ovl" onClick={function(e){if(e.target===e.currentTarget)setEditStock(null);}}>
+          <div className="mbox">
+            <div className="mhd">
+              <div className="mhd-t">✏️ Corregir cantidad</div>
+              <button className="ic-btn" onClick={function(){setEditStock(null);}}><Ic n="x" s={16}/></button>
+            </div>
+            <div className="mbd">
+              {(function(){
+                var prod = editStock.products||products.find(function(p){return p.id===editStock.product_id;});
+                return (
+                  <div>
+                    <div className="row g12" style={{padding:"12px 14px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--brd)",marginBottom:18}}>
+                      <ProdThumb prod={prod} size={44}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:14}}>{prod?prod.name:""}</div>
+                        <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{prod?prod.sku:""} · Stock actual: <strong>{editStock.qty_available} u.</strong></div>
+                      </div>
+                    </div>
+                    <div className="fld">
+                      <label className="fl">Nueva cantidad disponible</label>
+                      <QtyControl val={editQty} set={setEditQty} min={0} big={true}/>
+                    </div>
+                    <div style={{background:"var(--am-l)",border:"1px solid var(--am-t)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"var(--am-d)",marginTop:8}}>
+                      ⚠️ Esta acción sobreescribe directamente el stock. Usá solo para corregir errores de carga.
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="mft">
+              <button className="btn b-ghost" onClick={function(){setEditStock(null);}}>Cancelar</button>
+              <button className="btn b-pri" onClick={doEditStock}><Ic n="check" s={14}/>Guardar corrección</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TRANSFER MODAL */}
       {txModal&&(
