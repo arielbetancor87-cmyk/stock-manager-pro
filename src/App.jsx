@@ -392,8 +392,11 @@ export default function App() {
   var [txTo,     setTxTo]     = useState("");
   var [shareM,   setShareM]   = useState(false);
   var [shareSel,  setShareSel]  = useState({});
-  var [editStock, setEditStock] = useState(null);  // invRow being edited
+  var [editStock, setEditStock] = useState(null);
   var [editQty,   setEditQty]   = useState(0);
+  var [retModal,  setRetModal]  = useState(null);  // transfer for return
+  var [retQty,    setRetQty]    = useState(1);
+  var [consignSrch, setConsignSrch] = useState("");
 
   // ── HELPERS ──────────────────────────────────────────────────────────────────
   function toast(title, body, type) {
@@ -409,6 +412,47 @@ export default function App() {
   var unreadNotifs = notifs.filter(function(n){ return !n.read; }).length;
   var pendingTransfers = transfers.filter(function(t){ return t.to_user_id===me?.id && t.status==="pending"; }).length;
   var totalBadge = unreadNotifs + pendingTransfers;
+
+  // ── DEVOLVER CONSIGNA ────────────────────────────────────────────────────────
+  async function doReturnConsigna() {
+    var tx = retModal;
+    var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
+    if (retQty<=0 || retQty>tx.qty){ toast("Cantidad inválida","","e"); return; }
+
+    // Restar del inventario del receptor
+    var myInvRow = inventory.find(function(i){ return i.product_id===tx.product_id; });
+    if (myInvRow && myInvRow.qty_available >= retQty) {
+      await sb.from("inventory").update({qty_available: myInvRow.qty_available - retQty}).eq("id", myInvRow.id);
+    }
+
+    // Restituir al emisor original
+    var srcInv = await sb.from("inventory").select("*").eq("user_id", tx.from_user_id).eq("product_id", tx.product_id).single();
+    if (srcInv.data) {
+      await sb.from("inventory").update({qty_available: srcInv.data.qty_available + retQty}).eq("id", srcInv.data.id);
+    } else {
+      await sb.from("inventory").insert({user_id: tx.from_user_id, product_id: tx.product_id, qty_available: retQty, qty_sold:0});
+    }
+
+    // Actualizar transfer: si devuelve todo → rejected, si parcial → crear nuevo transfer reducido
+    if (retQty >= tx.qty) {
+      await sb.from("transfers").update({status:"rejected"}).eq("id", tx.id);
+    } else {
+      // Partial: update original qty
+      await sb.from("transfers").update({qty: tx.qty - retQty}).eq("id", tx.id);
+    }
+
+    // Notificar al emisor
+    await sb.from("notifications").insert({
+      to_user_id: tx.from_user_id,
+      from_name: me.name,
+      type: "confirm",
+      message: "↩️ "+me.name+" devolvió "+retQty+"x "+(prod?prod.name:"producto")+" de consignación."
+    });
+
+    toast("Devolución registrada", retQty+"x "+(prod?prod.name:"")+" devuelto", "s");
+    setRetModal(null);
+    await loadData(me.id, me.role);
+  }
 
   // ── DELETE USER (admin only) ─────────────────────────────────────────────────
   var [delUserConf, setDelUserConf] = useState(null);
@@ -1057,15 +1101,15 @@ export default function App() {
 
   // ── TABS ─────────────────────────────────────────────────────────────────────
   var TABS = [
-    {id:"stock",   lbl:"Stock",    ico:"box"},
-    {id:"cargar",  lbl:"Cargar",   ico:"plus"},
-    {id:"enviar",  lbl:"Enviar",   ico:"send"},
-    {id:"precios", lbl:"Precios",  ico:"search"},
-    {id:"ventas",  lbl:"Ventas",   ico:"chart"},
-    {id:"contacts",lbl:"Red",      ico:"users"},
+    {id:"stock",    lbl:"Stock",    ico:"box"},
+    {id:"cargar",   lbl:"Cargar",   ico:"plus"},
+    {id:"enviar",   lbl:"Enviar",   ico:"send"},
+    {id:"consigna", lbl:"Consigna", ico:"users"},
+    {id:"ventas",   lbl:"Ventas",   ico:"chart"},
+    {id:"contacts", lbl:"Red",      ico:"clock"},
   ];
   if (isAdmin) {
-    TABS.splice(3, 0, {id:"catalog", lbl:"Catálogo", ico:"list"});
+    TABS.splice(3, 0, {id:"catalog",  lbl:"Catálogo", ico:"list"});
     TABS.splice(4, 0, {id:"importar", lbl:"Importar", ico:"upload"});
     TABS.push({id:"admin", lbl:"Admin", ico:"shield"});
   }
@@ -1495,6 +1539,96 @@ export default function App() {
             );
           })()}
 
+          {/* ══ CONSIGNA ══ */}
+          {tab==="consigna"&&(function(){
+            // All confirmed transfers sent BY me to others
+            var enviados = transfers.filter(function(t){
+              return t.from_user_id===me.id && t.status==="confirmed";
+            });
+            // Group by recipient
+            var byUser = {};
+            enviados.forEach(function(tx){
+              var uid2 = tx.to_user_id;
+              if (!byUser[uid2]) byUser[uid2] = {user: tx.to_user, items:[]};
+              byUser[uid2].items.push(tx);
+            });
+            var grupos = Object.values(byUser);
+            var filtrado = consignSrch.toLowerCase();
+
+            return (
+              <div>
+                <div className="ph">
+                  <div>
+                    <div className="ph-h">Consignaciones</div>
+                    <div className="ph-s">Productos enviados y asignados</div>
+                  </div>
+                </div>
+                <div className="pc">
+                  <SearchBar value={consignSrch} onChange={setConsignSrch} placeholder="Buscar producto o cliente..."/>
+
+                  {enviados.length===0
+                    ?<div className="empty"><div style={{fontSize:40,marginBottom:10}}>📦</div><div style={{fontWeight:700,marginBottom:6}}>Sin consignaciones activas</div><div style={{fontSize:12}}>Cuando envíes productos y los confirmen, aparecerán aquí.</div></div>
+                    :grupos.map(function(grupo){
+                      var u = grupo.user;
+                      var itemsFilt = grupo.items.filter(function(tx){
+                        if (!filtrado) return true;
+                        var p=tx.product;
+                        return (p&&p.name.toLowerCase().includes(filtrado))||(u&&u.name&&u.name.toLowerCase().includes(filtrado));
+                      });
+                      if (!itemsFilt.length) return null;
+                      var totalUnid = itemsFilt.reduce(function(s,t){ return s+t.qty; },0);
+                      var totalVal  = itemsFilt.reduce(function(s,t){ var p=t.product; return s+(p?p.price:0)*t.qty; },0);
+                      return (
+                        <div key={grupo.user?grupo.user.id:"?"} className="card">
+                          <div className="card-h">
+                            <div className="card-title">
+                              <div style={{width:32,height:32,borderRadius:10,background:u?u.color:"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:"#fff",flexShrink:0}}>
+                                {u?u.name.charAt(0).toUpperCase():"?"}
+                              </div>
+                              {u?u.name:"Usuario desconocido"}
+                            </div>
+                            <div className="row g8">
+                              <span className="badge b-am">{totalUnid} u.</span>
+                              <span className="badge b-em">{fmtARS(totalVal)}</span>
+                            </div>
+                          </div>
+                          <div className="tw"><table>
+                            <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Cant.</th><th>Total</th><th></th></tr></thead>
+                            <tbody>
+                              {itemsFilt.map(function(tx){
+                                var p = tx.product || products.find(function(x){ return x.id===tx.product_id; });
+                                var val = (p?p.price:0)*tx.qty;
+                                return (
+                                  <tr key={tx.id} className="tr">
+                                    <td><ProdThumb prod={p} size={34}/></td>
+                                    <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p?p.sku:"—"}</span></td>
+                                    <td><div style={{fontWeight:600,fontSize:12}}>{p?p.name:"—"}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p?p.category:""}</div></td>
+                                    <td style={{fontFamily:"var(--mf)",fontSize:12,fontWeight:600}}>{fmtARS(p?p.price:0)}</td>
+                                    <td><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--am-d)",fontSize:14}}>{tx.qty}</span></td>
+                                    <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12,color:"var(--em-d)"}}>{fmtARS(val)}</span></td>
+                                    <td>
+                                      <button className="btn btn-xs b-cr" onClick={function(){setRetModal(tx);setRetQty(tx.qty);}}>
+                                        <Ic n="undo" s={11}/>Devolver
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table></div>
+                          <div style={{padding:"10px 16px",background:"var(--bg)",borderTop:"1px solid var(--brd)",display:"flex",justifyContent:"flex-end",gap:16,fontSize:12}}>
+                            <span style={{color:"var(--t3)"}}>Total en consigna:</span>
+                            <span style={{fontWeight:800,color:"var(--em-d)",fontFamily:"var(--mf)"}}>{fmtARS(totalVal)}</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  }
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ══ PRECIOS ══ */}
           {tab==="precios"&&(
             <div>
@@ -1649,6 +1783,46 @@ export default function App() {
           {TABS.map(function(t){ return (<div key={t.id} className={"tab"+(tab===t.id?" on":"")} onClick={function(){setTab(t.id);}}><div className="tab-bub"><Ic n={t.ico} s={20}/></div><span className="tab-lbl">{t.lbl}</span></div>); })}
         </nav>
       </div>
+
+      {/* RETURN CONSIGNA MODAL */}
+      {retModal&&(
+        <div className="ovl" onClick={function(e){if(e.target===e.currentTarget)setRetModal(null);}}>
+          <div className="mbox">
+            <div className="mhd">
+              <div className="mhd-t">↩️ Registrar devolución</div>
+              <button className="ic-btn" onClick={function(){setRetModal(null);}}><Ic n="x" s={16}/></button>
+            </div>
+            <div className="mbd">
+              {(function(){
+                var prod = retModal.product||products.find(function(p){return p.id===retModal.product_id;});
+                var toUser = retModal.to_user;
+                return (
+                  <div>
+                    <div className="row g12" style={{padding:"12px 14px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--brd)",marginBottom:16}}>
+                      <ProdThumb prod={prod} size={44}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:14}}>{prod?prod.name:"Producto"}</div>
+                        <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>En manos de: <strong>{toUser?toUser.name:"?"}</strong> · {retModal.qty} u. totales</div>
+                      </div>
+                    </div>
+                    <div className="fld">
+                      <label className="fl">¿Cuántas unidades devuelven? (máx. {retModal.qty})</label>
+                      <QtyControl val={retQty} set={setRetQty} min={1} max={retModal.qty} big={true}/>
+                    </div>
+                    <div style={{background:"var(--em-l)",border:"1px solid var(--em-t)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"var(--em-d)",marginTop:8}}>
+                      ✅ Se restituirán <strong>{retQty} u.</strong> a tu stock y se notificará al remitente.
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="mft">
+              <button className="btn b-ghost" onClick={function(){setRetModal(null);}}>Cancelar</button>
+              <button className="btn b-em" onClick={doReturnConsigna}><Ic n="undo" s={14}/>Confirmar devolución</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* EDIT STOCK MODAL */}
       {editStock&&(
