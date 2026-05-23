@@ -398,9 +398,10 @@ export default function App() {
   var [retQty,      setRetQty]      = useState(1);
   var [consignSrch, setConsignSrch] = useState("");
   var [consignTab,     setConsignTab]     = useState("enviado");
-  var [consignView,    setConsignView]    = useState("list");   // "list" | "revendedoras" | "detail" | "search"
-  var [selRevend,      setSelRevend]      = useState(null);     // selected revendedora user object
-  var [prodSearch,     setProdSearch]     = useState("");       // product search across revendedoras
+  var [consignView,    setConsignView]    = useState("list");
+  var [selRevend,      setSelRevend]      = useState(null);
+  var [prodSearch,     setProdSearch]     = useState("");
+  var [recvInv,        setRecvInv]        = useState([]);   // recipient inventory rows
 
   // ── HELPERS ──────────────────────────────────────────────────────────────────
   function toast(title, body, type) {
@@ -465,17 +466,21 @@ export default function App() {
     toast("Devolución registrada", retQty+"x "+(prod?prod.name:"")+" restituido", "s");
     setRetModal(null);
     await loadData(me.id, me.role);
+    await loadRecvInventory();
   }
 
-  // ── LOAD RECIPIENT INVENTORY FOR CONSIGNA (sender view) ──────────────────────
-  async function loadRecvInv(sentTransfers) {
-    var map = {};
-    for (var i=0; i<sentTransfers.length; i++) {
-      var tx = sentTransfers[i];
-      var r = await sb.from("inventory").select("qty_available").eq("user_id", tx.to_user_id).eq("product_id", tx.product_id).single();
-      map[tx.id] = r.data ? r.data.qty_available : 0;
+  // ── LOAD RECIPIENT INVENTORY FOR CONSIGNA ─────────────────────────────────────
+  async function loadRecvInventory() {
+    var sentTxs = transfers.filter(function(t){ return t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0; });
+    if (!sentTxs.length) { setRecvInv([]); return; }
+    // Get unique recipient IDs
+    var uids = [...new Set(sentTxs.map(function(t){return t.to_user_id;}))];
+    var allRecvInv = [];
+    for (var i=0;i<uids.length;i++) {
+      var r = await sb.from("inventory").select("*").eq("user_id", uids[i]);
+      if (r.data) allRecvInv = allRecvInv.concat(r.data);
     }
-    setRecvInvMap(map);
+    setRecvInv(allRecvInv);
   }
 
   // ── DELETE USER (admin only) ─────────────────────────────────────────────────
@@ -680,6 +685,11 @@ export default function App() {
     setTxModal(null);
     await loadData(me.id,me.role);
   }
+
+  // ── LOAD RECV INV ON TAB CHANGE ──────────────────────────────────────────────
+  useEffect(function(){
+    if (tab==="consigna" && me) loadRecvInventory();
+  }, [tab, transfers]);
 
   // ── ANULAR ENVÍO (solo admin o emisor, antes de confirmación) ───────────────
   async function anularTransfer(tx) {
@@ -1146,7 +1156,7 @@ export default function App() {
         {/* HEADER */}
         <div className="hdr" style={{paddingBottom:22}}>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",position:"relative",zIndex:1}}>
-            <div>
+            <div style={{cursor:"pointer"}} onClick={function(){setTab("stock");}}>
               <div style={{fontSize:20,fontWeight:900,color:"#fff",letterSpacing:"-.02em",marginBottom:2}}>
                 ¡Hola, {me.name.split(" ")[0]}! 👋
               </div>
@@ -1407,7 +1417,6 @@ export default function App() {
                 {isAdmin&&<button className="btn btn-xs b-ghost" onClick={function(){setShowInactive(function(v){return !v;});}}>{showInactive?"Ver activos":"Ver inactivos"}</button>}
               </div>
               <div className="pc">
-                <SearchBar value={srchCat} onChange={setSrchCat} placeholder="Buscar por nombre, SKU o categoría..."/>
                 {isAdmin&&(
                   <div className="card">
                     <div className="card-h"><div className="card-title">{editP?"✏️ Modificar":"✨ Nuevo producto"}</div>{editP&&<button className="btn btn-xs b-ghost" onClick={cancelEdit}>Cancelar</button>}</div>
@@ -1423,6 +1432,7 @@ export default function App() {
                     </div>
                   </div>
                 )}
+                <SearchBar value={srchCat} onChange={setSrchCat} placeholder="Buscar por nombre, SKU o categoría..."/>
                 <div className="card">
                   <div className="card-h">
                     <div className="card-title">Catálogo ({catFiltered.length})</div>
@@ -1641,12 +1651,18 @@ export default function App() {
             var revendList = Object.values(revendMap);
 
             // Metrics
-            var totalUnidades = txEnviados.reduce(function(s,t){return s+t.qty;},0);
-            var totalValor    = txEnviados.reduce(function(s,t){
-    var p=t.product||products.find(function(x){return x.id===t.product_id;});
-    return s+(p&&p.price?parseFloat(p.price):0)*t.qty;
-  },0);
-            var pendDevol     = txRecibidos.filter(function(t){
+            // Use recvInv for accurate pendiente counts
+            var totalUnidades = txEnviados.reduce(function(s,t){
+              var ri=recvInv.find(function(i){return i.product_id===t.product_id&&i.user_id===t.to_user_id;});
+              return s+(ri!=null?ri.qty_available:t.qty);
+            },0);
+            var totalValor = txEnviados.reduce(function(s,t){
+              var p=t.product||products.find(function(x){return x.id===t.product_id;});
+              var ri=recvInv.find(function(i){return i.product_id===t.product_id&&i.user_id===t.to_user_id;});
+              var qPend=ri!=null?ri.qty_available:t.qty;
+              return s+(p&&p.price?parseFloat(p.price):0)*qPend;
+            },0);
+            var pendDevol = txRecibidos.filter(function(t){
               var inv=inventory.find(function(i){return i.product_id===t.product_id;});
               return inv&&inv.qty_available>0;
             }).length;
@@ -1684,8 +1700,8 @@ export default function App() {
                       :<div>
                         <div style={{fontSize:12,color:"var(--t3)",marginBottom:12,fontWeight:600}}>{searchResults.length} resultado{searchResults.length!==1?"s":""}</div>
                         {searchResults.map(function(r,i){
-                          var myI2 = inventory.find(function(ii){return ii.product_id===r.prod.id&&ii.user_id===r.tx.to_user_id;});
-                          var qAvail = myI2?myI2.qty_available:r.tx.qty;
+                          var myI2 = recvInv.find(function(ii){return ii.product_id===r.prod.id&&ii.user_id===r.tx.to_user_id;});
+                          var qAvail = myI2!=null?myI2.qty_available:r.tx.qty;
                           var qSold  = Math.max(0,r.tx.qty-qAvail);
                           var status = qSold>=r.tx.qty?"vendido":qAvail>0?"pendiente":"devuelto";
                           var statusColors = {vendido:["var(--em-l)","var(--em-d)","✅"],pendiente:["var(--am-l)","var(--am-d)","⏳"],devuelto:["var(--cr-l)","var(--cr)","↩️"]};
@@ -1773,8 +1789,8 @@ export default function App() {
                       ?<div className="empty">Sin productos entregados</div>
                       :revTxs.map(function(tx){
                         var p=tx.product||products.find(function(x){return x.id===tx.product_id;});
-                        var myI4=inventory.find(function(i){return i.product_id===tx.product_id&&i.user_id===selRevend.id;});
-                        var qA4=myI4?myI4.qty_available:tx.qty;
+                        var myI4=recvInv.find(function(i){return i.product_id===tx.product_id&&i.user_id===selRevend.id;});
+                        var qA4=myI4!=null?myI4.qty_available:tx.qty;
                         var qS4=Math.max(0,tx.qty-qA4);
                         var dateStr4=tx.confirmed_at?new Date(tx.confirmed_at).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
                         var allSold=qS4>=tx.qty;
@@ -1963,10 +1979,12 @@ export default function App() {
                     :filtered.map(function(tx){
                       var p=tx.product||products.find(function(x){return x.id===tx.product_id;});
                       var otherUser=consignTab==="recibido"?tx.from_user:tx.to_user;
-                      var myInvR=consignTab==="recibido"?inventory.find(function(i){return i.product_id===tx.product_id;}):null;
-                      var qtyDisp=myInvR?myInvR.qty_available:tx.qty;
-                      var qtySold=Math.max(0,tx.qty-qtyDisp);
-                      var canReturn=consignTab==="recibido"?qtyDisp>0:true;
+                      var myInvR = consignTab==="recibido"
+                        ? inventory.find(function(i){return i.product_id===tx.product_id;})
+                        : recvInv.find(function(i){return i.product_id===tx.product_id&&i.user_id===tx.to_user_id;});
+                      var qtyDisp = myInvR ? myInvR.qty_available : tx.qty;
+                      var qtySold = Math.max(0, tx.qty - qtyDisp);
+                      var canReturn = consignTab==="recibido" ? qtyDisp>0 : qtyDisp>0;
                       var dateStr=tx.confirmed_at?new Date(tx.confirmed_at).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
                       return (
                         <div key={tx.id} style={{background:"#fff",borderRadius:18,border:"1.5px solid var(--brd)",marginBottom:12,overflow:"hidden",boxShadow:"var(--sh)"}}>
