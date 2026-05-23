@@ -520,7 +520,7 @@ export default function App() {
       if (cts.data) setContacts(cts.data.map(function(c){ return c.contact; }).filter(Boolean));
 
       // Transfers (sent and received)
-      var tx = await sb.from("transfers").select("*, product:product_id(name,emoji,photo_url,sku), from_user:from_user_id(name,email), to_user:to_user_id(name,email)").or("from_user_id.eq."+userId+",to_user_id.eq."+userId).order("created_at",{ascending:false});
+      var tx = await sb.from("transfers").select("*, product:product_id(id,name,emoji,photo_url,sku,price,category), from_user:from_user_id(id,name,email,color), to_user:to_user_id(id,name,email,color)").or("from_user_id.eq."+userId+",to_user_id.eq."+userId).order("created_at",{ascending:false});
       if (tx.data) setTransfers(tx.data);
 
       // Notifications
@@ -569,7 +569,7 @@ export default function App() {
         sb.from("notifications").select("*").eq("to_user_id",me.id).order("created_at",{ascending:false}).limit(50).then(function(r){ if(r.data) setNotifs(r.data); });
       })
       .on("postgres_changes",{event:"*",schema:"public",table:"transfers",filter:"to_user_id=eq."+me.id},function(){
-        sb.from("transfers").select("*, product:product_id(name,emoji,photo_url,sku), from_user:from_user_id(name,email), to_user:to_user_id(name,email)").or("from_user_id.eq."+me.id+",to_user_id.eq."+me.id).order("created_at",{ascending:false}).then(function(r){ if(r.data) setTransfers(r.data); });
+        sb.from("transfers").select("*, product:product_id(id,name,emoji,photo_url,sku,price,category), from_user:from_user_id(id,name,email,color), to_user:to_user_id(id,name,email,color)").or("from_user_id.eq."+me.id+",to_user_id.eq."+me.id).order("created_at",{ascending:false}).then(function(r){ if(r.data) setTransfers(r.data); });
       })
       .subscribe();
     return function(){ sb.removeChannel(ch); };
@@ -718,6 +718,9 @@ export default function App() {
     }
     // Mark transfer confirmed
     await sb.from("transfers").update({status:"confirmed",confirmed_at:new Date().toISOString()}).eq("id",tx.id);
+    // Force refresh transfers state immediately
+    var refreshTx = await sb.from("transfers").select("*, product:product_id(id,name,emoji,photo_url,sku,price,category), from_user:from_user_id(id,name,email,color), to_user:to_user_id(id,name,email,color)").or("from_user_id.eq."+me.id+",to_user_id.eq."+me.id).order("created_at",{ascending:false});
+    if (refreshTx.data) setTransfers(refreshTx.data);
     // Notify sender
     await sb.from("notifications").insert({to_user_id:tx.from_user_id,from_name:me.name,type:"confirm",message:me.name+" confirmó la recepción de "+tx.qty+"x "+(prod?prod.name:"producto")+"!"});
     // Mark my notification read
@@ -1168,76 +1171,130 @@ export default function App() {
         <div className="main">
 
           {/* ══ STOCK ══ */}
-          {tab==="stock"&&(
-            <div>
-              <div className="ph"><div><div className="ph-h">Mi Stock</div><div className="ph-s">Solo artículos con unidades disponibles</div></div></div>
-              <div className="pc">
-                <button className="wa-banner" onClick={function(){setShareM(true);setShareSel({});}}>
-                  <div className="row g12"><div style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ic n="wa" s={24}/></div><div style={{textAlign:"left"}}><div style={{fontSize:15,fontWeight:800,color:"#fff"}}>Compartir disponible por WhatsApp</div><div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:2}}>Selecciona productos y envía con fotos</div></div></div>
-                  <div style={{color:"rgba(255,255,255,.7)"}}><Ic n="send" s={18}/></div>
-                </button>
-                <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar por nombre, SKU o categoría..."/>
+          {tab==="stock"&&(function(){
+            var totalDisp = myStock.reduce(function(s,i){return s+i.qty_available;},0);
+            var totalVal  = myStock.reduce(function(s,i){var p=i.products||products.find(function(x){return x.id===i.product_id;});return s+(p?parseFloat(p.price||0)*i.qty_available:0);},0);
+            var pendTxCount = pendingTx.length;
+            var consignaEnv = transfers.filter(function(t){return t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0;}).length;
+            return (
+              <div>
+                {/* Dashboard grid */}
+                <div style={{padding:"14px 14px 0"}}>
+                  {/* WA banner */}
+                  <button className="wa-banner" style={{marginBottom:14}} onClick={function(){setShareM(true);setShareSel({});}}>
+                    <div className="row g12">
+                      <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ic n="wa" s={22}/></div>
+                      <div style={{textAlign:"left"}}>
+                        <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>Compartir por WhatsApp</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:1}}>Selecciona productos y enviá con fotos</div>
+                      </div>
+                    </div>
+                    <div style={{color:"rgba(255,255,255,.7)"}}><Ic n="send" s={18}/></div>
+                  </button>
 
-                {/* Pending transfers to confirm */}
-                {pendingTx.length>0&&(
-                  <div className="card" style={{border:"2px solid var(--in)",background:"var(--in-l)"}}>
-                    <div className="card-h" style={{background:"var(--in-l)"}}><div className="card-title" style={{color:"var(--in-d)"}}>🔔 Confirmar recepción ({pendingTx.length})</div></div>
-                    <div style={{padding:"8px 12px"}}>
-                      {pendingTx.map(function(tx){
-                        var p=tx.product;
-                        return (<div key={tx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--card)",borderRadius:10,marginBottom:8,border:"1px solid var(--brd)"}}>
-                          <div style={{fontSize:26}}>{p?p.emoji:"📦"}</div>
-                          <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{p?p.name:"Producto"}</div><div style={{fontSize:11,color:"var(--t3)"}}>{tx.qty} u. de {tx.from_user?tx.from_user.name:""}</div></div>
-                          <div className="row g8">
-                              <button className="btn b-em btn-xs" onClick={function(){confirmTransfer(tx);}}>✓ Aceptar</button>
-                              <button className="btn b-cr btn-xs" onClick={async function(){
-                                // Return stock to sender
-                                var srcInv = await sb.from("inventory").select("*").eq("user_id",tx.from_user_id).eq("product_id",tx.product_id).single();
-                                if (srcInv.data) { await sb.from("inventory").update({qty_available:srcInv.data.qty_available+tx.qty}).eq("id",srcInv.data.id); }
-                                else { await sb.from("inventory").insert({user_id:tx.from_user_id,product_id:tx.product_id,qty_available:tx.qty,qty_sold:0}); }
-                                await sb.from("transfers").update({status:"rejected"}).eq("id",tx.id);
-                                await sb.from("notifications").insert({to_user_id:tx.from_user_id,from_name:me.name,type:"info",message:me.name+" devolvió el envío de "+tx.qty+"x "+(tx.product?tx.product.name:"producto")+". Stock restituido."});
-                                toast("Envío devuelto","Stock restituido al remitente","i");
-                                await loadData(me.id,me.role);
-                              }}>✗ Devolver</button>
-                            </div>
-                        </div>);
+                  {/* Action grid - 2x3 */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                    {[
+                      {ico:"plus",    lbl:"Cargar Stock",  sub:"Agregar unidades",      bg:"linear-gradient(135deg,#059669,#047857)",  tab2:"cargar",  badge:null},
+                      {ico:"send",    lbl:"Enviar",        sub:"Transferir productos",   bg:"linear-gradient(135deg,#7c3aed,#6d28d9)",  tab2:"enviar",  badge:null},
+                      {ico:"users",   lbl:"Consigna",      sub:consignaEnv+" en consigna", bg:"linear-gradient(135deg,#d97706,#b45309)", tab2:"consigna",badge:consignaEnv>0?consignaEnv:null},
+                      {ico:"chart",   lbl:"Ventas",        sub:"Ver mis ventas",         bg:"linear-gradient(135deg,#dc2626,#b91c1c)",  tab2:"ventas",  badge:null},
+                      {ico:"list",    lbl:"Catálogo",      sub:"Lista de precios",       bg:"linear-gradient(135deg,#0ea5e9,#0284c7)",  tab2:isAdmin?"catalog":"precios", badge:null},
+                      {ico:"clock",   lbl:"Red",           sub:"Contactos y notif.",     bg:"linear-gradient(135deg,#7c3aed,#a855f7)",  tab2:"contacts",badge:totalBadge>0?totalBadge:null},
+                    ].map(function(item){
+                      return (
+                        <div key={item.tab2} onClick={function(){setTab(item.tab2);}} style={{background:item.bg,borderRadius:18,padding:"18px 16px",cursor:"pointer",position:"relative",overflow:"hidden",minHeight:90,display:"flex",flexDirection:"column",justifyContent:"space-between",boxShadow:"0 6px 20px rgba(0,0,0,.15)",transition:"transform .15s"}}
+                          onMouseDown={function(e){e.currentTarget.style.transform="scale(.97)";}}
+                          onMouseUp={function(e){e.currentTarget.style.transform="scale(1)";}}
+                          onTouchStart={function(e){e.currentTarget.style.transform="scale(.97)";}}
+                          onTouchEnd={function(e){e.currentTarget.style.transform="scale(1)";}}>
+                          {/* Background decoration */}
+                          <div style={{position:"absolute",top:-16,right:-16,width:70,height:70,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+                          <div style={{position:"absolute",bottom:-20,left:-10,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.05)"}}/>
+                          {/* Badge */}
+                          {item.badge&&<div style={{position:"absolute",top:10,right:10,background:"#ff4757",borderRadius:20,minWidth:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#fff",padding:"0 6px"}}>{item.badge}</div>}
+                          {/* Icon */}
+                          <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",flexShrink:0}}>
+                            <Ic n={item.ico} s={20}/>
+                          </div>
+                          <div>
+                            <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:"-.01em"}}>{item.lbl}</div>
+                            <div style={{fontSize:10,color:"rgba(255,255,255,.75)",marginTop:2,fontWeight:500}}>{item.sub}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Stock summary card */}
+                  <div style={{background:"#fff",borderRadius:18,border:"1.5px solid var(--brd)",padding:"16px",marginBottom:14,boxShadow:"var(--sh)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <div style={{fontWeight:900,fontSize:15,color:"var(--t1)"}}>Mi Stock</div>
+                      <span className="badge b-am">{myStock.length} productos</span>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
+                      {[
+                        {val:myStock.length, lbl:"Productos",  color:"var(--in-d)",  bg:"var(--in-l)"},
+                        {val:totalDisp,      lbl:"Unidades",   color:"var(--am-d)",  bg:"var(--am-l)"},
+                        {val:fmtARS(totalVal).replace("$ ","$"), lbl:"Valor",color:"var(--em-d)",bg:"var(--em-l)"},
+                      ].map(function(m,i){
+                        return (
+                          <div key={i} style={{background:m.bg,borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
+                            <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:i===2?11:18,color:m.color,lineHeight:1}}>{m.val}</div>
+                            <div style={{fontSize:9,color:m.color,fontWeight:700,marginTop:3,textTransform:"uppercase",letterSpacing:".05em"}}>{m.lbl}</div>
+                          </div>
+                        );
                       })}
                     </div>
-                  </div>
-                )}
 
-                {/* Sent pending */}
-                {sentTx.length>0&&(
-                  <div className="card">
-                    <div className="card-h"><div className="card-title">📤 Enviados (esperando confirmación)</div><span className="badge b-am">{sentTx.length}</span></div>
-                    <div className="tw"><table>
-                      <thead><tr><th>Producto</th><th>Cant.</th><th>Para</th><th>Estado</th></tr></thead>
-                      <tbody>{sentTx.map(function(tx){ var p=tx.product; var tu=tx.to_user; return (<tr key={tx.id} className="tr"><td><div style={{fontWeight:600,fontSize:12}}>{p?p.name:""}</div></td><td><span style={{fontFamily:"var(--mf)",fontWeight:700,color:"var(--am-d)"}}>{tx.qty}</span></td><td><span style={{fontSize:11}}>{tu?tu.name:""}</span></td><td>
-                              <div className="row g8">
-                              {tx.status==="anulado"
-                                  ?<span style={{background:"var(--cr-t)",color:"var(--cr)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>❌ Anulado</span>
-                                  :<div className="row g8"><span style={{background:"var(--am-t)",color:"var(--am-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>Pendiente</span><button className="btn btn-xs b-cr" onClick={function(){anularTransfer(tx);}}>✕ Anular</button></div>
-                                }
-                              </div>
-                            </td></tr>); })}</tbody>
-                    </table></div>
-                  </div>
-                )}
+                    {/* Pending confirmations alert */}
+                    {pendTxCount>0&&(
+                      <div style={{background:"var(--am-l)",border:"1.5px solid var(--am-t)",borderRadius:12,padding:"10px 12px",marginBottom:10,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={function(){setTab("stock");}}>
+                        <div style={{fontSize:20,flexShrink:0}}>🔔</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700,fontSize:12,color:"var(--am-d)"}}>{pendTxCount} envío{pendTxCount!==1?"s":""} esperando confirmación</div>
+                          <div style={{fontSize:10,color:"var(--am-d)",marginTop:1}}>Aceptá o rechazá los productos recibidos</div>
+                        </div>
+                        <Ic n="send" s={16}/>
+                      </div>
+                    )}
 
-                <div className="card">
-                  <div className="card-h"><div className="card-title"><div className="card-ico" style={{background:"var(--am-l)",color:"var(--am-d)"}}><Ic n="box" s={14}/></div>Stock Propio</div><span className="badge b-am">{stockFiltered.length}</span></div>
-                  {stockFiltered.length===0?<div className="empty">Sin existencias.{srchStock?" Intenta otra búsqueda.":" Carga productos en Cargar."}</div>:(
-                    <div className="tw"><table>
-                      <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
-                      <tbody>{stockFiltered.map(function(item){ var p=item.products||products.find(function(x){ return x.id===item.product_id; }); if(!p) return null; return (<tr key={item.id} className="tr"><td><ProdThumb prod={p} size={36}/></td><td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td><td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td><td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td><td><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--em-d)",fontSize:14}}>{item.qty_available}</span></td><td><div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}><button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button><button className="btn btn-xs b-in" onClick={function(){setEditStock(item);setEditQty(item.qty_available);}} title="Corregir stock"><Ic n="edit" s={11}/></button><button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button><button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button></div></td></tr>); })}</tbody>
-                    </table></div>
-                  )}
+                    {/* Search bar */}
+                    <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar en mi stock..."/>
+
+                    {/* Stock list */}
+                    {stockFiltered.length===0
+                      ?<div style={{textAlign:"center",padding:"20px",color:"var(--t3)",fontSize:13}}>{srchStock?"Sin resultados.":"Sin existencias. Cargá productos en Cargar."}</div>
+                      :<div className="tw"><table>
+                        <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
+                        <tbody>{stockFiltered.map(function(item){
+                          var p=item.products||products.find(function(x){return x.id===item.product_id;});
+                          if(!p) return null;
+                          return (
+                            <tr key={item.id} className="tr">
+                              <td><ProdThumb prod={p} size={36}/></td>
+                              <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td>
+                              <td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td>
+                              <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td>
+                              <td><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--em-d)",fontSize:14}}>{item.qty_available}</span></td>
+                              <td>
+                                <div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
+                                  <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
+                                  <button className="btn btn-xs b-in" onClick={function(){setEditStock(item);setEditQty(item.qty_available);}} title="Corregir stock"><Ic n="edit" s={11}/></button>
+                                  <button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>
+                                  <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}</tbody>
+                      </table></div>
+                    }
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
+            );
+          })()}
           {/* ══ CARGAR ══ */}
           {tab==="cargar"&&(
             <div>
@@ -1585,7 +1642,10 @@ export default function App() {
 
             // Metrics
             var totalUnidades = txEnviados.reduce(function(s,t){return s+t.qty;},0);
-            var totalValor    = txEnviados.reduce(function(s,t){var p=t.product;return s+(p?p.price:0)*t.qty;},0);
+            var totalValor    = txEnviados.reduce(function(s,t){
+    var p=t.product||products.find(function(x){return x.id===t.product_id;});
+    return s+(p&&p.price?parseFloat(p.price):0)*t.qty;
+  },0);
             var pendDevol     = txRecibidos.filter(function(t){
               var inv=inventory.find(function(i){return i.product_id===t.product_id;});
               return inv&&inv.qty_available>0;
@@ -1674,7 +1734,7 @@ export default function App() {
                 var qS=Math.max(0,tx.qty-qA);
                 totalVendidoRev+=qS;
                 totalPendRev+=qA;
-                if(p){ totalValorRev+=(p.price*tx.qty); totalVendValor+=(p.price*qS); }
+                if(p&&p.price){ totalValorRev+=(parseFloat(p.price)*tx.qty); totalVendValor+=(parseFloat(p.price)*qS); }
               });
               return (
                 <div>
@@ -1795,7 +1855,7 @@ export default function App() {
                       return r.user&&r.user.name.toLowerCase().includes(filt);
                     }).map(function(grupo){
                       var u2=grupo.user;
-                      var gTotal=grupo.txs.reduce(function(s,t){var p=t.product;return s+(p?p.price:0)*t.qty;},0);
+                      var gTotal=grupo.txs.reduce(function(s,t){var p=t.product||products.find(function(x){return x.id===t.product_id;});return s+(p&&p.price?parseFloat(p.price):0)*t.qty;},0);
                       var gUnid=grupo.txs.reduce(function(s,t){return s+t.qty;},0);
                       var gVend=0;
                       grupo.txs.forEach(function(tx){
