@@ -437,10 +437,10 @@ export default function App() {
       toast("El receptor no tiene suficiente stock disponible","","e"); return;
     }
 
-    // 2. Restituir al emisor
-    var srcInv = await sb.from("inventory").select("*").eq("user_id", senderId).eq("product_id", tx.product_id).single();
-    if (srcInv.data) {
-      await sb.from("inventory").update({qty_available: srcInv.data.qty_available + retQty}).eq("id", srcInv.data.id);
+    // 2. Restituir al emisor — query DB directly
+    var srcInvDB = await sb.from("inventory").select("*").eq("user_id", senderId).eq("product_id", tx.product_id).single();
+    if (srcInvDB.data) {
+      await sb.from("inventory").update({qty_available: srcInvDB.data.qty_available + retQty}).eq("id", srcInvDB.data.id);
     } else {
       await sb.from("inventory").insert({user_id: senderId, product_id: tx.product_id, qty_available: retQty, qty_sold:0});
     }
@@ -695,9 +695,9 @@ export default function App() {
   async function anularTransfer(tx) {
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
     // Restituir stock al emisor
-    var srcInv = await sb.from("inventory").select("*").eq("user_id",tx.from_user_id).eq("product_id",tx.product_id).single();
-    if (srcInv.data) {
-      await sb.from("inventory").update({qty_available:srcInv.data.qty_available+tx.qty}).eq("id",srcInv.data.id);
+    var srcInvDB2 = await sb.from("inventory").select("*").eq("user_id",tx.from_user_id).eq("product_id",tx.product_id).single();
+    if (srcInvDB2.data) {
+      await sb.from("inventory").update({qty_available:srcInvDB2.data.qty_available+tx.qty}).eq("id",srcInvDB2.data.id);
     } else {
       await sb.from("inventory").insert({user_id:tx.from_user_id,product_id:tx.product_id,qty_available:tx.qty,qty_sold:0});
     }
@@ -719,12 +719,23 @@ export default function App() {
   // ── CONFIRM TRANSFER ─────────────────────────────────────────────────────────
   async function confirmTransfer(tx) {
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
-    // Add to receiver inventory
-    var existing = inventory.find(function(i){ return i.product_id===tx.product_id; });
-    if (existing) {
-      await sb.from("inventory").update({qty_available:existing.qty_available+tx.qty}).eq("id",existing.id);
+
+    // Always query DB directly — don't rely on local state which may be stale
+    var existingRow = await sb.from("inventory")
+      .select("*")
+      .eq("user_id", me.id)
+      .eq("product_id", tx.product_id)
+      .single();
+
+    if (existingRow.data) {
+      // Row exists (possibly with qty=0 from previous return) — just add qty
+      await sb.from("inventory")
+        .update({qty_available: existingRow.data.qty_available + tx.qty})
+        .eq("id", existingRow.data.id);
     } else {
-      await sb.from("inventory").insert({user_id:me.id,product_id:tx.product_id,qty_available:tx.qty,qty_sold:0});
+      // No row — create fresh
+      await sb.from("inventory")
+        .insert({user_id: me.id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0});
     }
     // Mark transfer confirmed
     await sb.from("transfers").update({status:"confirmed",confirmed_at:new Date().toISOString()}).eq("id",tx.id);
