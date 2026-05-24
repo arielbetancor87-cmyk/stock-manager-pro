@@ -2166,8 +2166,26 @@ export default function App() {
                 {/* Notificaciones */}
                 {myNotifs.length>0&&(
                   <div className="card" style={{border:myNotifs.some(function(n){return !n.read;})?"2px solid var(--am)":"1px solid var(--brd)"}}>
-                    <div className="card-h"><div className="card-title">🔔 Notificaciones</div><div className="row g8">{myNotifs.some(function(n){return !n.read;})&&<span className="badge b-am">{myNotifs.filter(function(n){return !n.read;}).length} nuevas</span>}<button className="btn btn-xs b-ghost" onClick={async function(){await sb.from("notifications").update({read:true}).eq("to_user_id",me.id);setNotifs(function(p){return p.map(function(n){return Object.assign({},n,{read:true});});});}}>Leídas</button></div></div>
-                    <div style={{padding:"8px 14px"}}>{myNotifs.map(function(n){ var ico=n.type==="transfer"?"📦":n.type==="confirm"?"✅":n.type==="sale"?"💰":"🔔"; return (<div key={n.id} style={{display:"flex",gap:10,padding:"10px 0",borderBottom:"1px solid var(--brd)",opacity:n.read?0.6:1}}><div style={{fontSize:20,flexShrink:0}}>{ico}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:n.read?400:700,color:"var(--t1)"}}>{n.message}</div><div style={{fontSize:10,color:"var(--t3)",marginTop:2}}>{new Date(n.created_at).toLocaleString("es-AR")}</div></div>{!n.read&&<div style={{width:8,height:8,borderRadius:"50%",background:"var(--am)",flexShrink:0,marginTop:4}}/>}</div>); })}</div>
+                    <div className="card-h"><div className="card-title">🔔 Notificaciones</div><div className="row g8">{myNotifs.some(function(n){return !n.read;})&&<span className="badge b-am">{myNotifs.filter(function(n){return !n.read;}).length} nuevas</span>}<button className="btn btn-xs b-cr" onClick={async function(){ await sb.from("notifications").delete().eq("to_user_id",me.id); setNotifs([]); toast("Borradas","","i"); }}>🗑️ Borrar</button></div></div>
+                    <div style={{padding:"8px 14px"}}>{myNotifs.map(function(n){
+                      var ico=n.type==="transfer"?"📦":n.type==="confirm"?"✅":n.type==="sale"?"💰":"🔔";
+                      var linkedTx=n.type==="transfer"?transfers.find(function(t){return t.to_user_id===me.id&&t.status==="pending";}):null;
+                      return (
+                        <div key={n.id} style={{display:"flex",gap:10,padding:"12px 0",borderBottom:"1px solid var(--brd)",opacity:n.read?0.6:1}}>
+                          <div style={{fontSize:20,flexShrink:0}}>{ico}</div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:13,fontWeight:n.read?400:700,color:"var(--t1)",lineHeight:1.4}}>{n.message}</div>
+                            <div style={{fontSize:10,color:"var(--t3)",marginTop:3}}>{new Date(n.created_at).toLocaleString("es-AR")}</div>
+                            {linkedTx&&(
+                              <button style={{marginTop:8,padding:"8px 14px",borderRadius:10,border:"none",background:"var(--em)",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}} onClick={async function(){ await confirmTransfer(linkedTx); setNotifs(function(p){return p.map(function(x){return x.id===n.id?Object.assign({},x,{read:true}):x;});}); }}>
+                                ✓ Confirmar recepción
+                              </button>
+                            )}
+                          </div>
+                          {!n.read&&<div style={{width:8,height:8,borderRadius:"50%",background:"var(--am)",flexShrink:0,marginTop:4}}/>}
+                        </div>
+                      );
+                    })}</div>
                   </div>
                 )}
 
