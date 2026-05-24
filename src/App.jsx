@@ -392,8 +392,13 @@ export default function App() {
   var [txTo,     setTxTo]     = useState("");
   var [shareM,   setShareM]   = useState(false);
   var [shareSel,  setShareSel]  = useState({});
-  var [editStock, setEditStock] = useState(null);
-  var [editQty,   setEditQty]   = useState(0);
+  var [editStock,  setEditStock]  = useState(null);
+  var [editQty,    setEditQty]    = useState(0);
+  var [movModal,   setMovModal]   = useState(null);  // invRow for movement
+  var [movType,    setMovType]    = useState("entrada"); // "entrada"|"salida"|"ajuste"
+  var [movQty,     setMovQty]     = useState(1);
+  var [movNote,    setMovNote]    = useState("");
+  var [movHistory, setMovHistory] = useState([]);  // local movement log
   var [retModal,    setRetModal]    = useState(null);
   var [retQty,      setRetQty]      = useState(1);
   var [consignSrch, setConsignSrch] = useState("");
@@ -1045,6 +1050,25 @@ export default function App() {
     toast("Contacto agregado",target.data.name,"s"); setCtQ("");
   }
 
+  // ── MOVIMIENTO DE STOCK ──────────────────────────────────────────────────────
+  async function doMovimiento() {
+    var item=movModal, prod=item.products||products.find(function(p){return p.id===item.product_id;});
+    var newQty=item.qty_available;
+    if(movType==="entrada") newQty=item.qty_available+movQty;
+    if(movType==="salida")  newQty=Math.max(0,item.qty_available-movQty);
+    if(movType==="ajuste")  newQty=movQty;
+    if(newQty<0){toast("Stock no puede ser negativo","","e");return;}
+    var r=await sb.from("inventory").update({qty_available:newQty}).eq("id",item.id).select("*, products(*)").single();
+    if(r.error){toast("Error",""+r.error.message,"e");return;}
+    setInventory(function(p){return p.map(function(i){return i.id===item.id?r.data:i;});});
+    var entry={t:new Date().toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}),prod:prod?prod.name:"",sku:prod?prod.sku:"",type:movType,before:item.qty_available,after:newQty,diff:newQty-item.qty_available,note:movNote||""};
+    setMovHistory(function(p){return [entry,...p.slice(0,99)];});
+    await sb.from("sale_logs").insert({user_id:me.id,product_id:item.product_id,qty:Math.abs(newQty-item.qty_available),sale_price:0,source:movType==="salida"?"own_stock":movType});
+    var icons={entrada:"📥",salida:"📤",ajuste:"🔧"};
+    toast(icons[movType]+" "+movType.charAt(0).toUpperCase()+movType.slice(1),(prod?prod.name:"")+": "+item.qty_available+" → "+newQty+" u.","s");
+    setMovModal(null);setMovNote("");setMovQty(1);
+  }
+
   // ── EDITAR STOCK MANUALMENTE ─────────────────────────────────────────────────
   async function doEditStock() {
     if (editQty < 0) { toast("La cantidad no puede ser negativa","","e"); return; }
@@ -1301,7 +1325,8 @@ export default function App() {
                               <td>
                                 <div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
                                   <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
-                                  <button className="btn btn-xs b-in" onClick={function(){setEditStock(item);setEditQty(item.qty_available);}} title="Corregir stock"><Ic n="edit" s={11}/></button>
+                                  <button className="btn btn-xs b-in" onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}} title="Registrar movimiento"><Ic n="plus" s={11}/>Mov.</button>
+                                  <button className="btn btn-xs b-ghost" onClick={function(){setEditStock(item);setEditQty(item.qty_available);}} title="Ajuste manual"><Ic n="edit" s={11}/></button>
                                   <button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>
                                   <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
                                 </div>
@@ -2253,6 +2278,114 @@ export default function App() {
             <div className="mft">
               <button className="btn b-ghost" onClick={function(){setRetModal(null);}}>Cancelar</button>
               <button className="btn b-em" onClick={doReturnConsigna}><Ic n="undo" s={14}/>Confirmar devolución</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOVIMIENTO DE STOCK MODAL */}
+      {movModal&&(
+        <div className="ovl" onClick={function(e){if(e.target===e.currentTarget)setMovModal(null);}}>
+          <div className="mbox">
+            <div className="mhd">
+              <div className="mhd-t">📦 Movimiento de stock</div>
+              <button className="ic-btn" onClick={function(){setMovModal(null);}}><Ic n="x" s={16}/></button>
+            </div>
+            <div className="mbd">
+              {(function(){
+                var prod=movModal.products||products.find(function(p){return p.id===movModal.product_id;});
+                return (
+                  <div>
+                    {/* Product info */}
+                    <div className="row g12" style={{padding:"12px 14px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--brd)",marginBottom:16}}>
+                      <ProdThumb prod={prod} size={44}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:14}}>{prod?prod.name:""}</div>
+                        <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{prod?prod.sku:""} · Stock actual: <strong style={{color:"var(--in-d)"}}>{movModal.qty_available} u.</strong></div>
+                      </div>
+                    </div>
+
+                    {/* Type selector */}
+                    <div className="fld">
+                      <label className="fl">Tipo de movimiento</label>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                        {[
+                          {v:"entrada", lbl:"📥 Entrada",  bg:"var(--em-l)",  brd:"var(--em)",   col:"var(--em-d)"},
+                          {v:"salida",  lbl:"📤 Salida",   bg:"var(--cr-l)",  brd:"var(--cr)",   col:"var(--cr)"},
+                          {v:"ajuste",  lbl:"🔧 Ajuste",   bg:"var(--am-l)",  brd:"var(--am)",   col:"var(--am-d)"},
+                        ].map(function(opt){
+                          var sel=movType===opt.v;
+                          return (
+                            <div key={opt.v} onClick={function(){setMovType(opt.v);setMovQty(1);}} style={{padding:"10px 8px",borderRadius:12,border:"2px solid "+(sel?opt.brd:"var(--brd)"),background:sel?opt.bg:"var(--card)",textAlign:"center",cursor:"pointer",fontWeight:700,fontSize:12,color:sel?opt.col:"var(--t3)",transition:"all .15s"}}>
+                              {opt.lbl}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Quantity */}
+                    <div className="fld">
+                      <label className="fl">
+                        {movType==="ajuste"?"Nueva cantidad total":"Cantidad a "+(movType==="entrada"?"agregar":"retirar")}
+                      </label>
+                      <QtyControl val={movQty} set={setMovQty} min={movType==="ajuste"?0:1} max={movType==="salida"?movModal.qty_available:9999} big={true}/>
+                    </div>
+
+                    {/* Preview */}
+                    <div style={{background:movType==="entrada"?"var(--em-l)":movType==="salida"?"var(--cr-l)":"var(--am-l)",border:"1.5px solid "+(movType==="entrada"?"var(--em-t)":movType==="salida"?"var(--cr-t)":"var(--am-t)"),borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+                      <div className="row jb" style={{fontSize:13}}>
+                        <span style={{color:"var(--t2)"}}>Antes:</span>
+                        <span style={{fontFamily:"var(--mf)",fontWeight:700}}>{movModal.qty_available} u.</span>
+                      </div>
+                      <div className="row jb" style={{fontSize:13,marginTop:4}}>
+                        <span style={{color:"var(--t2)"}}>Después:</span>
+                        <span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:movType==="entrada"?"var(--em-d)":movType==="salida"?"var(--cr)":"var(--am-d)"}}>
+                          {movType==="entrada"?movModal.qty_available+movQty:movType==="salida"?Math.max(0,movModal.qty_available-movQty):movQty} u.
+                        </span>
+                      </div>
+                      {movType!=="ajuste"&&(
+                        <div className="row jb" style={{fontSize:12,marginTop:4,paddingTop:4,borderTop:"1px solid rgba(0,0,0,.06)"}}>
+                          <span style={{color:"var(--t3)"}}>Diferencia:</span>
+                          <span style={{fontFamily:"var(--mf)",fontWeight:700,color:movType==="entrada"?"var(--em-d)":"var(--cr)"}}>
+                            {movType==="entrada"?"+":"-"}{movQty} u.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Note */}
+                    <div className="fld">
+                      <label className="fl">Nota (opcional)</label>
+                      <input className="fi" placeholder="Ej: Compra al proveedor, merma, corrección..." value={movNote} onChange={function(e){setMovNote(e.target.value);}}/>
+                    </div>
+
+                    {/* History */}
+                    {movHistory.filter(function(m){var p=movModal.products||products.find(function(x){return x.id===movModal.product_id;});return p&&m.sku===p.sku;}).slice(0,5).length>0&&(
+                      <div style={{marginTop:8}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--t3)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Últimos movimientos</div>
+                        {movHistory.filter(function(m){var p=movModal.products||products.find(function(x){return x.id===movModal.product_id;});return p&&m.sku===p.sku;}).slice(0,5).map(function(m,i){
+                          var ico=m.type==="entrada"?"📥":m.type==="salida"?"📤":"🔧";
+                          var col=m.type==="entrada"?"var(--em-d)":m.type==="salida"?"var(--cr)":"var(--am-d)";
+                          return (
+                            <div key={i} className="row" style={{gap:10,padding:"7px 10px",borderRadius:8,background:"var(--bg)",marginBottom:5,fontSize:11}}>
+                              <span style={{flexShrink:0}}>{ico}</span>
+                              <span style={{color:"var(--t3)",flexShrink:0}}>{m.t}</span>
+                              <span style={{fontFamily:"var(--mf)",fontWeight:700,color:col,flexShrink:0}}>{m.diff>=0?"+":""}{m.diff}</span>
+                              <span style={{color:"var(--t2)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.note||m.type}</span>
+                              <span style={{fontFamily:"var(--mf)",color:"var(--t3)",flexShrink:0}}>{m.before}→{m.after}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="mft">
+              <button className="btn b-ghost" onClick={function(){setMovModal(null);}}>Cancelar</button>
+              <button className="btn b-pri" onClick={doMovimiento}><Ic n="check" s={14}/>Confirmar movimiento</button>
             </div>
           </div>
         </div>
