@@ -1625,7 +1625,14 @@ export default function App() {
           {/* ══ CONSIGNA ══ */}
           {tab==="consigna"&&(function(){
             var filt = consignSrch.toLowerCase();
-            var txEnviados  = transfers.filter(function(t){ return t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0; });
+            var txEnviados  = transfers.filter(function(t){
+              if (!(t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0)) return false;
+              // Exclude if recipient has 0 available (all sold)
+              var ri = recvInv.find(function(i){return i.product_id===t.product_id&&i.user_id===t.to_user_id;});
+              // If recvInv is loaded and shows 0 → hide (sold)
+              if (ri!=null && ri.qty_available===0) return false;
+              return true;
+            });
             var txRecibidos = transfers.filter(function(t){ return t.to_user_id===me.id&&t.status==="confirmed"&&t.qty>0; });
 
             // Group enviados by revendedora
