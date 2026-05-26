@@ -63,128 +63,163 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f0eeff;--bg2:#e8e4fb;--card:#fff;
-  --brd:#e0daf8;--brd2:#cfc8f5;
-  --t1:#1e1b4b;--t2:#4c4882;--t3:#8b87b8;--t4:#c0bde0;
-  --in:#7c3aed;--in-d:#6d28d9;--in-l:#ede9fe;--in-t:rgba(124,58,237,.12);
-  --em:#059669;--em-d:#047857;--em-l:#d1fae5;--em-t:rgba(5,150,105,.1);
-  --am:#d97706;--am-d:#b45309;--am-l:#fef3c7;--am-t:rgba(217,119,6,.1);
-  --cr:#dc2626;--cr-d:#b91c1c;--cr-l:#fee2e2;--cr-t:rgba(220,38,38,.08);
-  --wa:#25d366;--wa-d:#128c7e;--wa-l:#dcfce7;--wa-t:rgba(37,211,102,.1);
-  --grad:linear-gradient(135deg,#6d28d9 0%,#7c3aed 50%,#a855f7 100%);
-  --grad2:linear-gradient(135deg,#7c3aed,#6d28d9);
+  --bg:#f7f7fa;--bg2:#eeeef5;--card:#fff;
+  --brd:#e8e6f0;--brd2:#d8d4ec;
+  --t1:#1a1836;--t2:#4a4870;--t3:#9290b0;--t4:#c8c6de;
+  --in:#7c3aed;--in-d:#6d28d9;--in-l:#ede9fe;--in-t:rgba(124,58,237,.1);
+  --em:#00b87a;--em-d:#009a66;--em-l:#e6faf4;--em-t:rgba(0,184,122,.1);
+  --am:#ff7a00;--am-d:#e06a00;--am-l:#fff3e6;--am-t:rgba(255,122,0,.1);
+  --cr:#e63946;--cr-d:#c1121f;--cr-l:#fde8ea;--cr-t:rgba(230,57,70,.08);
+  --bl:#0096c7;--bl-d:#0077a3;--bl-l:#e0f4fb;--bl-t:rgba(0,150,199,.1);
+  --wa:#25d366;--wa-d:#128c7e;--wa-l:#e8fdf1;
+  --pu:#a855f7;--pu-d:#9333ea;
+  --grad:linear-gradient(135deg,#6d28d9 0%,#7c3aed 60%,#a855f7 100%);
   --hf:'Plus Jakarta Sans',sans-serif;--mf:'JetBrains Mono',monospace;
-  --r:12px;--r2:18px;--r3:24px;
-  --sh:0 2px 12px rgba(109,40,217,.07),0 1px 4px rgba(109,40,217,.05);
-  --sh2:0 8px 32px rgba(109,40,217,.13);
-  --sh3:0 20px 60px rgba(109,40,217,.18);
-  --tab:68px;
+  --r:14px;--r2:20px;--r3:28px;
+  --sh:0 2px 16px rgba(26,24,54,.06);
+  --sh2:0 8px 32px rgba(26,24,54,.12);
+  --sh3:0 20px 60px rgba(26,24,54,.18);
+  --tab:66px;
 }
 html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf);font-size:14px;-webkit-font-smoothing:antialiased}
-@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes toastIn{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
 @keyframes spin{to{transform:rotate(360deg)}}
+
 .app{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--bg)}
 .main{flex:1;overflow-y:auto;padding-bottom:var(--tab)}
 .spin{animation:spin 1s linear infinite}
-.hdr{background:var(--grad);padding:16px 18px 20px;flex-shrink:0;position:relative;overflow:hidden}
-.hdr::before{content:"";position:absolute;top:-30px;right:-30px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.07)}
-.hdr::after{content:"";position:absolute;bottom:-50px;left:-20px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.04)}
-.hdr-btn{width:42px;height:42px;border-radius:14px;border:none;background:rgba(255,255,255,.18);backdrop-filter:blur(8px);cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
-.hdr-btn:hover{background:rgba(255,255,255,.28)}
-.tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tab);background:#fff;display:flex;z-index:50;box-shadow:0 -1px 0 var(--brd),0 -8px 24px rgba(109,40,217,.08);border-radius:20px 20px 0 0}
+
+/* HEADER */
+.hdr{background:var(--card);padding:14px 18px;flex-shrink:0;border-bottom:1px solid var(--brd);position:relative}
+.hdr-btn{width:42px;height:42px;border-radius:14px;border:none;background:var(--bg2);cursor:pointer;color:var(--t2);display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.hdr-btn:hover{background:var(--brd);color:var(--t1)}
+
+/* TABBAR */
+.tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tab);background:var(--card);display:flex;z-index:50;box-shadow:0 -1px 0 var(--brd),0 -6px 20px rgba(26,24,54,.07);border-radius:20px 20px 0 0}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--t3);transition:all .2s;position:relative;padding:6px 2px 4px;min-width:0}
 .tab.on{color:var(--in)}
 .tab-bub{width:36px;height:26px;border-radius:13px;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .tab.on .tab-bub{background:var(--in-l)}
-.tab-lbl{font-size:10px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:56px}
-.tab-dot{position:absolute;top:4px;right:calc(50% - 20px);width:7px;height:7px;border-radius:50%;background:var(--cr);border:2px solid #fff}
+.tab-lbl{font-size:10px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58px}
+.tab-dot{position:absolute;top:4px;right:calc(50% - 20px);width:7px;height:7px;border-radius:50%;background:var(--cr);border:2px solid var(--card)}
+
+/* PAGE */
 .ph{padding:18px 16px 10px;display:flex;align-items:flex-end;justify-content:space-between}
 .ph-h{font-size:22px;font-weight:900;color:var(--t1);letter-spacing:-.03em}
 .ph-s{font-size:12px;color:var(--t3);margin-top:3px;font-weight:500}
 .pc{padding:0 14px 24px;animation:fadeUp .25s ease both}
-.card{background:#fff;border-radius:var(--r2);border:1.5px solid var(--brd);overflow:hidden;margin-bottom:12px;box-shadow:var(--sh)}
-.card-h{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1.5px solid var(--brd)}
-.card-title{font-size:14px;font-weight:800;color:var(--t1);display:flex;align-items:center;gap:9px;letter-spacing:-.01em}
+
+/* CARDS */
+.card{background:var(--card);border-radius:var(--r2);border:1px solid var(--brd);overflow:hidden;margin-bottom:12px;box-shadow:var(--sh)}
+.card-h{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--brd)}
+.card-title{font-size:14px;font-weight:800;color:var(--t1);display:flex;align-items:center;gap:9px}
 .card-ico{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800}
-.b-in{background:var(--in-t);color:var(--in-d)}.b-em{background:var(--em-t);color:var(--em-d)}.b-am{background:var(--am-t);color:var(--am-d)}.b-cr{background:var(--cr-t);color:var(--cr)}.b-sl{background:var(--bg2);color:var(--t2)}
+.b-in{background:var(--in-t);color:var(--in-d)}.b-em{background:var(--em-t);color:var(--em-d)}
+.b-am{background:var(--am-t);color:var(--am-d)}.b-cr{background:var(--cr-t);color:var(--cr)}.b-sl{background:var(--bg2);color:var(--t2)}
+
+/* TABLE */
 .tw{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:9px 12px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);border-bottom:1.5px solid var(--brd);background:var(--bg);font-weight:800;white-space:nowrap}
+th{padding:9px 12px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);border-bottom:1px solid var(--brd);background:var(--bg);font-weight:800;white-space:nowrap}
 td{padding:11px 12px;border-bottom:1px solid var(--brd);font-size:12px;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-.tr{cursor:default}.tr:hover td{background:#faf8ff}
+.tr{cursor:default}.tr:hover td{background:var(--bg)}
+
+/* FORMS */
 .fld{margin-bottom:14px}
-.fl{display:block;font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;letter-spacing:-.01em}
-.fi{width:100%;padding:12px 14px;border-radius:var(--r);border:2px solid var(--brd);background:#fff;color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;transition:all .15s;font-weight:500}
-.fi:focus{border-color:var(--in);box-shadow:0 0 0 4px var(--in-t)}
+.fl{display:block;font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px}
+.fi{width:100%;padding:12px 14px;border-radius:var(--r);border:1.5px solid var(--brd);background:var(--card);color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;transition:all .15s;font-weight:500}
+.fi:focus{border-color:var(--in);box-shadow:0 0 0 3px var(--in-t)}
 .fi-sel{appearance:none;cursor:pointer}
 .pw-wrap{position:relative}
 .pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t3);display:flex;padding:4px}
-.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:var(--r);border:none;cursor:pointer;font-family:var(--hf);font-size:12px;font-weight:800;transition:all .14s;white-space:nowrap;flex-shrink:0;letter-spacing:-.01em}
-.btn:disabled{opacity:.3;cursor:not-allowed}
-.btn:active:not(:disabled){transform:scale(.96)}
-.b-pri{background:var(--grad2);color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.35)}
-.b-em{background:var(--em-t);color:var(--em-d);border:1.5px solid rgba(5,150,105,.2)}.b-em:hover:not(:disabled){background:var(--em);color:#fff}
-.b-am{background:var(--am-t);color:var(--am-d);border:1.5px solid rgba(217,119,6,.2)}.b-am:hover:not(:disabled){background:var(--am);color:#fff}
-.b-cr{background:var(--cr-t);color:var(--cr);border:1.5px solid rgba(220,38,38,.2)}.b-cr:hover:not(:disabled){background:var(--cr);color:#fff}
-.b-in{background:var(--in-t);color:var(--in-d);border:1.5px solid rgba(124,58,237,.2)}.b-in:hover:not(:disabled){background:var(--in);color:#fff}
-.b-ghost{background:#fff;border:2px solid var(--brd2);color:var(--t2)}.b-ghost:hover{background:var(--bg);color:var(--t1)}
-.b-wa{background:var(--wa-t);color:var(--wa-d);border:1.5px solid rgba(37,211,102,.25)}.b-wa:hover:not(:disabled){background:var(--wa);color:#fff}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:var(--r);border:none;cursor:pointer;font-family:var(--hf);font-size:12px;font-weight:800;transition:all .14s;white-space:nowrap;flex-shrink:0}
+.btn:disabled{opacity:.3;cursor:not-allowed}.btn:active:not(:disabled){transform:scale(.96)}
+.b-pri{background:linear-gradient(135deg,var(--in),var(--in-d));color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.3)}
+.b-em{background:var(--em-l);color:var(--em-d);border:1px solid rgba(0,184,122,.2)}.b-em:hover:not(:disabled){background:var(--em);color:#fff}
+.b-am{background:var(--am-l);color:var(--am-d);border:1px solid rgba(255,122,0,.2)}.b-am:hover:not(:disabled){background:var(--am);color:#fff}
+.b-cr{background:var(--cr-l);color:var(--cr);border:1px solid rgba(230,57,70,.2)}.b-cr:hover:not(:disabled){background:var(--cr);color:#fff}
+.b-in{background:var(--in-l);color:var(--in-d);border:1px solid rgba(124,58,237,.2)}.b-in:hover:not(:disabled){background:var(--in);color:#fff}
+.b-ghost{background:var(--card);border:1.5px solid var(--brd2);color:var(--t2)}.b-ghost:hover{background:var(--bg);color:var(--t1)}
+.b-wa{background:var(--wa-l);color:var(--wa-d);border:1px solid rgba(37,211,102,.2)}.b-wa:hover:not(:disabled){background:var(--wa);color:#fff}
 .btn-xs{padding:5px 10px;font-size:11px;border-radius:9px}
-.cta{width:100%;padding:16px;border-radius:var(--r2);border:none;font-family:var(--hf);font-size:15px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;margin-top:16px;transition:all .16s;letter-spacing:-.02em}
+.cta{width:100%;padding:16px;border-radius:var(--r2);border:none;font-family:var(--hf);font-size:15px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;margin-top:16px;transition:all .16s}
 .cta:active:not(:disabled){transform:scale(.98)}.cta:disabled{opacity:.3;cursor:not-allowed}
-.cta-am{background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 6px 20px rgba(245,158,11,.35)}
-.cta-em{background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 6px 20px rgba(16,185,129,.35)}
-.cta-wa{background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;box-shadow:0 6px 20px rgba(37,211,102,.35)}
-.cta-in{background:var(--grad2);color:#fff;box-shadow:0 6px 20px rgba(124,58,237,.4)}
-.ovl{position:fixed;inset:0;background:rgba(30,27,75,.55);backdrop-filter:blur(10px);z-index:200;display:flex;align-items:flex-end;justify-content:center;animation:fadeUp .2s ease}
-.mbox{background:#fff;border-radius:var(--r3) var(--r3) 0 0;width:100%;max-width:600px;max-height:93vh;overflow-y:auto;box-shadow:var(--sh3);animation:fadeUp .3s cubic-bezier(.16,1,.3,1)}
-.mhd{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 14px;border-bottom:2px solid var(--brd)}
-.mhd-t{font-size:17px;font-weight:900;color:var(--t1);letter-spacing:-.02em}
-.mbd{padding:18px 20px}.mft{padding:14px 20px;border-top:2px solid var(--brd);display:flex;justify-content:flex-end;gap:10px}
+.cta-am{background:linear-gradient(135deg,#ff7a00,#e06a00);color:#fff;box-shadow:0 6px 20px rgba(255,122,0,.3)}
+.cta-em{background:linear-gradient(135deg,#00b87a,#009a66);color:#fff;box-shadow:0 6px 20px rgba(0,184,122,.3)}
+.cta-wa{background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;box-shadow:0 6px 20px rgba(37,211,102,.3)}
+.cta-in{background:linear-gradient(135deg,var(--in),var(--in-d));color:#fff;box-shadow:0 6px 20px rgba(124,58,237,.3)}
+
+/* MODAL */
+.ovl{position:fixed;inset:0;background:rgba(26,24,54,.5);backdrop-filter:blur(10px);z-index:200;display:flex;align-items:flex-end;justify-content:center;animation:fadeUp .2s ease}
+.mbox{background:var(--card);border-radius:var(--r3) var(--r3) 0 0;width:100%;max-width:600px;max-height:93vh;overflow-y:auto;box-shadow:var(--sh3);animation:fadeUp .3s cubic-bezier(.16,1,.3,1)}
+.mhd{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 14px;border-bottom:1.5px solid var(--brd)}
+.mhd-t{font-size:17px;font-weight:900;color:var(--t1)}
+.mbd{padding:18px 20px}.mft{padding:14px 20px;border-top:1.5px solid var(--brd);display:flex;justify-content:flex-end;gap:10px}
 .ic-btn{width:38px;height:38px;border-radius:12px;border:none;background:var(--bg);cursor:pointer;color:var(--t3);display:flex;align-items:center;justify-content:center;transition:all .13s}
 .ic-btn:hover{background:var(--brd);color:var(--t1)}
-.login-bg{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--grad);padding:20px}
-.lbox{background:#fff;border-radius:var(--r3);width:100%;max-width:420px;padding:36px 28px;box-shadow:var(--sh3)}
+
+/* LOGIN */
+.login-bg{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#6d28d9 0%,#a855f7 100%);padding:20px}
+.lbox{background:var(--card);border-radius:var(--r3);width:100%;max-width:420px;padding:36px 28px;box-shadow:var(--sh3)}
 .lbox.shake{animation:shake .38s ease}
-.ltabs{display:flex;border-radius:var(--r);overflow:hidden;border:2px solid var(--brd);padding:3px;background:var(--bg);margin-bottom:22px}
-.ltab{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:800;cursor:pointer;border-radius:9px;color:var(--t3);transition:all .15s}
-.ltab.on{background:#fff;color:var(--in-d);box-shadow:var(--sh)}
-.err-box{background:var(--cr-l);border:2px solid rgba(220,38,38,.2);border-radius:var(--r);padding:11px 14px;font-size:13px;color:var(--cr);margin-bottom:14px;display:flex;align-items:center;gap:8px;font-weight:600}
-.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
-.metric-card{background:#fff;border-radius:var(--r2);border:1.5px solid var(--brd);padding:18px;box-shadow:var(--sh);text-align:center;position:relative;overflow:hidden}
-.metric-card::before{content:"";position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;background:var(--in-t)}
-.metric-val{font-size:32px;font-weight:900;font-family:var(--mf);color:var(--in-d);line-height:1;position:relative}
-.metric-lbl{font-size:11px;color:var(--t3);margin-top:5px;font-weight:700;position:relative}
-.ql-tabs{display:flex;border-radius:var(--r);overflow:hidden;border:2px solid var(--brd);background:var(--bg);padding:3px;margin-bottom:16px}
-.ql-tab{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:800;cursor:pointer;color:var(--t3);border-radius:9px;transition:all .15s}
-.ql-tab.on{background:var(--grad2);color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.3)}
-.prod-card{display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:var(--r2);border:2px solid var(--brd);background:#fff;cursor:pointer;margin-bottom:9px;transition:all .15s;box-shadow:var(--sh)}
+.ltabs{display:flex;border-radius:var(--r);overflow:hidden;border:1.5px solid var(--brd);padding:3px;background:var(--bg);margin-bottom:22px}
+.ltab{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:800;cursor:pointer;border-radius:10px;color:var(--t3);transition:all .15s}
+.ltab.on{background:var(--card);color:var(--in-d);box-shadow:var(--sh)}
+.err-box{background:var(--cr-l);border:1.5px solid rgba(230,57,70,.2);border-radius:var(--r);padding:11px 14px;font-size:13px;color:var(--cr);margin-bottom:14px;display:flex;align-items:center;gap:8px;font-weight:600}
+
+/* METRIC CARDS */
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.metric-card{background:var(--card);border-radius:var(--r2);border:1px solid var(--brd);padding:16px;box-shadow:var(--sh);text-align:center}
+.metric-val{font-size:30px;font-weight:900;font-family:var(--mf);color:var(--in-d);line-height:1}
+.metric-lbl{font-size:11px;color:var(--t3);margin-top:4px;font-weight:700}
+
+/* QUICK TABS */
+.ql-tabs{display:flex;border-radius:var(--r);overflow:hidden;border:1.5px solid var(--brd);background:var(--bg);padding:3px;margin-bottom:16px}
+.ql-tab{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:800;cursor:pointer;color:var(--t3);border-radius:10px;transition:all .15s}
+.ql-tab.on{background:linear-gradient(135deg,var(--in),var(--in-d));color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.25)}
+.prod-card{display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:var(--r2);border:1.5px solid var(--brd);background:var(--card);cursor:pointer;margin-bottom:9px;transition:all .15s;box-shadow:var(--sh)}
 .prod-card:active{transform:scale(.98)}.prod-card.sel{border-color:var(--in);background:var(--in-l)}
-.step-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0;border:2px solid var(--brd);color:var(--t3);background:#fff;transition:all .2s}
-.step-dot.on{background:var(--grad2);border-color:var(--in);color:#fff;box-shadow:0 0 0 5px var(--in-t)}
+
+/* SEND */
+.step-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0;border:2px solid var(--brd);color:var(--t3);background:var(--card);transition:all .2s}
+.step-dot.on{background:linear-gradient(135deg,var(--in),var(--in-d));border-color:var(--in);color:#fff;box-shadow:0 0 0 4px var(--in-t)}
 .step-dot.done{background:var(--em);border-color:var(--em);color:#fff}
 .step-line{flex:1;height:2px;background:var(--brd);margin:15px 8px 0;transition:background .2s}.step-line.done{background:var(--em)}
-.ct-card{display:flex;align-items:center;gap:13px;padding:15px 17px;border-radius:var(--r2);border:2px solid var(--brd);background:#fff;cursor:pointer;margin-bottom:11px;transition:all .16s;box-shadow:var(--sh)}
+.ct-card{display:flex;align-items:center;gap:13px;padding:15px 17px;border-radius:var(--r2);border:1.5px solid var(--brd);background:var(--card);cursor:pointer;margin-bottom:11px;transition:all .16s;box-shadow:var(--sh)}
 .ct-card:active{transform:scale(.98)}.ct-card.sel{border-color:var(--em);background:var(--em-l)}
-.sic{display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:var(--r);border:2px solid var(--brd);background:#fff;margin-bottom:9px;box-shadow:var(--sh)}
-.cart-box{background:var(--em-l);border:2px solid rgba(5,150,105,.2);border-radius:var(--r);padding:14px 16px;margin:14px 0}
-.drop-z{border:3px dashed var(--brd2);border-radius:var(--r2);padding:44px 24px;text-align:center;cursor:pointer;transition:all .18s;background:var(--bg);position:relative;overflow:hidden}
+.sic{display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:var(--r);border:1.5px solid var(--brd);background:var(--card);margin-bottom:9px;box-shadow:var(--sh)}
+.cart-box{background:var(--em-l);border:1.5px solid rgba(0,184,122,.2);border-radius:var(--r);padding:14px 16px;margin:14px 0}
+
+/* IMPORT / PHOTO */
+.drop-z{border:2px dashed var(--brd2);border-radius:var(--r2);padding:44px 24px;text-align:center;cursor:pointer;transition:all .18s;background:var(--bg);position:relative;overflow:hidden}
 .drop-z:hover{border-color:var(--in);background:var(--in-l)}.drop-z input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .prev-row{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;margin-bottom:5px;font-size:12px}
-.prev-ok{background:var(--em-l);border:1.5px solid rgba(5,150,105,.2)}.prev-err{background:var(--cr-l);border:1.5px solid rgba(220,38,38,.2)}
-.photo-zone{border:3px dashed var(--brd2);border-radius:var(--r);padding:20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg);position:relative;overflow:hidden;margin-bottom:10px}
+.prev-ok{background:var(--em-l);border:1px solid rgba(0,184,122,.2)}.prev-err{background:var(--cr-l);border:1px solid rgba(230,57,70,.2)}
+.photo-zone{border:2px dashed var(--brd2);border-radius:var(--r);padding:20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg);position:relative;overflow:hidden;margin-bottom:10px}
 .photo-zone:hover{border-color:var(--in);background:var(--in-l)}.photo-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.wa-banner{width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-radius:var(--r2);background:linear-gradient(135deg,#25d366,#128c7e);border:none;cursor:pointer;margin-bottom:14px;box-shadow:0 6px 20px rgba(37,211,102,.25);transition:all .15s}
+
+/* WA BANNER */
+.wa-banner{width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-radius:var(--r2);background:linear-gradient(135deg,#25d366,#128c7e);border:none;cursor:pointer;margin-bottom:14px;box-shadow:0 4px 16px rgba(37,211,102,.2);transition:all .15s}
 .wa-banner:active{transform:scale(.98)}
-.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:var(--grad);gap:16px}
-.loading-spinner{width:44px;height:44px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite}
+
+/* LOADING */
+.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#6d28d9,#a855f7);gap:16px}
+.loading-spinner{width:44px;height:44px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite}
+
+/* EMPTY */
 .empty{text-align:center;padding:40px 20px;color:var(--t3);font-size:13px;line-height:1.8;font-weight:500}
+
+/* TOAST */
 .toast-wrap{position:fixed;bottom:calc(var(--tab) + 12px);left:14px;right:14px;z-index:500;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .toast-wrap > *{pointer-events:all;animation:toastIn .3s cubic-bezier(.16,1,.3,1)}
+
+/* MISC */
 .row{display:flex;align-items:center}.jb{justify-content:space-between}.g8{gap:8px}.g12{gap:12px}
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:4px}
 `
@@ -1145,21 +1180,21 @@ export default function App() {
         {/* HEADER */}
         {/* HEADER */}
         <div className="hdr">
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative",zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div style={{cursor:"pointer",flex:1,minWidth:0}} onClick={function(){setTab("stock");}}>
-              <div style={{fontSize:19,fontWeight:900,color:"#fff",letterSpacing:"-.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              <div style={{fontSize:18,fontWeight:900,color:"var(--t1)",letterSpacing:"-.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                 ¡Hola, {me.name.split(" ")[0]}! 👋
               </div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2,fontWeight:600}}>
+              <div style={{fontSize:11,color:"var(--t3)",marginTop:2,fontWeight:600}}>
                 {me.role==="superadmin"?"👑 Administrador":"Usuario"}
               </div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              <div style={{position:"relative"}} onClick={function(){setTab("contacts");}}>
+              <div style={{position:"relative",cursor:"pointer"}} onClick={function(){setTab("contacts");}}>
                 <button className="hdr-btn"><Ic n="bell" s={20}/></button>
-                {totalBadge>0&&<div style={{position:"absolute",top:-3,right:-3,width:18,height:18,background:"#ff4757",borderRadius:"50%",fontSize:9,fontWeight:900,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid transparent"}}>{totalBadge}</div>}
+                {totalBadge>0&&<div style={{position:"absolute",top:-2,right:-2,width:18,height:18,background:"var(--cr)",borderRadius:"50%",fontSize:9,fontWeight:900,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--card)"}}>{totalBadge}</div>}
               </div>
-              <button className="hdr-btn" onClick={doLogout}><Ic n="logout" s={19}/></button>
+              <button className="hdr-btn" onClick={doLogout}><Ic n="logout" s={18}/></button>
             </div>
           </div>
         </div>
@@ -1170,16 +1205,24 @@ export default function App() {
           {tab==="stock"&&(function(){
             var totalDisp = myStock.reduce(function(s,i){return s+i.qty_available;},0);
             var totalVal  = myStock.reduce(function(s,i){var p=i.products||products.find(function(x){return x.id===i.product_id;});return s+(p?parseFloat(p.price||0)*i.qty_available:0);},0);
-            var pendTxCount = pendingTx.length;
             var consignaEnv = transfers.filter(function(t){return t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0;}).length;
+
+            var TILES = [
+              {id:"consigna", lbl:"Consigna",      sub:consignaEnv>0?consignaEnv+" en consigna":"Sin consignas", ico:"users",  bg:"#ff7a00", badge:consignaEnv>0?consignaEnv:null},
+              {id:"enviar",   lbl:"Enviar",         sub:"Transferir productos",                                    ico:"send",   bg:"#7c3aed"},
+              {id:"catalog",  lbl:"Catálogo",       sub:"Lista de precios",                                        ico:"list",   bg:"#0096c7"},
+              {id:"contacts", lbl:"Red",            sub:"Contactos y notif.",                                      ico:"clock",  bg:"#a855f7", badge:totalBadge>0?totalBadge:null},
+              {id:"ventas",   lbl:"Ventas",         sub:"Ver mis ventas",                                          ico:"chart",  bg:"#e63946"},
+              {id:"cargar",   lbl:"Cargar Stock",   sub:"Agregar unidades",                                        ico:"plus",   bg:"#00b87a"},
+            ];
+
             return (
               <div>
-                {/* Dashboard grid */}
                 <div style={{padding:"14px 14px 0"}}>
-                  {/* WA banner */}
-                  <button className="wa-banner" style={{marginBottom:14}} onClick={function(){setShareM(true);setShareSel({});}}>
+                  {/* WA Banner */}
+                  <button className="wa-banner" onClick={function(){setShareM(true);setShareSel({});}}>
                     <div className="row g12">
-                      <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ic n="wa" s={22}/></div>
+                      <div style={{width:44,height:44,borderRadius:14,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ic n="wa" s={22}/></div>
                       <div style={{textAlign:"left"}}>
                         <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>Compartir por WhatsApp</div>
                         <div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:1}}>Selecciona productos y enviá con fotos</div>
@@ -1188,106 +1231,98 @@ export default function App() {
                     <div style={{color:"rgba(255,255,255,.7)"}}><Ic n="send" s={18}/></div>
                   </button>
 
-                  {/* Action grid - 2x3 */}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-                    {[
-                      {ico:"plus",    lbl:"Cargar Stock",  sub:"Agregar unidades",      bg:"linear-gradient(135deg,#059669,#047857)",  tab2:"cargar",  badge:null},
-                      {ico:"send",    lbl:"Enviar",        sub:"Transferir productos",   bg:"linear-gradient(135deg,#7c3aed,#6d28d9)",  tab2:"enviar",  badge:null},
-                      {ico:"users",   lbl:"Consigna",      sub:consignaEnv+" en consigna", bg:"linear-gradient(135deg,#d97706,#b45309)", tab2:"consigna",badge:consignaEnv>0?consignaEnv:null},
-                      {ico:"chart",   lbl:"Ventas",        sub:"Ver mis ventas",         bg:"linear-gradient(135deg,#dc2626,#b91c1c)",  tab2:"ventas",  badge:null},
-                      {ico:"list",    lbl:"Catálogo",      sub:"Lista de precios",       bg:"linear-gradient(135deg,#0ea5e9,#0284c7)",  tab2:isAdmin?"catalog":"precios", badge:null},
-                      {ico:"clock",   lbl:"Red",           sub:"Contactos y notif.",     bg:"linear-gradient(135deg,#7c3aed,#a855f7)",  tab2:"contacts",badge:totalBadge>0?totalBadge:null},
-                    ].map(function(item){
-                      return (
-                        <div key={item.tab2} onClick={function(){setTab(item.tab2);}} style={{background:item.bg,borderRadius:18,padding:"18px 16px",cursor:"pointer",position:"relative",overflow:"hidden",minHeight:90,display:"flex",flexDirection:"column",justifyContent:"space-between",boxShadow:"0 6px 20px rgba(0,0,0,.15)",transition:"transform .15s"}}
-                          onMouseDown={function(e){e.currentTarget.style.transform="scale(.97)";}}
-                          onMouseUp={function(e){e.currentTarget.style.transform="scale(1)";}}
-                          onTouchStart={function(e){e.currentTarget.style.transform="scale(.97)";}}
-                          onTouchEnd={function(e){e.currentTarget.style.transform="scale(1)";}}>
-                          {/* Background decoration */}
-                          <div style={{position:"absolute",top:-16,right:-16,width:70,height:70,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
-                          <div style={{position:"absolute",bottom:-20,left:-10,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.05)"}}/>
-                          {/* Badge */}
-                          {item.badge&&<div style={{position:"absolute",top:10,right:10,background:"#ff4757",borderRadius:20,minWidth:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#fff",padding:"0 6px"}}>{item.badge}</div>}
-                          {/* Icon */}
-                          <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",flexShrink:0}}>
-                            <Ic n={item.ico} s={20}/>
-                          </div>
-                          <div>
-                            <div style={{fontSize:14,fontWeight:900,color:"#fff",letterSpacing:"-.01em"}}>{item.lbl}</div>
-                            <div style={{fontSize:10,color:"rgba(255,255,255,.75)",marginTop:2,fontWeight:500}}>{item.sub}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Stock summary card */}
-                  <div style={{background:"#fff",borderRadius:18,border:"1.5px solid var(--brd)",padding:"16px",marginBottom:14,boxShadow:"var(--sh)"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  {/* Mi Stock summary */}
+                  <div style={{background:var(--card),borderRadius:20,border:"1px solid var(--brd)",padding:"16px",marginBottom:14,boxShadow:"var(--sh)"}}>
+                    <div className="row jb" style={{marginBottom:12}}>
                       <div style={{fontWeight:900,fontSize:15,color:"var(--t1)"}}>Mi Stock</div>
-                      <span className="badge b-am">{myStock.length} productos</span>
+                      <span style={{background:"var(--in-l)",color:"var(--in-d)",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:800}}>{myStock.length} productos</span>
                     </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
                       {[
-                        {val:myStock.length, lbl:"Productos",  color:"var(--in-d)",  bg:"var(--in-l)"},
-                        {val:totalDisp,      lbl:"Unidades",   color:"var(--am-d)",  bg:"var(--am-l)"},
-                        {val:fmtARS(totalVal).replace("$ ","$"), lbl:"Valor",color:"var(--em-d)",bg:"var(--em-l)"},
+                        {ico:"📦", lbl:"PRODUCTOS",   val:myStock.length,    color:"var(--in-d)",  bg:"var(--in-l)"},
+                        {ico:"📊", lbl:"UNIDADES",    val:totalDisp,         color:"var(--am-d)",  bg:"var(--am-l)"},
+                        {ico:"💰", lbl:"VALOR TOTAL", val:fmtARS(totalVal),  color:"var(--em-d)",  bg:"var(--em-l)"},
                       ].map(function(m,i){
                         return (
-                          <div key={i} style={{background:m.bg,borderRadius:12,padding:"10px 8px",textAlign:"center"}}>
-                            <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:i===2?11:18,color:m.color,lineHeight:1}}>{m.val}</div>
-                            <div style={{fontSize:9,color:m.color,fontWeight:700,marginTop:3,textTransform:"uppercase",letterSpacing:".05em"}}>{m.lbl}</div>
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 14px",borderRadius:14,background:m.bg}}>
+                            <div style={{fontSize:22,width:40,textAlign:"center"}}>{m.ico}</div>
+                            <div style={{flex:1}}>
+                              <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:i===2?15:22,color:m.color,lineHeight:1}}>{m.val}</div>
+                            </div>
+                            <div style={{fontSize:9,fontWeight:800,color:m.color,textTransform:"uppercase",letterSpacing:".08em",opacity:.7}}>{m.lbl}</div>
                           </div>
                         );
                       })}
                     </div>
+                  </div>
 
-                    {/* Pending confirmations alert */}
-                    {pendTxCount>0&&(
-                      <div style={{background:"var(--am-l)",border:"1.5px solid var(--am-t)",borderRadius:12,padding:"10px 12px",marginBottom:10,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={function(){setTab("stock");}}>
-                        <div style={{fontSize:20,flexShrink:0}}>🔔</div>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:700,fontSize:12,color:"var(--am-d)"}}>{pendTxCount} envío{pendTxCount!==1?"s":""} esperando confirmación</div>
-                          <div style={{fontSize:10,color:"var(--am-d)",marginTop:1}}>Aceptá o rechazá los productos recibidos</div>
-                        </div>
-                        <Ic n="send" s={16}/>
+                  {/* Pending confirmations */}
+                  {pendingTx.length>0&&(
+                    <div style={{background:"#fff3e6",border:"1.5px solid rgba(255,122,0,.25)",borderRadius:16,padding:"12px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{fontSize:22}}>🔔</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:800,fontSize:13,color:"var(--am-d)"}}>{pendingTx.length} envío{pendingTx.length!==1?"s":""} esperando confirmación</div>
+                        <div style={{fontSize:11,color:"var(--am-d)",opacity:.8,marginTop:1}}>Ir a Stock para confirmar</div>
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Search bar */}
-                    <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar en mi stock..."/>
+                  {/* Action tiles */}
+                  <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+                    {TILES.map(function(tile){
+                      var tabId = !isAdmin && tile.id==="catalog" ? "precios" : tile.id;
+                      return (
+                        <div key={tile.id} onClick={function(){setTab(tabId);}}
+                          style={{display:"flex",alignItems:"center",gap:16,padding:"16px 18px",borderRadius:18,background:tile.bg,cursor:"pointer",position:"relative",overflow:"hidden",transition:"transform .13s",boxShadow:"0 4px 16px rgba(0,0,0,.12)"}}
+                          onTouchStart={function(e){e.currentTarget.style.transform="scale(.98)";}}
+                          onTouchEnd={function(e){e.currentTarget.style.transform="scale(1)";}}>
+                          {/* Decorative circle */}
+                          <div style={{position:"absolute",right:-20,top:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.1)"}}/>
+                          <div style={{width:44,height:44,borderRadius:14,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#fff"}}>
+                            <Ic n={tile.ico} s={22}/>
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:15,fontWeight:900,color:"#fff",letterSpacing:"-.01em"}}>{tile.lbl}</div>
+                            <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>{tile.sub}</div>
+                          </div>
+                          {tile.badge&&<div style={{background:"#ff4757",borderRadius:20,minWidth:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#fff",padding:"0 7px",flexShrink:0}}>{tile.badge}</div>}
+                          <div style={{color:"rgba(255,255,255,.5)",flexShrink:0}}><Ic n="send" s={16}/></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                    {/* Stock list */}
-                    {stockFiltered.length===0
-                      ?<div style={{textAlign:"center",padding:"20px",color:"var(--t3)",fontSize:13}}>{srchStock?"Sin resultados.":"Sin existencias. Cargá productos en Cargar."}</div>
-                      :<div className="tw"><table>
+                {/* Stock table */}
+                <div style={{padding:"0 14px 24px"}}>
+                  <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar en mi stock..."/>
+                  {stockFiltered.length>0&&(
+                    <div className="card">
+                      <div className="card-h"><div className="card-title">Stock disponible</div><span className="badge b-am">{stockFiltered.length}</span></div>
+                      <div className="tw"><table>
                         <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
                         <tbody>{stockFiltered.map(function(item){
                           var p=item.products||products.find(function(x){return x.id===item.product_id;});
                           if(!p) return null;
-                          return (
-                            <tr key={item.id} className="tr">
-                              <td><ProdThumb prod={p} size={36}/></td>
-                              <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:11,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:600}}>{p.sku}</span></td>
-                              <td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td>
-                              <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td>
-                              <td><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--em-d)",fontSize:14}}>{item.qty_available}</span></td>
-                              <td>
-                                <div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
-                                  <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
-                                  <button className="btn btn-xs b-in" onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}} title="Registrar movimiento"><Ic n="plus" s={11}/>Mov.</button>
-                                  <button className="btn btn-xs b-ghost" onClick={function(){setEditStock(item);setEditQty(item.qty_available);}} title="Ajuste manual"><Ic n="edit" s={11}/></button>
-                                  <button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>
-                                  <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
+                          return (<tr key={item.id} className="tr">
+                            <td><ProdThumb prod={p} size={36}/></td>
+                            <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:10,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:700}}>{p.sku}</span></td>
+                            <td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td>
+                            <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td>
+                            <td><span style={{fontFamily:"var(--mf)",fontWeight:900,color:"var(--em-d)",fontSize:15}}>{item.qty_available}</span></td>
+                            <td><div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
+                              <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
+                              <button className="btn btn-xs b-in" onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}><Ic n="plus" s={11}/>Mov.</button>
+                              <button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>
+                              <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
+                            </div></td>
+                          </tr>);
                         })}</tbody>
                       </table></div>
-                    }
-                  </div>
+                    </div>
+                  )}
+                  {stockFiltered.length===0&&srchStock&&<div className="empty">Sin resultados para "{srchStock}"</div>}
+                  {myStock.length===0&&!srchStock&&<div className="empty" style={{padding:"30px 0"}}><div style={{fontSize:40,marginBottom:8}}>📦</div>Sin existencias. Usá los tiles de arriba para cargar.</div>}
                 </div>
               </div>
             );
