@@ -1203,18 +1203,70 @@ export default function App() {
 
           {/* ══ STOCK ══ */}
           {tab==="stock"&&(function(){
-            var totalDisp = myStock.reduce(function(s,i){return s+i.qty_available;},0);
-            var totalVal  = myStock.reduce(function(s,i){var p=i.products||products.find(function(x){return x.id===i.product_id;});return s+(p?parseFloat(p.price||0)*i.qty_available:0);},0);
+            // ── Split stock: own vs received in consigna ──────────────────────
+            var recvTxIds = transfers
+              .filter(function(t){ return t.to_user_id===me.id && t.status==="confirmed" && t.qty>0; })
+              .map(function(t){ return t.product_id; });
+
+            // Own stock = in inventory AND not received via transfer
+            var ownStock = myStock.filter(function(i){
+              return !recvTxIds.includes(i.product_id);
+            });
+            // Consignment received = in inventory AND received via confirmed transfer
+            var consRecv = myStock.filter(function(i){
+              return recvTxIds.includes(i.product_id);
+            });
+
+            var totalVal = ownStock.reduce(function(s,i){
+              var p=i.products||products.find(function(x){return x.id===i.product_id;});
+              return s+(p?parseFloat(p.price||0)*i.qty_available:0);
+            },0);
             var consignaEnv = transfers.filter(function(t){return t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0;}).length;
 
-            var TILES = [
-              {id:"consigna", lbl:"Consigna",      sub:consignaEnv>0?consignaEnv+" en consigna":"Sin consignas", ico:"users",  bg:"#ff7a00", badge:consignaEnv>0?consignaEnv:null},
-              {id:"enviar",   lbl:"Enviar",         sub:"Transferir productos",                                    ico:"send",   bg:"#7c3aed"},
-              {id:"catalog",  lbl:"Catálogo",       sub:"Lista de precios",                                        ico:"list",   bg:"#0096c7"},
-              {id:"contacts", lbl:"Red",            sub:"Contactos y notif.",                                      ico:"clock",  bg:"#a855f7", badge:totalBadge>0?totalBadge:null},
-              {id:"ventas",   lbl:"Ventas",         sub:"Ver mis ventas",                                          ico:"chart",  bg:"#e63946"},
-              {id:"cargar",   lbl:"Cargar Stock",   sub:"Agregar unidades",                                        ico:"plus",   bg:"#00b87a"},
-            ];
+            var q = srchStock.toLowerCase();
+            function filtP(list){ return list.filter(function(i){
+              var p=i.products||products.find(function(x){return x.id===i.product_id;});
+              if(!p) return false;
+              return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q)||(p.category||"").toLowerCase().includes(q);
+            });}
+            var ownFilt  = filtP(ownStock);
+            var recvFilt = filtP(consRecv);
+
+            // ── Stock row renderer ─────────────────────────────────────────────
+            function StockRow(item, showSender){
+              var p=item.products||products.find(function(x){return x.id===item.product_id;});
+              if(!p) return null;
+              // Find who sent this (for consign received)
+              var senderTx = showSender ? transfers.find(function(t){
+                return t.to_user_id===me.id && t.product_id===item.product_id && t.status==="confirmed";
+              }) : null;
+              var sender = senderTx ? senderTx.from_user : null;
+              return (
+                <tr key={item.id} className="tr">
+                  <td><ProdThumb prod={p} size={36}/></td>
+                  <td>
+                    <span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:10,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:700}}>{p.sku}</span>
+                    {sender&&(
+                      <div style={{marginTop:4,display:"flex",alignItems:"center",gap:4}}>
+                        <div style={{width:14,height:14,borderRadius:"50%",background:sender.color||"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#fff"}}>{sender.name?sender.name.charAt(0).toUpperCase():"?"}</div>
+                        <span style={{fontSize:9,color:"var(--t3)",fontWeight:600}}>de {sender.name}</span>
+                      </div>
+                    )}
+                  </td>
+                  <td><div style={{fontWeight:600,fontSize:12,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td>
+                  <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td>
+                  <td><span style={{fontFamily:"var(--mf)",fontWeight:900,color:showSender?"var(--am-d)":"var(--em-d)",fontSize:15}}>{item.qty_available}</span></td>
+                  <td>
+                    <div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
+                      <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
+                      <button className="btn btn-xs b-in" onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}><Ic n="plus" s={11}/>Mov.</button>
+                      {!showSender&&<button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>}
+                      <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            }
 
             return (
               <div>
@@ -1231,98 +1283,114 @@ export default function App() {
                     <div style={{color:"rgba(255,255,255,.7)"}}><Ic n="send" s={18}/></div>
                   </button>
 
-                  {/* Mi Stock summary */}
-                  <div style={{background:var(--card),borderRadius:20,border:"1px solid var(--brd)",padding:"16px",marginBottom:14,boxShadow:"var(--sh)"}}>
-                    <div className="row jb" style={{marginBottom:12}}>
-                      <div style={{fontWeight:900,fontSize:15,color:"var(--t1)"}}>Mi Stock</div>
-                      <span style={{background:"var(--in-l)",color:"var(--in-d)",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:800}}>{myStock.length} productos</span>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                      {[
-                        {ico:"📦", lbl:"PRODUCTOS",   val:myStock.length,    color:"var(--in-d)",  bg:"var(--in-l)"},
-                        {ico:"📊", lbl:"UNIDADES",    val:totalDisp,         color:"var(--am-d)",  bg:"var(--am-l)"},
-                        {ico:"💰", lbl:"VALOR TOTAL", val:fmtARS(totalVal),  color:"var(--em-d)",  bg:"var(--em-l)"},
-                      ].map(function(m,i){
+                  {/* Summary metrics */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+                    {[
+                      {ico:"📦",lbl:"Propios",  val:ownStock.reduce(function(s,i){return s+i.qty_available;},0), bg:"var(--in-l)",  col:"var(--in-d)"},
+                      {ico:"🤝",lbl:"Consigna", val:consRecv.reduce(function(s,i){return s+i.qty_available;},0), bg:"var(--am-l)",  col:"var(--am-d)"},
+                      {ico:"💰",lbl:"Valor",    val:fmtARS(totalVal).replace("$ ","$"),                           bg:"var(--em-l)",  col:"var(--em-d)"},
+                    ].map(function(m,i){
+                      return (
+                        <div key={i} style={{background:m.bg,borderRadius:16,padding:"12px 10px",textAlign:"center"}}>
+                          <div style={{fontSize:22,marginBottom:3}}>{m.ico}</div>
+                          <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:i===2?11:18,color:m.col,lineHeight:1}}>{m.val}</div>
+                          <div style={{fontSize:9,fontWeight:800,color:m.col,marginTop:3,textTransform:"uppercase",letterSpacing:".06em",opacity:.8}}>{m.lbl}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pending transfers to confirm */}
+                  {pendingTx.length>0&&(
+                    <div style={{background:"var(--am-l)",border:"1.5px solid rgba(255,122,0,.25)",borderRadius:16,padding:"12px 14px",marginBottom:14}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--am-d)",marginBottom:8}}>🔔 {pendingTx.length} envío{pendingTx.length!==1?"s":""} esperando confirmación</div>
+                      {pendingTx.map(function(tx){
+                        var p=tx.product;
                         return (
-                          <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 14px",borderRadius:14,background:m.bg}}>
-                            <div style={{fontSize:22,width:40,textAlign:"center"}}>{m.ico}</div>
-                            <div style={{flex:1}}>
-                              <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:i===2?15:22,color:m.color,lineHeight:1}}>{m.val}</div>
+                          <div key={tx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--card)",borderRadius:12,marginBottom:6,border:"1px solid var(--brd)"}}>
+                            <div style={{fontSize:22}}>{p?p.emoji:"📦"}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"Producto"}</div>
+                              <div style={{fontSize:11,color:"var(--t3)"}}>{tx.qty} u. de {tx.from_user?tx.from_user.name:""}</div>
                             </div>
-                            <div style={{fontSize:9,fontWeight:800,color:m.color,textTransform:"uppercase",letterSpacing:".08em",opacity:.7}}>{m.lbl}</div>
+                            <button className="btn btn-xs b-em" onClick={function(){confirmTransfer(tx);}}>✓ Confirmar</button>
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-
-                  {/* Pending confirmations */}
-                  {pendingTx.length>0&&(
-                    <div style={{background:"#fff3e6",border:"1.5px solid rgba(255,122,0,.25)",borderRadius:16,padding:"12px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{fontSize:22}}>🔔</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:800,fontSize:13,color:"var(--am-d)"}}>{pendingTx.length} envío{pendingTx.length!==1?"s":""} esperando confirmación</div>
-                        <div style={{fontSize:11,color:"var(--am-d)",opacity:.8,marginTop:1}}>Ir a Stock para confirmar</div>
-                      </div>
-                    </div>
                   )}
 
-                  {/* Action tiles */}
-                  <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
-                    {TILES.map(function(tile){
+                  {/* Tiles */}
+                  <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:14}}>
+                    {[
+                      {id:"consigna", lbl:"Consigna",    sub:consignaEnv>0?consignaEnv+" productos enviados":"Ver consignaciones", ico:"users",  bg:"#ff7a00", badge:consignaEnv>0?consignaEnv:null},
+                      {id:"enviar",   lbl:"Enviar",       sub:"Transferir a contactos",                          ico:"send",   bg:"#7c3aed"},
+                      {id:"catalog",  lbl:"Catálogo",     sub:"Lista de precios",                                 ico:"list",   bg:"#0096c7"},
+                      {id:"contacts", lbl:"Red",          sub:"Contactos y notificaciones",                       ico:"users",  bg:"#a855f7", badge:totalBadge>0?totalBadge:null},
+                      {id:"ventas",   lbl:"Ventas",       sub:"Ver mis ventas del mes",                           ico:"chart",  bg:"#e63946"},
+                      {id:"cargar",   lbl:"Cargar Stock", sub:"Agregar unidades",                                 ico:"plus",   bg:"#00b87a"},
+                    ].map(function(tile){
                       var tabId = !isAdmin && tile.id==="catalog" ? "precios" : tile.id;
                       return (
                         <div key={tile.id} onClick={function(){setTab(tabId);}}
-                          style={{display:"flex",alignItems:"center",gap:16,padding:"16px 18px",borderRadius:18,background:tile.bg,cursor:"pointer",position:"relative",overflow:"hidden",transition:"transform .13s",boxShadow:"0 4px 16px rgba(0,0,0,.12)"}}
+                          style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:18,background:tile.bg,cursor:"pointer",position:"relative",overflow:"hidden",boxShadow:"0 4px 16px rgba(0,0,0,.1)",transition:"transform .12s"}}
                           onTouchStart={function(e){e.currentTarget.style.transform="scale(.98)";}}
                           onTouchEnd={function(e){e.currentTarget.style.transform="scale(1)";}}>
-                          {/* Decorative circle */}
-                          <div style={{position:"absolute",right:-20,top:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.1)"}}/>
-                          <div style={{width:44,height:44,borderRadius:14,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#fff"}}>
-                            <Ic n={tile.ico} s={22}/>
+                          <div style={{position:"absolute",right:-16,top:-16,width:70,height:70,borderRadius:"50%",background:"rgba(255,255,255,.1)"}}/>
+                          <div style={{width:42,height:42,borderRadius:13,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#fff"}}>
+                            <Ic n={tile.ico} s={20}/>
                           </div>
                           <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:15,fontWeight:900,color:"#fff",letterSpacing:"-.01em"}}>{tile.lbl}</div>
-                            <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>{tile.sub}</div>
+                            <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{tile.lbl}</div>
+                            <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:1}}>{tile.sub}</div>
                           </div>
-                          {tile.badge&&<div style={{background:"#ff4757",borderRadius:20,minWidth:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#fff",padding:"0 7px",flexShrink:0}}>{tile.badge}</div>}
-                          <div style={{color:"rgba(255,255,255,.5)",flexShrink:0}}><Ic n="send" s={16}/></div>
+                          {tile.badge&&<div style={{background:"#ff4757",borderRadius:20,minWidth:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#fff",padding:"0 6px"}}>{tile.badge}</div>}
                         </div>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* Stock table */}
+                {/* ── STOCK TABLE ── */}
                 <div style={{padding:"0 14px 24px"}}>
-                  <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar en mi stock..."/>
-                  {stockFiltered.length>0&&(
-                    <div className="card">
-                      <div className="card-h"><div className="card-title">Stock disponible</div><span className="badge b-am">{stockFiltered.length}</span></div>
-                      <div className="tw"><table>
-                        <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
-                        <tbody>{stockFiltered.map(function(item){
-                          var p=item.products||products.find(function(x){return x.id===item.product_id;});
-                          if(!p) return null;
-                          return (<tr key={item.id} className="tr">
-                            <td><ProdThumb prod={p} size={36}/></td>
-                            <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:10,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:700}}>{p.sku}</span></td>
-                            <td><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div></td>
-                            <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td>
-                            <td><span style={{fontFamily:"var(--mf)",fontWeight:900,color:"var(--em-d)",fontSize:15}}>{item.qty_available}</span></td>
-                            <td><div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
-                              <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
-                              <button className="btn btn-xs b-in" onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}><Ic n="plus" s={11}/>Mov.</button>
-                              <button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>
-                              <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
-                            </div></td>
-                          </tr>);
-                        })}</tbody>
-                      </table></div>
+                  <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar por nombre, SKU o categoría..."/>
+
+                  {/* Stock Propio */}
+                  {(ownFilt.length>0||consRecv.length===0)&&(
+                    <div className="card" style={{marginBottom:12}}>
+                      <div className="card-h">
+                        <div className="card-title"><div className="card-ico" style={{background:"var(--in-l)",color:"var(--in-d)"}}><Ic n="box" s={14}/></div>Stock Propio</div>
+                        <span className="badge b-in">{ownFilt.length} productos</span>
+                      </div>
+                      {ownFilt.length===0
+                        ?<div className="empty" style={{padding:"20px"}}>{srchStock?"Sin resultados.":"Sin stock propio."}</div>
+                        :<div className="tw"><table>
+                          <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
+                          <tbody>{ownFilt.map(function(item){ return StockRow(item, false); })}</tbody>
+                        </table></div>
+                      }
                     </div>
                   )}
-                  {stockFiltered.length===0&&srchStock&&<div className="empty">Sin resultados para "{srchStock}"</div>}
-                  {myStock.length===0&&!srchStock&&<div className="empty" style={{padding:"30px 0"}}><div style={{fontSize:40,marginBottom:8}}>📦</div>Sin existencias. Usá los tiles de arriba para cargar.</div>}
+
+                  {/* En Consigna (recibido) */}
+                  {consRecv.length>0&&(
+                    <div className="card">
+                      <div className="card-h">
+                        <div className="card-title"><div className="card-ico" style={{background:"var(--am-l)",color:"var(--am-d)"}}><Ic n="send" s={14}/></div>Recibido en Consigna</div>
+                        <span className="badge b-am">{recvFilt.length} productos</span>
+                      </div>
+                      <div style={{padding:"8px 14px",background:"var(--am-l)",borderBottom:"1px solid var(--brd)"}}>
+                        <div style={{fontSize:11,color:"var(--am-d)",fontWeight:600}}>Estos productos te fueron enviados. Podés venderlos o devolverlos desde la tab Consigna.</div>
+                      </div>
+                      {recvFilt.length===0
+                        ?<div className="empty" style={{padding:"20px"}}>Sin resultados.</div>
+                        :<div className="tw"><table>
+                          <thead><tr><th></th><th>SKU / De</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
+                          <tbody>{recvFilt.map(function(item){ return StockRow(item, true); })}</tbody>
+                        </table></div>
+                      }
+                    </div>
+                  )}
                 </div>
               </div>
             );
