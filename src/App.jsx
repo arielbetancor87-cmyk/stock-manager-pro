@@ -1710,7 +1710,7 @@ export default function App() {
                         <label className="fl">Producto (opcional)</label>
                         <SearchBar value={pedPSrch} onChange={setPedPSrch} placeholder="Buscar producto..."/>
                         {pedPSrch.trim()&&(
-                          <div style={{maxHeight:200,overflowY:"auto",border:"1.5px solid var(--brd)",borderRadius:var(--r),background:"var(--card)",marginTop:-8,marginBottom:8}}>
+                          <div style={{maxHeight:200,overflowY:"auto",border:"1.5px solid var(--brd)",borderRadius:14,background:"var(--card)",marginTop:-8,marginBottom:8}}>
                             {prodFilt.length===0
                               ?<div style={{padding:"12px 14px",color:"var(--t3)",fontSize:12}}>Sin resultados</div>
                               :prodFilt.slice(0,8).map(function(p){
@@ -1729,7 +1729,7 @@ export default function App() {
                           </div>
                         )}
                         {selProd&&!pedPSrch&&(
-                          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--in-l)",borderRadius:var(--r),border:"1.5px solid rgba(124,58,237,.2)"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--in-l)",borderRadius:14,border:"1.5px solid rgba(124,58,237,.2)"}}>
                             <ProdThumb prod={selProd} size={36}/>
                             <div style={{flex:1}}>
                               <div style={{fontWeight:700,fontSize:13}}>{selProd.name}</div>
@@ -1750,7 +1750,7 @@ export default function App() {
                         <input className="fi" placeholder="Ej: Entrega a domicilio, color azul..." value={pedNota} onChange={function(e){setPedNota(e.target.value);}}/>
                       </div>
                       {selProd&&pedQty>0&&(
-                        <div style={{background:"var(--em-l)",borderRadius:var(--r),padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{background:"var(--em-l)",borderRadius:14,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                           <span style={{fontSize:12,color:"var(--em-d)"}}>Total estimado</span>
                           <span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:"var(--em-d)"}}>{fmtARS(selProd.price*pedQty)}</span>
                         </div>
