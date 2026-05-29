@@ -1283,20 +1283,11 @@ export default function App() {
 
           {/* ══ STOCK ══ */}
           {tab==="stock"&&(function(){
-            // All confirmed transfers received by me, keyed by product_id
-            var recvTxByProd = {};
-            transfers.forEach(function(t){
-              if (t.to_user_id===me.id && t.status==="confirmed" && t.qty>0) {
-                // Only mark as consigna if I did NOT load it myself
-                // (i.e. the transfer is the ONLY origin — user didn't manually add stock)
-                if (!recvTxByProd[t.product_id]) recvTxByProd[t.product_id] = t;
-              }
-            });
-
             const totalVal = myStock.reduce(function(s,i){
               const p=i.products||products.find(function(x){return x.id===i.product_id;});
               return s+(p?parseFloat(p.price||0)*i.qty_available:0);
             },0);
+            const totalUnits = myStock.reduce(function(s,i){return s+i.qty_available;},0);
             const consignaEnv = transfers.filter(function(t){return t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0;}).length;
             const q = srchStock.toLowerCase();
             const stockFilt = myStock.filter(function(i){
@@ -1324,7 +1315,7 @@ export default function App() {
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
                     {[
                       {ico:"📦", lbl:"Productos", val:myStock.length,    bg:"var(--in-l)",  col:"var(--in-d)"},
-                      {ico:"📊", lbl:"Unidades",  val:myStock.reduce(function(s,i){return s+i.qty_available;},0), bg:"var(--am-l)", col:"var(--am-d)"},
+                      {ico:"📊", lbl:"Unidades",  val:totalUnits,        bg:"var(--am-l)",  col:"var(--am-d)"},
                       {ico:"💰", lbl:"Valor",     val:fmtARS(totalVal).replace("$ ","$"), bg:"var(--em-l)", col:"var(--em-d)"},
                     ].map(function(m,i){
                       return (
@@ -1388,10 +1379,9 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Stock table — unified, with consigna badge when applicable */}
+                {/* ── STOCK TABLE — siempre "Stock Propio", sin clasificación por origen ── */}
                 <div style={{padding:"0 14px 24px"}}>
                   <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar por nombre, SKU o categoría..."/>
-
                   {stockFilt.length===0
                     ?<div className="empty" style={{padding:"24px 0"}}><div style={{fontSize:40,marginBottom:8}}>📦</div>{srchStock?"Sin resultados.":"Sin existencias. Usá Cargar Stock."}</div>
                     :<div className="card">
@@ -1404,25 +1394,12 @@ export default function App() {
                         <tbody>{stockFilt.map(function(item){
                           const p=item.products||products.find(function(x){return x.id===item.product_id;});
                           if(!p) return null;
-                          // Only show consigna badge if this product came ONLY via transfer
-                          // (no manual load by user — transfers qty covers full inventory)
-                          const senderTx = recvTxByProd[item.product_id];
-                          const isConsigna = senderTx && senderTx.qty >= item.qty_available;
-                          const sender = isConsigna && senderTx.from_user ? senderTx.from_user : null;
                           return (
                             <tr key={item.id} className="tr">
                               <td><ProdThumb prod={p} size={36}/></td>
+                              <td><span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:10,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:700}}>{p.sku}</span></td>
                               <td>
-                                <span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:10,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:700}}>{p.sku}</span>
-                                {sender&&(
-                                  <div style={{marginTop:3,display:"flex",alignItems:"center",gap:3}}>
-                                    <div style={{width:13,height:13,borderRadius:"50%",background:sender.color||"var(--am)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#fff"}}>{sender.name.charAt(0).toUpperCase()}</div>
-                                    <span style={{fontSize:9,color:"var(--am-d)",fontWeight:700}}>consigna</span>
-                                  </div>
-                                )}
-                              </td>
-                              <td>
-                                <div style={{fontWeight:600,fontSize:12,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                                <div style={{fontWeight:600,fontSize:12,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
                                 <div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div>
                               </td>
                               <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td>
@@ -1431,7 +1408,7 @@ export default function App() {
                                 <div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
                                   <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
                                   <button className="btn btn-xs b-in" onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}><Ic n="plus" s={11}/>Mov.</button>
-                                  {!isConsigna&&<button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>}
+                                  <button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>
                                   <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
                                 </div>
                               </td>
