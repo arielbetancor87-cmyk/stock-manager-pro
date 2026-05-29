@@ -3,18 +3,21 @@ import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
-// ⚠️  Requiere archivo .env en la raíz del proyecto con:
-//    VITE_SUPABASE_URL=https://cgqrgyouunxfluujhwey.supabase.co
-//    VITE_SUPABASE_ANON_KEY=eyJhbGci...
+// Requiere archivo .env en la raíz:
+//   VITE_SUPABASE_URL=https://xxxx.supabase.co
+//   VITE_SUPABASE_ANON_KEY=eyJhbGci...
+if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  console.error("⚠️  Faltan variables de entorno VITE_SUPABASE_URL y/o VITE_SUPABASE_ANON_KEY");
+}
 const sb = createClient(
-  import.meta.env.VITE_SUPABASE_URL  || "https://cgqrgyouunxfluujhwey.supabase.co",
-  import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNncXJneW91dW54Zmx1dWpod2V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNzk1NTgsImV4cCI6MjA5NDc1NTU1OH0.4n0zTCGUau02Xz677RwtaqcOUi_7HwvogerqNf3rWkY"
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 var ROLES  = ["user","distributor","reseller"];
-var CATS   = ["General","Linea Kaloe","Pocket x 10ml","Beauty Collagen","Premium Femenino","Exhibidores","Joyas","Cosmetica"];
-var EMOJIS = [{v:"✨",l:"Brillo"},{v:"🧴",l:"Crema"},{v:"💼",l:"Maletin"},{v:"💄",l:"Maquillaje"},{v:"💎",l:"Joya"},{v:"📿",l:"Cadena"},{v:"🌸",l:"Floral"},{v:"🎀",l:"Accesorio"},{v:"🍃",l:"Natural"},{v:"⭐",l:"Destacado"}];
+const CATS   = ["General","Linea Kaloe","Pocket x 10ml","Beauty Collagen","Premium Femenino","Exhibidores","Joyas","Cosmetica"];
+const EMOJIS = [{v:"✨",l:"Brillo"},{v:"🧴",l:"Crema"},{v:"💼",l:"Maletin"},{v:"💄",l:"Maquillaje"},{v:"💎",l:"Joya"},{v:"📿",l:"Cadena"},{v:"🌸",l:"Floral"},{v:"🎀",l:"Accesorio"},{v:"🍃",l:"Natural"},{v:"⭐",l:"Destacado"}];
 
 // uid() is for ephemeral client IDs only (toasts, local keys). DB entities use Supabase UUIDs.
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
@@ -22,12 +25,12 @@ function fmtARS(n) { return "$ " + Number(n||0).toLocaleString("es-AR",{minimumF
 function ini(name) { return (name||"?").trim().split(" ").slice(0,2).map(function(w){return w[0];}).join("").toUpperCase(); }
 
 // ─── LOGO ─────────────────────────────────────────────────────────────────────
-var LOGO_URL = "https://cgqrgyouunxfluujhwey.supabase.co/storage/v1/object/public/assets/logo.png";
+const LOGO_URL = "https://cgqrgyouunxfluujhwey.supabase.co/storage/v1/object/public/assets/logo.png";
 
 // ─── ICONS (memoized above before CSS) ───────────────────────────────────────
 
 // Memoize Ic so it doesn't re-render when parent re-renders with same props
-var IcBase = function Ic(props) {
+const IcBase = function Ic(props) {
   var n=props.n, s=props.s||18;
   var p={width:s,height:s,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:"2",strokeLinecap:"round",strokeLinejoin:"round"};
   switch(n) {
@@ -56,7 +59,7 @@ var IcBase = function Ic(props) {
     default:        return null;
   }
 };
-var Ic = memo(IcBase);
+const Ic = memo(IcBase);
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const CSS = `
@@ -225,7 +228,7 @@ tr:last-child td{border-bottom:none}
 `
 
 // ─── SUBCOMPONENTES ───────────────────────────────────────────────────────────
-var Avatar = memo(function Avatar(props) {
+const Avatar = memo(function Avatar(props) {
   var name=props.name, color=props.color, size=props.size||38, style=props.style||{};
   return (
     <div style={Object.assign({width:size,height:size,borderRadius:"50%",background:color||"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(size*.36),fontWeight:800,color:"#fff",flexShrink:0,fontFamily:"var(--hf)"},style)}>
@@ -234,7 +237,7 @@ var Avatar = memo(function Avatar(props) {
   );
 });
 
-var ProdThumb = memo(function ProdThumb(props) {
+const ProdThumb = memo(function ProdThumb(props) {
   var prod=props.prod, size=props.size||40;
   if (!prod) return <div style={{width:size,height:size,borderRadius:9,background:"var(--bg2)",flexShrink:0}}/>;
   if (prod.photo_url) return <img src={prod.photo_url} alt="" style={{width:size,height:size,borderRadius:9,objectFit:"cover",flexShrink:0,border:"1px solid var(--brd)"}}/>;
@@ -242,8 +245,8 @@ var ProdThumb = memo(function ProdThumb(props) {
 });
 
 // SearchBar with internal debounced state to avoid parent re-renders on keystroke
-var SearchBar = memo(function SearchBar(props) {
-  var [local, setLocal] = useState(props.value||"");
+const SearchBar = memo(function SearchBar(props) {
+  const [local, setLocal] = useState(props.value||"");
   useEffect(function(){ setLocal(props.value||""); }, [props.value]);
   useEffect(function(){
     var t = setTimeout(function(){ props.onChange(local); }, 200);
@@ -277,7 +280,7 @@ function Toast(props) {
   );
 }
 
-var QtyControl = memo(function QtyControl(props) {
+const QtyControl = memo(function QtyControl(props) {
   var val=props.val, set=props.set, min=props.min!==undefined?props.min:1, max=props.max||9999, big=props.big;
   if (big) return (
     <div style={{display:"flex",border:"1.5px solid var(--brd)",borderRadius:12,overflow:"hidden",background:"var(--card)"}}>
@@ -298,115 +301,115 @@ var QtyControl = memo(function QtyControl(props) {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   // ── SESSION ─────────────────────────────────────────────────────────────────
-  var [loading,   setLoading]   = useState(true);
-  var [me,        setMe]        = useState(null);   // users row
-  var [authMode,  setAuthMode]  = useState("login");
-  var [aEmail,    setAEmail]    = useState("");
-  var [aPass,     setAPass]     = useState("");
-  var [aName,     setAName]     = useState("");
-  var [aRole,     setARole]     = useState("Revendedora Exclusiva");
-  var [aPass2,    setAPass2]    = useState("");
-  var [showPass,  setShowPass]  = useState(false);
-  var [authErr,   setAuthErr]   = useState("");
-  var [authShake, setAuthShake] = useState(false);
+  const [loading,   setLoading]   = useState(true);
+  const [me,        setMe]        = useState(null);   // users row
+  const [authMode,  setAuthMode]  = useState("login");
+  const [aEmail,    setAEmail]    = useState("");
+  const [aPass,     setAPass]     = useState("");
+  const [aName,     setAName]     = useState("");
+  const [aRole,     setARole]     = useState("Revendedora Exclusiva");
+  const [aPass2,    setAPass2]    = useState("");
+  const [showPass,  setShowPass]  = useState(false);
+  const [authErr,   setAuthErr]   = useState("");
+  const [authShake, setAuthShake] = useState(false);
 
   // ── DATA ────────────────────────────────────────────────────────────────────
-  var [products,   setProducts]   = useState([]);
-  var [inventory,  setInventory]  = useState([]); // my rows from inventory table
-  var [contacts,   setContacts]   = useState([]); // user objects
-  var [allUsers,   setAllUsers]   = useState([]); // for superadmin
-  var [transfers,  setTransfers]  = useState([]);
-  var [notifs,     setNotifs]     = useState([]);
-  var [logs,       setLogs]       = useState([]);
-  var [adminStats, setAdminStats] = useState(null);
+  const [products,   setProducts]   = useState([]);
+  const [inventory,  setInventory]  = useState([]); // my rows from inventory table
+  const [contacts,   setContacts]   = useState([]); // user objects
+  const [allUsers,   setAllUsers]   = useState([]); // for superadmin
+  const [transfers,  setTransfers]  = useState([]);
+  const [notifs,     setNotifs]     = useState([]);
+  const [logs,       setLogs]       = useState([]);
+  const [adminStats, setAdminStats] = useState(null);
 
   // ── UI ──────────────────────────────────────────────────────────────────────
-  var [tab,       setTab]       = useState("stock");
-  var [toasts,    setToasts]    = useState([]);
-  var [srchStock, setSrchStock] = useState("");
-  var [srchCat,   setSrchCat]   = useState("");
-  var [srchCon,   setSrchCon]   = useState("");
-  var [srchLog,   setSrchLog]   = useState("");
+  const [tab,       setTab]       = useState("stock");
+  const [toasts,    setToasts]    = useState([]);
+  const [srchStock, setSrchStock] = useState("");
+  const [srchCat,   setSrchCat]   = useState("");
+  const [srchCon,   setSrchCon]   = useState("");
+  const [srchLog,   setSrchLog]   = useState("");
   // ── PEDIDOS ──────────────────────────────────────────────────────────────
-  var [pedidos,    setPedidos]   = useState(function(){ try{ return JSON.parse(localStorage.getItem("smp_pedidos")||"[]"); }catch(e){ return []; } });
-  var [pedNombre,  setPedNombre] = useState("");
-  var [pedWA,      setPedWA]     = useState("");
-  var [pedProdId,  setPedProdId] = useState("");
-  var [pedQty,     setPedQty]    = useState(1);
-  var [pedNota,    setPedNota]   = useState("");
-  var [pedSrch,    setPedSrch]   = useState("");
-  var [pedPSrch,   setPedPSrch]  = useState("");
-  var [pedFilter,  setPedFilter] = useState("todos"); // todos|pendiente|entregado
-  var [pedEdit,    setPedEdit]   = useState(null);
-  var [ganancia,  setGanancia]  = useState(function(){ try{ return parseFloat(localStorage.getItem("smp_ganancia")||"30"); }catch(e){ return 30; } });
-  var [editGan,   setEditGan]   = useState(false);
-  var [ganInput,  setGanInput]  = useState("30");
-  var [srchPrice, setSrchPrice] = useState("");
-  var [priceMin,  setPriceMin]  = useState("");
-  var [priceMax,  setPriceMax]  = useState("");
+  const [pedidos,    setPedidos]   = useState(function(){ try{ return JSON.parse(localStorage.getItem("smp_pedidos")||"[]"); }catch(e){ return []; } });
+  const [pedNombre,  setPedNombre] = useState("");
+  const [pedWA,      setPedWA]     = useState("");
+  const [pedProdId,  setPedProdId] = useState("");
+  const [pedQty,     setPedQty]    = useState(1);
+  const [pedNota,    setPedNota]   = useState("");
+  const [pedSrch,    setPedSrch]   = useState("");
+  const [pedPSrch,   setPedPSrch]  = useState("");
+  const [pedFilter,  setPedFilter] = useState("todos"); // todos|pendiente|entregado
+  const [pedEdit,    setPedEdit]   = useState(null);
+  const [ganancia,  setGanancia]  = useState(function(){ try{ return parseFloat(localStorage.getItem("smp_ganancia")||"30"); }catch(e){ return 30; } });
+  const [editGan,   setEditGan]   = useState(false);
+  const [ganInput,  setGanInput]  = useState("30");
+  const [srchPrice, setSrchPrice] = useState("");
+  const [priceMin,  setPriceMin]  = useState("");
+  const [priceMax,  setPriceMax]  = useState("");
 
   // ── CATALOG ABM ─────────────────────────────────────────────────────────────
-  var [editP,    setEditP]    = useState(null);
-  var [fSku,     setFSku]     = useState("");
-  var [fName,    setFName]    = useState("");
-  var [fPrice,   setFPrice]   = useState("");
-  var [fCat,     setFCat]     = useState("General");
-  var [fEmoji,   setFEmoji]   = useState("✨");
-  var [fPhoto,   setFPhoto]   = useState(null);
-  var [fStock,   setFStock]   = useState("0");
-  var [delConf,  setDelConf]  = useState(null);
-  var [showInactive, setShowInactive] = useState(false);
-  var [bulkSel, setBulkSel] = useState({});  // {prodId: true}
+  const [editP,    setEditP]    = useState(null);
+  const [fSku,     setFSku]     = useState("");
+  const [fName,    setFName]    = useState("");
+  const [fPrice,   setFPrice]   = useState("");
+  const [fCat,     setFCat]     = useState("General");
+  const [fEmoji,   setFEmoji]   = useState("✨");
+  const [fPhoto,   setFPhoto]   = useState(null);
+  const [fStock,   setFStock]   = useState("0");
+  const [delConf,  setDelConf]  = useState(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [bulkSel, setBulkSel] = useState({});  // {prodId: true}
 
   // ── QUICK LOAD ──────────────────────────────────────────────────────────────
-  var [qlMode,   setQlMode]   = useState("add");
-  var [qlPid,    setQlPid]    = useState("");
-  var [qlQty,    setQlQty]    = useState(1);
-  var [qlSku,    setQlSku]    = useState("");
-  var [qlName,   setQlName]   = useState("");
-  var [qlPrice,  setQlPrice]  = useState("");
-  var [qlCat,    setQlCat]    = useState("General");
-  var [qlEmoji,  setQlEmoji]  = useState("✨");
-  var [qlPhoto,  setQlPhoto]  = useState(null);
-  var [qlSrch,   setQlSrch]   = useState("");
+  const [qlMode,   setQlMode]   = useState("add");
+  const [qlPid,    setQlPid]    = useState("");
+  const [qlQty,    setQlQty]    = useState(1);
+  const [qlSku,    setQlSku]    = useState("");
+  const [qlName,   setQlName]   = useState("");
+  const [qlPrice,  setQlPrice]  = useState("");
+  const [qlCat,    setQlCat]    = useState("General");
+  const [qlEmoji,  setQlEmoji]  = useState("✨");
+  const [qlPhoto,  setQlPhoto]  = useState(null);
+  const [qlSrch,   setQlSrch]   = useState("");
 
   // ── SEND ────────────────────────────────────────────────────────────────────
-  var [sendStep, setSendStep] = useState(1);
-  var [sendTo,   setSendTo]   = useState("");
-  var [sendCart, setSendCart] = useState({});
-  var [sendSrch, setSendSrch] = useState("");
+  const [sendStep, setSendStep] = useState(1);
+  const [sendTo,   setSendTo]   = useState("");
+  const [sendCart, setSendCart] = useState({});
+  const [sendSrch, setSendSrch] = useState("");
 
   // ── IMPORT ──────────────────────────────────────────────────────────────────
-  var [impTab,  setImpTab]  = useState("file");
-  var [impTxt,  setImpTxt]  = useState("");
-  var [impRows, setImpRows] = useState([]);
-  var [impQty,  setImpQty]  = useState(0);
-  var [impFile, setImpFile] = useState(null);
+  const [impTab,  setImpTab]  = useState("file");
+  const [impTxt,  setImpTxt]  = useState("");
+  const [impRows, setImpRows] = useState([]);
+  const [impQty,  setImpQty]  = useState(0);
+  const [impFile, setImpFile] = useState(null);
 
   // ── CONTACTS ────────────────────────────────────────────────────────────────
-  var [ctQ,     setCtQ]     = useState("");
+  const [ctQ,     setCtQ]     = useState("");
 
   // ── MODALS ──────────────────────────────────────────────────────────────────
-  var [txModal,  setTxModal]  = useState(null);
-  var [txQty,    setTxQty]    = useState(1);
-  var [txTo,     setTxTo]     = useState("");
-  var [shareM,   setShareM]   = useState(false);
-  var [shareSel,  setShareSel]  = useState({});
-  var [editStock,  setEditStock]  = useState(null);
-  var [editQty,    setEditQty]    = useState(0);
-  var [movModal,   setMovModal]   = useState(null);  // invRow for movement
-  var [movType,    setMovType]    = useState("entrada"); // "entrada"|"salida"|"ajuste"
-  var [movQty,     setMovQty]     = useState(1);
-  var [movNote,    setMovNote]    = useState("");
-  var [movHistory, setMovHistory] = useState([]);  // local movement log
-  var [retModal,    setRetModal]    = useState(null);
-  var [retQty,      setRetQty]      = useState(1);
-  var [consignSrch, setConsignSrch] = useState("");
-  var [consignTab,     setConsignTab]     = useState("enviado");
-  var [consignView,    setConsignView]    = useState("list");
-  var [selRevend,      setSelRevend]      = useState(null);
-  var [prodSearch,     setProdSearch]     = useState("");
-  var [recvInv,        setRecvInv]        = useState([]);   // recipient inventory rows
+  const [txModal,  setTxModal]  = useState(null);
+  const [txQty,    setTxQty]    = useState(1);
+  const [txTo,     setTxTo]     = useState("");
+  const [shareM,   setShareM]   = useState(false);
+  const [shareSel,  setShareSel]  = useState({});
+  const [editStock,  setEditStock]  = useState(null);
+  const [editQty,    setEditQty]    = useState(0);
+  const [movModal,   setMovModal]   = useState(null);  // invRow for movement
+  const [movType,    setMovType]    = useState("entrada"); // "entrada"|"salida"|"ajuste"
+  const [movQty,     setMovQty]     = useState(1);
+  const [movNote,    setMovNote]    = useState("");
+  const [movHistory, setMovHistory] = useState([]);  // local movement log
+  const [retModal,    setRetModal]    = useState(null);
+  const [retQty,      setRetQty]      = useState(1);
+  const [consignSrch, setConsignSrch] = useState("");
+  const [consignTab,     setConsignTab]     = useState("enviado");
+  const [consignView,    setConsignView]    = useState("list");
+  const [selRevend,      setSelRevend]      = useState(null);
+  const [prodSearch,     setProdSearch]     = useState("");
+  const [recvInv,        setRecvInv]        = useState([]);   // recipient inventory rows
 
   // ── HELPERS ──────────────────────────────────────────────────────────────────
   function toast(title, body, type) {
@@ -489,7 +492,7 @@ export default function App() {
   }
 
   // ── DELETE USER (admin only) ─────────────────────────────────────────────────
-  var [delUserConf, setDelUserConf] = useState(null);
+  const [delUserConf, setDelUserConf] = useState(null);
 
   async function doDeleteUser(userId, userName) {
     // Delete from public.users (CASCADE will handle related data)
@@ -504,8 +507,17 @@ export default function App() {
     await loadData(me.id, me.role);
   }
 
+  // ── PERSISTENCIA LOCAL ─────────────────────────────────────────────────────
+  useEffect(function(){
+    try { localStorage.setItem("smp_pedidos", JSON.stringify(pedidos)); } catch(e){}
+  }, [pedidos]);
+
+  useEffect(function(){
+    try { localStorage.setItem("smp_ganancia", String(ganancia)); } catch(e){}
+  }, [ganancia]);
+
   // ── SUPABASE DATA LOADERS ────────────────────────────────────────────────────
-  var loadData = useCallback(async function(userId, userRole) {
+  const loadData = useCallback(async function(userId, userRole) {
     try {
       // Products - paginate to get ALL (bypass 1000 row limit)
       var allProds = [];
@@ -694,7 +706,6 @@ export default function App() {
   // ── PEDIDOS FUNCTIONS ────────────────────────────────────────────────────────
   function savePedidos(list) {
     setPedidos(list);
-    try{ localStorage.setItem("smp_pedidos", JSON.stringify(list)); }catch(e){}
   }
 
   function doAddPedido() {
@@ -1883,9 +1894,8 @@ export default function App() {
                           <div className="row g8">
                             <button className="btn b-ghost" onClick={function(){setEditGan(false);}}>Cancelar</button>
                             <button className="btn b-pri" onClick={function(){
-                              var val = parseFloat(ganInput)||0;
+                              const val = parseFloat(ganInput)||0;
                               setGanancia(val);
-                              try{ localStorage.setItem("smp_ganancia", String(val)); }catch(e){}
                               setEditGan(false);
                             }}>Guardar</button>
                           </div>
