@@ -672,14 +672,18 @@ export default function App() {
 
     var source = originTransfer ? "consignment" : "own_stock";
 
-    // Insert sale log
-    await sb.from("sale_logs").insert({
+    // Insert sale log and update local state immediately
+    var logInsert = await sb.from("sale_logs").insert({
       user_id: me.id,
       product_id: invRow.product_id,
       qty: 1,
       sale_price: prod ? prod.price : 0,
       source: source
-    });
+    }).select("*, product:product_id(name,sku,emoji)").single();
+
+    if (logInsert.data) {
+      setLogs(function(prev){ return [logInsert.data, ...prev]; });
+    }
 
     // If consignment — notify the original sender
     if (originTransfer) {
@@ -691,7 +695,7 @@ export default function App() {
       });
     }
 
-    toast("Venta registrada", (prod?prod.name:"")+(originTransfer?" · notificaste al remitente":""), "s");
+    toast("Venta registrada", prod?prod.name:"", "s");
   }
 
   // ── TRANSFER (send to contact, pending confirmation) ─────────────────────────
@@ -1864,49 +1868,61 @@ export default function App() {
             var mesActual = now.getMonth();
             var anioActual = now.getFullYear();
 
-            // Logs del mes actual
+            // Filter logs for current month — logs is already loaded
             var logsDelMes = logs.filter(function(l){
               var d = new Date(l.created_at);
               return d.getMonth()===mesActual && d.getFullYear()===anioActual;
             });
 
-            // Agrupar por producto
+            // Group by product
             var byProd = {};
             logsDelMes.forEach(function(l){
               var pid = l.product_id;
               var p = l.product || products.find(function(x){ return x.id===pid; });
-              if (!byProd[pid]) byProd[pid] = {prod:p, qty:0, total:0};
-              byProd[pid].qty += l.qty || 1;
+              if (!byProd[pid]) byProd[pid] = {prod:p, qty:0, total:0, isConsigna: l.source==="consignment"};
+              byProd[pid].qty   += l.qty || 1;
               byProd[pid].total += (l.sale_price || (p?p.price:0)) * (l.qty||1);
             });
             var ventaItems = Object.values(byProd).sort(function(a,b){ return b.total-a.total; });
 
-            var totalVentas = ventaItems.reduce(function(s,v){ return s+v.total; }, 0);
-            var totalUnidades = ventaItems.reduce(function(s,v){ return s+v.qty; }, 0);
+            var totalVentas   = ventaItems.reduce(function(s,v){ return s+v.total; }, 0);
+            var totalUnidades = ventaItems.reduce(function(s,v){ return s+v.qty;   }, 0);
             var gananciaTotal = totalVentas * (ganancia/100);
 
             var meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+            // Reload logs on demand
+            async function recargarVentas() {
+              var lg = await sb.from("sale_logs")
+                .select("*, product:product_id(name,sku,emoji)")
+                .eq("user_id", me.id)
+                .order("created_at",{ascending:false})
+                .limit(500);
+              if (lg.data) setLogs(lg.data);
+              toast("Ventas actualizadas","","s");
+            }
 
             return (
               <div>
                 <div className="ph">
                   <div><div className="ph-h">Mis Ventas</div><div className="ph-s">{meses[mesActual]} {anioActual}</div></div>
+                  <button className="btn btn-xs b-ghost" onClick={recargarVentas}><Ic n="undo" s={13}/>Actualizar</button>
                 </div>
                 <div className="pc">
 
                   {/* Summary cards */}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
                     <div className="metric-card">
-                      <div className="metric-val" style={{color:"var(--em-d)",fontSize:28}}>{fmtARS(totalVentas)}</div>
+                      <div className="metric-val" style={{color:"var(--em-d)",fontSize:24}}>{fmtARS(totalVentas)}</div>
                       <div className="metric-lbl">Total vendido</div>
                     </div>
                     <div className="metric-card">
                       <div className="metric-val" style={{color:"var(--in-d)",fontSize:28}}>{totalUnidades}</div>
-                      <div className="metric-lbl">Unidades vendidas</div>
+                      <div className="metric-lbl">Unidades</div>
                     </div>
                   </div>
 
-                  {/* Deudas de Consignación */}
+                  {/* Consignment debts */}
                   {consignDebts.filter(function(d){return !d.paid;}).length>0&&(
                     <div className="card" style={{marginBottom:16,border:"2px solid var(--am)"}}>
                       <div className="card-h" style={{background:"var(--am-l)"}}>
@@ -1952,56 +1968,42 @@ export default function App() {
                             <input className="fi" type="number" min="0" max="100" step="0.5" value={ganInput} onChange={function(e){setGanInput(e.target.value);}} style={{flex:1}}/>
                             <span style={{fontSize:22,fontWeight:800,color:"var(--in-d)"}}>%</span>
                           </div>
-                          <div style={{fontSize:11,color:"var(--t3)",marginBottom:12}}>
-                            Si comprás a $100 y vendés a ${(100*(1+parseFloat(ganInput||0)/100)).toFixed(0)}, tu ganancia es el {ganInput||0}%
-                          </div>
                           <div className="row g8">
                             <button className="btn b-ghost" onClick={function(){setEditGan(false);}}>Cancelar</button>
-                            <button className="btn b-pri" onClick={function(){
-                              const val = parseFloat(ganInput)||0;
-                              setGanancia(val);
-                              setEditGan(false);
-                            }}>Guardar</button>
+                            <button className="btn b-pri" onClick={function(){ const val=parseFloat(ganInput)||0; setGanancia(val); setEditGan(false); }}>Guardar</button>
                           </div>
                         </div>
                       ):(
                         <div>
-                          <div className="row g8" style={{marginBottom:10,alignItems:"baseline"}}>
-                            <div style={{fontSize:40,fontWeight:900,fontFamily:"var(--mf)",color:"var(--in-d)"}}>{fmtARS(gananciaTotal)}</div>
-                          </div>
-                          <div style={{fontSize:12,color:"var(--t3)"}}>
-                            Basado en <strong>{ganancia}% de ganancia</strong> sobre {fmtARS(totalVentas)} vendidos
-                          </div>
-                          <div style={{marginTop:12,background:"var(--bg)",borderRadius:10,overflow:"hidden",height:8}}>
-                            <div style={{height:"100%",width:Math.min(100,ganancia)+"%",background:"linear-gradient(90deg,var(--in),var(--pu2))",borderRadius:10,transition:"width .4s"}}/>
-                          </div>
-                          <div className="row jb" style={{fontSize:10,color:"var(--t4)",marginTop:4}}>
-                            <span>0%</span><span style={{fontWeight:700,color:"var(--in-d)"}}>{ganancia}%</span><span>100%</span>
+                          <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:36,color:"var(--in-d)",lineHeight:1,marginBottom:8}}>{fmtARS(gananciaTotal)}</div>
+                          <div style={{fontSize:12,color:"var(--t3)"}}>Basado en <strong>{ganancia}%</strong> sobre {fmtARS(totalVentas)} vendidos</div>
+                          <div style={{marginTop:12,background:"var(--bg)",borderRadius:8,overflow:"hidden",height:8}}>
+                            <div style={{height:"100%",width:Math.min(100,ganancia)+"%",background:"linear-gradient(90deg,var(--in),var(--pu))",borderRadius:8}}/>
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Ventas del mes */}
+                  {/* Detalle por producto */}
                   <div className="card">
                     <div className="card-h">
                       <div className="card-title"><div className="card-ico" style={{background:"var(--em-l)",color:"var(--em-d)"}}><Ic n="clock" s={14}/></div>Detalle del mes</div>
                       <span className="badge b-em">{ventaItems.length} productos</span>
                     </div>
                     {ventaItems.length===0
-                      ?<div className="empty">Sin ventas registradas este mes.<br/>Usá el botón "Venta" en tu Stock para registrarlas.</div>
-                      :(
-                      <div className="tw"><table>
-                        <thead><tr><th></th><th>Producto</th><th>Unid.</th><th>Total</th><th>Ganancia</th></tr></thead>
+                      ?<div className="empty">Sin ventas este mes.<br/>Registrá ventas con el botón "Venta" en tu Stock.</div>
+                      :<div className="tw"><table>
+                        <thead><tr><th></th><th>Producto</th><th>Tipo</th><th>Unid.</th><th>Total</th><th>Ganancia</th></tr></thead>
                         <tbody>
                           {ventaItems.map(function(item,idx){
-                            var p = item.prod;
-                            var gan = item.total*(ganancia/100);
+                            var p=item.prod;
+                            var gan=item.total*(ganancia/100);
                             return (
                               <tr key={idx} className="tr">
                                 <td><ProdThumb prod={p} size={32}/></td>
-                                <td><div style={{fontWeight:600,fontSize:12,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"—"}</div><div style={{fontSize:10,color:"var(--t3)"}}>{p?p.sku:""}</div></td>
+                                <td><div style={{fontWeight:600,fontSize:12,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"—"}</div></td>
+                                <td><span style={{fontSize:10,fontWeight:700,background:item.isConsigna?"var(--am-l)":"var(--in-l)",color:item.isConsigna?"var(--am-d)":"var(--in-d)",borderRadius:20,padding:"2px 7px"}}>{item.isConsigna?"🤝 Consigna":"📦 Propio"}</span></td>
                                 <td><span style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:14,color:"var(--in-d)"}}>{item.qty}</span></td>
                                 <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12,color:"var(--em-d)"}}>{fmtARS(item.total)}</span></td>
                                 <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12,color:"var(--in-d)"}}>{fmtARS(gan)}</span></td>
@@ -2009,35 +2011,19 @@ export default function App() {
                             );
                           })}
                           <tr style={{background:"var(--in-l)"}}>
-                            <td colSpan={2} style={{fontWeight:800,fontSize:12,color:"var(--in-d)",padding:"12px"}}>TOTAL</td>
+                            <td colSpan={3} style={{fontWeight:800,fontSize:12,color:"var(--in-d)",padding:"12px"}}>TOTAL</td>
                             <td><span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:14,color:"var(--in-d)"}}>{totalUnidades}</span></td>
                             <td><span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:12,color:"var(--em-d)"}}>{fmtARS(totalVentas)}</span></td>
                             <td><span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:12,color:"var(--in-d)"}}>{fmtARS(gananciaTotal)}</span></td>
                           </tr>
                         </tbody>
                       </table></div>
-                    )}
+                    }
                   </div>
-
                 </div>
               </div>
             );
           })()}
-
-          {/* ══ CONSIGNA ══ */}
-          {tab==="consigna"&&(
-            <ConsignacionModule
-              sb={sb}
-              me={me}
-              products={products}
-              inventory={inventory}
-              contacts={contacts}
-              transfers={transfers}
-              onRefresh={function(){ loadData(me.id, me.role); loadRecvInventory(); }}
-              toast={toast}
-              fmtARS={fmtARS}
-            />
-          )}
 
           {/* ══ PRECIOS ══ */}
           {tab==="precios"&&(
