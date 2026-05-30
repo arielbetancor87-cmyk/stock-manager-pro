@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, memo, useMemo } from "react";
+import ConsignacionModule from "./ConsignacionModule";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 
@@ -830,18 +831,14 @@ export default function App() {
       .eq("product_id", tx.product_id)
       .single();
 
+    // Add qty to existing row or create new one (respects UNIQUE user_id+product_id)
     if (existingRow.data) {
-      // Row exists — add qty. If it was 'own' and now receiving consigna,
-      // keep as 'own' since user may have their own stock too.
-      // Only set consigna if qty was 0 (fresh receive)
-      const newSource = existingRow.data.qty_available === 0 ? 'consigna' : existingRow.data.source || 'own';
       await sb.from("inventory")
-        .update({qty_available: existingRow.data.qty_available + tx.qty, source: newSource})
+        .update({qty_available: existingRow.data.qty_available + tx.qty})
         .eq("id", existingRow.data.id);
     } else {
-      // No row — create fresh as consigna
       await sb.from("inventory")
-        .insert({user_id: me.id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: 'consigna'});
+        .insert({user_id: me.id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: 'own'});
     }
     // Mark transfer confirmed
     await sb.from("transfers").update({status:"confirmed",confirmed_at:new Date().toISOString()}).eq("id",tx.id);
@@ -911,52 +908,44 @@ export default function App() {
 
   // ── QUICK LOAD ────────────────────────────────────────────────────────────────
   async function doQuickLoad() {
-    // Validate supplier for consignación
-    if (qlStockType==="CONSIGNACION" && !qlSupplierId) {
-      toast("Seleccioná el proveedor para consignación","","e"); return;
-    }
-    const srcValue = qlStockType==="CONSIGNACION" ? "consigna" : "own";
-    const supplierMeta = qlStockType==="CONSIGNACION" ? {supplier_id: qlSupplierId} : {};
-
     if (qlMode==="add") {
       if (!qlPid){ toast("Selecciona un producto","","e"); return; }
-      // For 'PROPIO' and 'CONSIGNACION', always create separate rows if source differs
-      const existingSameSource = inventory.find(function(i){
-        return i.product_id===qlPid && (i.source||"own")===srcValue;
-      });
-      if (existingSameSource) {
+      // Always upsert into single inventory row (UNIQUE constraint user_id+product_id)
+      const existing = inventory.find(function(i){ return i.product_id===qlPid; });
+      if (existing) {
         const upd = await sb.from("inventory")
-          .update({qty_available: existingSameSource.qty_available+qlQty})
-          .eq("id", existingSameSource.id)
+          .update({qty_available: existing.qty_available + qlQty, source: "own"})
+          .eq("id", existing.id)
           .select("*, products(*)").single();
-        if (upd.data) setInventory(function(p){ return p.map(function(i){ return i.id===existingSameSource.id?upd.data:i; }); });
+        if (upd.data) setInventory(function(p){ return p.map(function(i){ return i.id===existing.id?upd.data:i; }); });
+        if (upd.error){ toast("Error",""+upd.error.message,"e"); return; }
       } else {
         const ins = await sb.from("inventory")
-          .insert(Object.assign({user_id:me.id,product_id:qlPid,qty_available:qlQty,qty_sold:0,source:srcValue}, supplierMeta))
+          .insert({user_id:me.id, product_id:qlPid, qty_available:qlQty, qty_sold:0, source:"own"})
           .select("*, products(*)").single();
-        if (ins.data) setInventory(function(p){ return [...p,ins.data]; });
+        if (ins.error){ toast("Error",""+ins.error.message,"e"); return; }
+        if (ins.data) setInventory(function(p){ return [...p, ins.data]; });
       }
-      const p=products.find(function(x){ return x.id===qlPid; });
-      const typeLabel = qlStockType==="CONSIGNACION"?" (consignación)":"";
-      toast("Stock cargado!","+"+ qlQty+" u. de "+(p?p.name:"")+typeLabel,"s");
-      setQlQty(1); setQlPid(""); setQlSupplierId("");
+      const p = products.find(function(x){ return x.id===qlPid; });
+      toast("Stock cargado!", "+" + qlQty + " u. de " + (p?p.name:""), "s");
+      setQlQty(1); setQlPid(""); setQlSrch("");
     } else {
       if (!qlSku.trim()||!qlName.trim()||!qlPrice){ toast("Completa todos los campos","","e"); return; }
-      const skuC=qlSku.trim().toUpperCase();
+      const skuC = qlSku.trim().toUpperCase();
       if (products.some(function(p){ return p.sku===skuC; })){ toast("SKU ya existe","","e"); return; }
       const pr = await sb.from("products")
-        .insert({sku:skuC,name:qlName.trim(),price:parseFloat(qlPrice)||0,emoji:qlEmoji,photo_url:qlPhoto||null,category:qlCat,created_by:me.id})
+        .insert({sku:skuC, name:qlName.trim(), price:parseFloat(qlPrice)||0, emoji:qlEmoji, photo_url:qlPhoto||null, category:qlCat, created_by:me.id})
         .select().single();
       if (pr.error){ toast("Error",""+pr.error.message,"e"); return; }
-      setProducts(function(p){ return [...p,pr.data]; });
+      setProducts(function(p){ return [...p, pr.data]; });
       if (qlQty>0){
         const ii = await sb.from("inventory")
-          .insert(Object.assign({user_id:me.id,product_id:pr.data.id,qty_available:qlQty,qty_sold:0,source:srcValue}, supplierMeta))
+          .insert({user_id:me.id, product_id:pr.data.id, qty_available:qlQty, qty_sold:0, source:"own"})
           .select("*, products(*)").single();
-        if (ii.data) setInventory(function(p){ return [...p,ii.data]; });
+        if (ii.data) setInventory(function(p){ return [...p, ii.data]; });
       }
-      toast("Producto creado!",qlName.trim()+" con "+qlQty+" u.","s");
-      setQlSku(""); setQlName(""); setQlPrice(""); setQlQty(1); setQlPhoto(null); setQlMode("add"); setQlSupplierId("");
+      toast("Producto creado!", qlName.trim()+" con "+qlQty+" u.", "s");
+      setQlSku(""); setQlName(""); setQlPrice(""); setQlQty(1); setQlPhoto(null); setQlMode("add");
     }
   }
 
@@ -1337,9 +1326,9 @@ export default function App() {
 
           {/* ══ STOCK ══ */}
           {tab==="stock"&&(function(){
-            // Split by source column
-            const ownStock     = myStock.filter(function(i){ return !i.source || i.source==="own"; });
-            const consignStock = myStock.filter(function(i){ return i.source==="consigna"; });
+            // Unified stock — no split needed (consigna tracked via transfers)
+            const ownStock     = myStock;
+            const consignStock = [];   // consigna detail shown in Consigna tab
 
             const q = srchStock.toLowerCase();
             function filtrar(list){ return list.filter(function(i){
@@ -1521,54 +1510,10 @@ export default function App() {
                   <div className="card-h"><div className="card-title">Modo de carga</div></div>
                   <div style={{padding:"14px 14px 0"}}>
 
-                    {/* ── TIPO DE STOCK — obligatorio ── */}
-                    <div className="fld">
-                      <label className="fl">Tipo de stock *</label>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                        {[
-                          {v:"PROPIO",       lbl:"📦 Stock Propio",   sub:"Mercadería comprada",         bg:"var(--in-l)",  brd:"var(--in)",  col:"var(--in-d)"},
-                          {v:"CONSIGNACION", lbl:"🤝 Consignación",   sub:"Mercadería de proveedor",     bg:"var(--am-l)",  brd:"var(--am)",  col:"var(--am-d)"},
-                        ].map(function(opt){
-                          const sel = qlStockType===opt.v;
-                          return (
-                            <div key={opt.v} onClick={function(){setQlStockType(opt.v);setQlSupplierId("");}}
-                              style={{padding:"12px 10px",borderRadius:14,border:"2px solid "+(sel?opt.brd:"var(--brd)"),background:sel?opt.bg:"var(--card)",textAlign:"center",cursor:"pointer",transition:"all .15s"}}>
-                              <div style={{fontSize:20,marginBottom:3}}>{opt.lbl.split(" ")[0]}</div>
-                              <div style={{fontWeight:800,fontSize:12,color:sel?opt.col:"var(--t2)"}}>{opt.lbl.substring(3)}</div>
-                              <div style={{fontSize:10,color:sel?opt.col:"var(--t3)",marginTop:2,opacity:.8}}>{opt.sub}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                    <div style={{background:"var(--in-l)",borderRadius:14,padding:"10px 14px",marginBottom:12,border:"1.5px solid rgba(124,58,237,.15)"}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"var(--in-d)"}}>📦 Cargando Stock Propio</div>
+                      <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>Para consignaciones usá la tab Consigna</div>
                     </div>
-
-                    {/* ── PROVEEDOR — solo para consignación ── */}
-                    {qlStockType==="CONSIGNACION"&&(
-                      <div className="fld" style={{background:"var(--am-l)",borderRadius:14,padding:"12px 14px",border:"1.5px solid rgba(255,122,0,.2)"}}>
-                        <label className="fl" style={{color:"var(--am-d)"}}>Proveedor / Remitente *</label>
-                        {contacts.length===0
-                          ?<div style={{fontSize:12,color:"var(--am-d)",fontWeight:600}}>Sin contactos. Agregá uno en la tab Red.</div>
-                          :<div>
-                            {contacts.map(function(c){
-                              const sel = qlSupplierId===c.id;
-                              return (
-                                <div key={c.id} onClick={function(){setQlSupplierId(c.id);}}
-                                  style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"1.5px solid "+(sel?"var(--am)":"var(--brd)"),background:sel?"var(--card)":"transparent",marginBottom:6,cursor:"pointer",transition:"all .13s"}}>
-                                  <div style={{width:32,height:32,borderRadius:10,background:c.color||"var(--am)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:"#fff",flexShrink:0}}>
-                                    {c.name.charAt(0).toUpperCase()}
-                                  </div>
-                                  <div style={{flex:1}}>
-                                    <div style={{fontWeight:700,fontSize:13}}>{c.name}</div>
-                                    <div style={{fontSize:10,color:"var(--t3)"}}>{c.email}</div>
-                                  </div>
-                                  {sel&&<div style={{color:"var(--am-d)",fontWeight:900,fontSize:16}}>✓</div>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        }
-                      </div>
-                    )}
 
                     <div className="ql-tabs">
                       <div className={"ql-tab"+(qlMode==="add"?" on":"")} onClick={function(){setQlMode("add");}}>Agregar a existente</div>
@@ -2080,422 +2025,19 @@ export default function App() {
           })()}
 
           {/* ══ CONSIGNA ══ */}
-          {tab==="consigna"&&(function(){
-            var filt = consignSrch.toLowerCase();
-            var txEnviados  = transfers.filter(function(t){
-              if (!(t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0)) return false;
-              // Exclude if recipient has 0 available (all sold)
-              var ri = recvInv.find(function(i){return i.product_id===t.product_id&&i.user_id===t.to_user_id;});
-              // If recvInv is loaded and shows 0 → hide (sold)
-              if (ri!=null && ri.qty_available===0) return false;
-              return true;
-            });
-            var txRecibidos = transfers.filter(function(t){ return t.to_user_id===me.id&&t.status==="confirmed"&&t.qty>0; });
-
-            // Group enviados by revendedora
-            var revendMap = {};
-            txEnviados.forEach(function(tx){
-              var uid2 = tx.to_user_id;
-              if (!revendMap[uid2]) revendMap[uid2] = {user:tx.to_user, txs:[]};
-              revendMap[uid2].txs.push(tx);
-            });
-            var revendList = Object.values(revendMap);
-
-            // Metrics
-            // Use recvInv for accurate pendiente counts
-            var totalUnidades = txEnviados.reduce(function(s,t){
-              var ri=recvInv.find(function(i){return i.product_id===t.product_id&&i.user_id===t.to_user_id;});
-              return s+(ri!=null?ri.qty_available:t.qty);
-            },0);
-            var totalValor = txEnviados.reduce(function(s,t){
-              var p=t.product||products.find(function(x){return x.id===t.product_id;});
-              var ri=recvInv.find(function(i){return i.product_id===t.product_id&&i.user_id===t.to_user_id;});
-              var qPend=ri!=null?ri.qty_available:t.qty;
-              return s+(p&&p.price?parseFloat(p.price):0)*qPend;
-            },0);
-            var pendDevol = txRecibidos.filter(function(t){
-              var inv=inventory.find(function(i){return i.product_id===t.product_id;});
-              return inv&&inv.qty_available>0;
-            }).length;
-
-            // ── PRODUCT SEARCH VIEW ───────────────────────────────────────────
-            if (consignView==="search") {
-              var searchResults = [];
-              if (prodSearch.trim()) {
-                var q = prodSearch.toLowerCase();
-                txEnviados.forEach(function(tx){
-                  var p = tx.product||products.find(function(x){return x.id===tx.product_id;});
-                  if (!p) return;
-                  if (p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q)) {
-                    var u = tx.to_user;
-                    searchResults.push({tx:tx, prod:p, user:u});
-                  }
-                });
-              }
-              return (
-                <div>
-                  <div style={{background:"var(--grad)",padding:"0 16px 20px"}}>
-                    <button style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:10,padding:"6px 12px",color:"#fff",fontFamily:"var(--hf)",fontWeight:700,fontSize:12,cursor:"pointer",marginBottom:12,display:"flex",alignItems:"center",gap:6}} onClick={function(){setConsignView("list");setProdSearch("");}}>
-                      ← Volver
-                    </button>
-                    <div style={{fontSize:18,fontWeight:900,color:"#fff",marginBottom:10}}>🔍 Buscar producto</div>
-                    <div style={{position:"relative"}}>
-                      <input style={{width:"100%",padding:"13px 16px",borderRadius:14,border:"none",fontFamily:"var(--hf)",fontSize:14,outline:"none",color:"var(--t1)",background:"#fff"}} placeholder="Nombre o SKU del producto..." value={prodSearch} autoFocus onChange={function(e){setProdSearch(e.target.value);}}/>
-                    </div>
-                  </div>
-                  <div style={{padding:"14px"}}>
-                    {!prodSearch.trim()
-                      ?<div className="empty"><div style={{fontSize:40,marginBottom:8}}>🔍</div>Escribí el nombre o SKU del producto</div>
-                      :searchResults.length===0
-                      ?<div className="empty"><div style={{fontSize:40,marginBottom:8}}>😕</div>Sin resultados para "{prodSearch}"</div>
-                      :<div>
-                        <div style={{fontSize:12,color:"var(--t3)",marginBottom:12,fontWeight:600}}>{searchResults.length} resultado{searchResults.length!==1?"s":""}</div>
-                        {searchResults.map(function(r,i){
-                          var myI2 = recvInv.find(function(ii){return ii.product_id===r.prod.id&&ii.user_id===r.tx.to_user_id;});
-                          var qAvail = myI2!=null?myI2.qty_available:r.tx.qty;
-                          var qSold  = Math.max(0,r.tx.qty-qAvail);
-                          var status = qSold>=r.tx.qty?"vendido":qAvail>0?"pendiente":"devuelto";
-                          var statusColors = {vendido:["var(--em-l)","var(--em-d)","✅"],pendiente:["var(--am-l)","var(--am-d)","⏳"],devuelto:["var(--cr-l)","var(--cr)","↩️"]};
-                          var sc = statusColors[status];
-                          return (
-                            <div key={i} style={{background:"#fff",borderRadius:16,border:"1.5px solid var(--brd)",marginBottom:10,overflow:"hidden",boxShadow:"var(--sh)"}}>
-                              <div style={{display:"flex",gap:12,padding:"12px 14px"}}>
-                                <ProdThumb prod={r.prod} size={56}/>
-                                <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontWeight:800,fontSize:13,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.prod.name}</div>
-                                  <div style={{fontSize:11,color:"var(--t3)",marginBottom:6}}>{r.prod.sku} · {fmtARS(r.prod.price)}</div>
-                                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                    <div style={{display:"inline-flex",alignItems:"center",gap:4,background:r.user?r.user.color+"22":"var(--in-l)",borderRadius:20,padding:"3px 10px 3px 6px",border:"1.5px solid "+(r.user?r.user.color+"44":"var(--brd)")}}>
-                                      <div style={{width:16,height:16,borderRadius:"50%",background:r.user?r.user.color:"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:900,color:"#fff"}}>{r.user?r.user.name.charAt(0).toUpperCase():"?"}</div>
-                                      <span style={{fontSize:11,fontWeight:700,color:r.user?r.user.color:"var(--in-d)"}}>{r.user?r.user.name:"?"}</span>
-                                    </div>
-                                    <div style={{background:sc[0],color:sc[1],borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:800}}>{sc[2]} {status}</div>
-                                  </div>
-                                </div>
-                                <div style={{textAlign:"right",flexShrink:0}}>
-                                  <div style={{fontSize:9,color:"var(--t3)",textTransform:"uppercase",letterSpacing:".06em"}}>Enviada</div>
-                                  <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:20,color:"var(--t1)"}}>{r.tx.qty}</div>
-                                  {qSold>0&&<div style={{fontSize:10,color:"var(--em-d)",fontWeight:700}}>{qSold} vendidas</div>}
-                                  {qAvail>0&&<div style={{fontSize:10,color:"var(--am-d)",fontWeight:700}}>{qAvail} pendientes</div>}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    }
-                  </div>
-                </div>
-              );
-            }
-
-            // ── REVENDEDORA DETAIL VIEW ───────────────────────────────────────
-            if (consignView==="detail"&&selRevend) {
-              var revTxs = txEnviados.filter(function(t){return t.to_user_id===selRevend.id;});
-              var totalEntregado = revTxs.reduce(function(s,t){return s+t.qty;},0);
-              var totalVendidoRev = 0, totalPendRev = 0, totalValorRev = 0, totalVendValor = 0;
-              revTxs.forEach(function(tx){
-                var p=tx.product||products.find(function(x){return x.id===tx.product_id;});
-                var myI3=inventory.find(function(i){return i.product_id===tx.product_id&&i.user_id===selRevend.id;});
-                var qA=myI3?myI3.qty_available:tx.qty;
-                var qS=Math.max(0,tx.qty-qA);
-                totalVendidoRev+=qS;
-                totalPendRev+=qA;
-                if(p&&p.price){ totalValorRev+=(parseFloat(p.price)*tx.qty); totalVendValor+=(parseFloat(p.price)*qS); }
-              });
-              return (
-                <div>
-                  <div style={{background:"var(--grad)",padding:"0 16px 24px"}}>
-                    <button style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:10,padding:"6px 12px",color:"#fff",fontFamily:"var(--hf)",fontWeight:700,fontSize:12,cursor:"pointer",marginBottom:14,display:"flex",alignItems:"center",gap:6}} onClick={function(){setConsignView("revendedoras");setSelRevend(null);}}>
-                      ← Revendedoras
-                    </button>
-                    <div style={{display:"flex",alignItems:"center",gap:14}}>
-                      <div style={{width:52,height:52,borderRadius:16,background:selRevend.color||"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:22,color:"#fff",flexShrink:0}}>
-                        {selRevend.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{fontSize:19,fontWeight:900,color:"#fff"}}>{selRevend.name}</div>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>{selRevend.email}</div>
-                      </div>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:14}}>
-                      {[
-                        {val:totalEntregado,lbl:"Entregado",ico:"📦"},
-                        {val:totalVendidoRev,lbl:"Vendido",ico:"✅"},
-                        {val:totalPendRev,lbl:"Pendiente",ico:"⏳"},
-                        {val:fmtARS(totalVendValor),lbl:"Cobrado",ico:"💰",small:true}
-                      ].map(function(m,i){
-                        return (
-                          <div key={i} style={{background:"rgba(255,255,255,.15)",borderRadius:14,padding:"12px 10px",border:"1px solid rgba(255,255,255,.2)"}}>
-                            <div style={{fontSize:18,marginBottom:3}}>{m.ico}</div>
-                            <div style={{fontSize:m.small?13:20,fontWeight:900,color:"#fff",fontFamily:"var(--mf)",lineHeight:1}}>{m.val}</div>
-                            <div style={{fontSize:10,color:"rgba(255,255,255,.75)",marginTop:3,fontWeight:600}}>{m.lbl}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div style={{padding:"14px"}}>
-                    {revTxs.length===0
-                      ?<div className="empty">Sin productos entregados</div>
-                      :revTxs.map(function(tx){
-                        var p=tx.product||products.find(function(x){return x.id===tx.product_id;});
-                        var myI4=recvInv.find(function(i){return i.product_id===tx.product_id&&i.user_id===selRevend.id;});
-                        var qA4=myI4!=null?myI4.qty_available:tx.qty;
-                        var qS4=Math.max(0,tx.qty-qA4);
-                        var dateStr4=tx.confirmed_at?new Date(tx.confirmed_at).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
-                        var allSold=qS4>=tx.qty;
-                        return (
-                          <div key={tx.id} style={{background:"#fff",borderRadius:16,border:"1.5px solid var(--brd)",marginBottom:10,overflow:"hidden",boxShadow:"var(--sh)"}}>
-                            <div style={{display:"flex",gap:12,padding:"12px 14px"}}>
-                              <ProdThumb prod={p} size={52}/>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontWeight:800,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"—"}</div>
-                                <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{p?p.sku:""} · {fmtARS(p?p.price:0)}</div>
-                                {dateStr4&&<div style={{fontSize:10,color:"var(--t4)",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Ic n="clock" s={10}/>Enviado: {dateStr4}</div>}
-                              </div>
-                              <div style={{textAlign:"right",flexShrink:0}}>
-                                <div style={{fontSize:9,color:"var(--t3)",textTransform:"uppercase"}}>Enviada</div>
-                                <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:20,color:"var(--t1)"}}>{tx.qty}</div>
-                              </div>
-                            </div>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:"var(--brd)"}}>
-                              {[
-                                {lbl:"Vendidas",val:qS4,color:"var(--em-d)",bg:"var(--em-l)"},
-                                {lbl:"Pendientes",val:qA4,color:"var(--am-d)",bg:"var(--am-l)"},
-                                {lbl:"Total $",val:fmtARS((p?p.price:0)*qS4),color:"var(--in-d)",bg:"var(--in-l)"}
-                              ].map(function(s,i){
-                                return (
-                                  <div key={i} style={{background:s.bg,padding:"8px 10px",textAlign:"center"}}>
-                                    <div style={{fontSize:9,color:s.color,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{s.lbl}</div>
-                                    <div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:13,color:s.color}}>{s.val}</div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            {!allSold&&qA4>0&&(
-                              <div style={{padding:"10px 14px"}}>
-                                <button onClick={function(){setRetModal(tx);setRetQty(qA4);}} style={{width:"100%",padding:"10px",borderRadius:12,border:"2px solid var(--in)",background:"#fff",color:"var(--in-d)",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                                  <Ic n="undo" s={14}/>Recuperar {qA4} unidad{qA4!==1?"es":""}
-                                </button>
-                              </div>
-                            )}
-                            {allSold&&<div style={{padding:"8px 14px",textAlign:"center",fontSize:12,color:"var(--em-d)",fontWeight:700,background:"var(--em-l)"}}>✅ Todo vendido</div>}
-                          </div>
-                        );
-                      })
-                    }
-                    <div style={{background:"var(--in-l)",border:"1.5px solid var(--brd)",borderRadius:14,padding:"12px 14px",marginTop:8}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                        <span style={{fontSize:12,color:"var(--t2)"}}>Valor total entregado</span>
-                        <span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--t1)"}}>{fmtARS(totalValorRev)}</span>
-                      </div>
-                      <div style={{display:"flex",justifyContent:"space-between"}}>
-                        <span style={{fontSize:12,color:"var(--t2)"}}>Valor vendido</span>
-                        <span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--em-d)"}}>{fmtARS(totalVendValor)}</span>
-                      </div>
-                      <div style={{display:"flex",justifyContent:"space-between",marginTop:6,paddingTop:6,borderTop:"1px solid var(--brd)"}}>
-                        <span style={{fontSize:12,fontWeight:700,color:"var(--t1)"}}>Saldo pendiente</span>
-                        <span style={{fontFamily:"var(--mf)",fontWeight:900,color:"var(--am-d)"}}>{fmtARS(totalValorRev-totalVendValor)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            // ── REVENDEDORAS LIST VIEW ─────────────────────────────────────────
-            if (consignView==="revendedoras") {
-              return (
-                <div>
-                  <div style={{background:"var(--grad)",padding:"0 16px 20px"}}>
-                    <button style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:10,padding:"6px 12px",color:"#fff",fontFamily:"var(--hf)",fontWeight:700,fontSize:12,cursor:"pointer",marginBottom:12,display:"flex",alignItems:"center",gap:6}} onClick={function(){setConsignView("list");}}>
-                      ← Consigna
-                    </button>
-                    <div style={{fontSize:19,fontWeight:900,color:"#fff"}}>👥 Revendedoras</div>
-                    <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginTop:2}}>{revendList.length} con consignas activas</div>
-                  </div>
-                  <div style={{padding:"14px"}}>
-                    <SearchBar value={consignSrch} onChange={setConsignSrch} placeholder="Buscar revendedora..."/>
-                    {revendList.filter(function(r){
-                      if (!filt) return true;
-                      return r.user&&r.user.name.toLowerCase().includes(filt);
-                    }).map(function(grupo){
-                      var u2=grupo.user;
-                      var gTotal=grupo.txs.reduce(function(s,t){var p=t.product||products.find(function(x){return x.id===t.product_id;});return s+(p&&p.price?parseFloat(p.price):0)*t.qty;},0);
-                      var gUnid=grupo.txs.reduce(function(s,t){return s+t.qty;},0);
-                      var gVend=0;
-                      grupo.txs.forEach(function(tx){
-                        var myI5=inventory.find(function(i){return i.product_id===tx.product_id&&i.user_id===tx.to_user_id;});
-                        var qA5=myI5?myI5.qty_available:tx.qty;
-                        gVend+=Math.max(0,tx.qty-qA5);
-                      });
-                      return (
-                        <div key={u2?u2.id:"?"} onClick={function(){setSelRevend(u2);setConsignView("detail");}} style={{background:"#fff",borderRadius:18,border:"1.5px solid var(--brd)",marginBottom:12,padding:"16px",boxShadow:"var(--sh)",cursor:"pointer",display:"flex",alignItems:"center",gap:14,transition:"all .15s"}}>
-                          <div style={{width:50,height:50,borderRadius:16,background:u2?u2.color:"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:20,color:"#fff",flexShrink:0}}>
-                            {u2?u2.name.charAt(0).toUpperCase():"?"}
-                          </div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:800,fontSize:14,color:"var(--t1)"}}>{u2?u2.name:"?"}</div>
-                            <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{grupo.txs.length} producto{grupo.txs.length!==1?"s":""} · {gUnid} u.</div>
-                            <div style={{display:"flex",gap:8,marginTop:6}}>
-                              <span style={{fontSize:10,fontWeight:700,background:"var(--em-l)",color:"var(--em-d)",borderRadius:20,padding:"2px 8px"}}>{gVend} vendidas</span>
-                              <span style={{fontSize:10,fontWeight:700,background:"var(--am-l)",color:"var(--am-d)",borderRadius:20,padding:"2px 8px"}}>{gUnid-gVend} pendientes</span>
-                            </div>
-                          </div>
-                          <div style={{textAlign:"right",flexShrink:0}}>
-                            <div style={{fontSize:9,color:"var(--t3)",textTransform:"uppercase",letterSpacing:".06em"}}>Valor</div>
-                            <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:13,color:"var(--in-d)"}}>{fmtARS(gTotal)}</div>
-                            <div style={{color:"var(--t3)",marginTop:4}}><Ic n="send" s={14}/></div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {revendList.length===0&&<div className="empty"><div style={{fontSize:40,marginBottom:8}}>👥</div>Sin revendedoras activas</div>}
-                  </div>
-                </div>
-              );
-            }
-
-            // ── MAIN LIST VIEW ─────────────────────────────────────────────────
-            var activeTx = consignTab==="recibido" ? txRecibidos : txEnviados;
-            var filtered = activeTx.filter(function(t){
-              if (!filt) return true;
-              var p=t.product; var u=consignTab==="recibido"?t.from_user:t.to_user;
-              return (p&&(p.name.toLowerCase().includes(filt)||p.sku.toLowerCase().includes(filt)))||(u&&u.name&&u.name.toLowerCase().includes(filt));
-            });
-
-            return (
-              <div>
-                {/* Header gradient with metrics */}
-                <div style={{background:"var(--grad)",padding:"0 16px 20px",marginTop:-1}}>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,paddingTop:4}}>
-                    {/* Clickable Revendedoras card */}
-                    <div onClick={function(){setConsignView("revendedoras");}} style={{background:"rgba(255,255,255,.15)",backdropFilter:"blur(12px)",borderRadius:16,padding:"14px 12px",border:"1px solid rgba(255,255,255,.2)",cursor:"pointer",transition:"all .15s",gridColumn:"1"}}>
-                      <div style={{fontSize:22,marginBottom:4}}>👥</div>
-                      <div style={{fontSize:22,fontWeight:900,color:"#fff",fontFamily:"var(--mf)",lineHeight:1}}>{revendList.length}</div>
-                      <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.9)",marginTop:4}}>Revendedoras</div>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,.6)"}}>Ver detalle →</div>
-                    </div>
-                    <div style={{background:"rgba(255,255,255,.15)",backdropFilter:"blur(12px)",borderRadius:16,padding:"14px 12px",border:"1px solid rgba(255,255,255,.2)"}}>
-                      <div style={{fontSize:22,marginBottom:4}}>📦</div>
-                      <div style={{fontSize:22,fontWeight:900,color:"#fff",fontFamily:"var(--mf)",lineHeight:1}}>{totalUnidades}</div>
-                      <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.9)",marginTop:4}}>En consigna</div>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,.6)"}}>No vendidos</div>
-                    </div>
-                    <div style={{background:"rgba(255,255,255,.15)",backdropFilter:"blur(12px)",borderRadius:16,padding:"14px 12px",border:"1px solid rgba(255,255,255,.2)"}}>
-                      <div style={{fontSize:22,marginBottom:4}}>🔄</div>
-                      <div style={{fontSize:22,fontWeight:900,color:"#fff",fontFamily:"var(--mf)",lineHeight:1}}>{pendDevol}</div>
-                      <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.9)",marginTop:4}}>Pendientes</div>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,.6)"}}>De devolución</div>
-                    </div>
-                    <div style={{background:"rgba(255,255,255,.15)",backdropFilter:"blur(12px)",borderRadius:16,padding:"14px 12px",border:"1px solid rgba(255,255,255,.2)"}}>
-                      <div style={{fontSize:22,marginBottom:4}}>💲</div>
-                      <div style={{fontSize:14,fontWeight:900,color:"#fff",fontFamily:"var(--mf)",lineHeight:1}}>{fmtARS(totalValor)}</div>
-                      <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.9)",marginTop:4}}>Valor total</div>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,.6)"}}>En consigna</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{padding:"14px 14px 24px"}}>
-                  {/* Search + filter button */}
-                  <div style={{display:"flex",gap:8,marginBottom:14}}>
-                    <div style={{flex:1,position:"relative"}}>
-                      <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--t3)"}}><Ic n="search" s={16}/></span>
-                      <input style={{width:"100%",padding:"12px 12px 12px 40px",borderRadius:14,border:"2px solid var(--brd)",background:"#fff",fontFamily:"var(--hf)",fontSize:13,outline:"none",color:"var(--t1)"}} placeholder="Buscar por producto, cliente o SKU..." value={consignSrch} onChange={function(e){setConsignSrch(e.target.value);}}/>
-                    </div>
-                    <button onClick={function(){setConsignView("search");setProdSearch("");}} style={{width:46,height:46,borderRadius:14,border:"2px solid var(--brd)",background:"#fff",cursor:"pointer",color:"var(--in-d)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title="Buscar producto en revendedoras">
-                      🔍
-                    </button>
-                  </div>
-
-                  {/* Tabs */}
-                  <div className="ql-tabs" style={{marginBottom:16}}>
-                    <div className={"ql-tab"+(consignTab==="enviado"?" on":"")} onClick={function(){setConsignTab("enviado");}}>
-                      📤 Enviado ({txEnviados.length})
-                    </div>
-                    <div className={"ql-tab"+(consignTab==="recibido"?" on":"")} onClick={function(){setConsignTab("recibido");}}>
-                      📥 Recibido ({txRecibidos.length})
-                    </div>
-                  </div>
-
-                  <div style={{marginBottom:12}}>
-                    <div style={{fontSize:17,fontWeight:900,color:"var(--t1)"}}>Consigna</div>
-                    <div style={{fontSize:12,color:"var(--t3)",marginTop:2}}>Solo se muestran productos no vendidos</div>
-                  </div>
-
-                  {filtered.length===0
-                    ?<div className="empty"><div style={{fontSize:44,marginBottom:10}}>📦</div><div style={{fontWeight:700,marginBottom:4}}>Sin consignas activas</div></div>
-                    :filtered.map(function(tx){
-                      var p=tx.product||products.find(function(x){return x.id===tx.product_id;});
-                      var otherUser=consignTab==="recibido"?tx.from_user:tx.to_user;
-                      var myInvR = consignTab==="recibido"
-                        ? inventory.find(function(i){return i.product_id===tx.product_id;})
-                        : recvInv.find(function(i){return i.product_id===tx.product_id&&i.user_id===tx.to_user_id;});
-                      var qtyDisp = myInvR ? myInvR.qty_available : tx.qty;
-                      var qtySold = Math.max(0, tx.qty - qtyDisp);
-                      var canReturn = consignTab==="recibido" ? qtyDisp>0 : qtyDisp>0;
-                      var dateStr=tx.confirmed_at?new Date(tx.confirmed_at).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
-                      return (
-                        <div key={tx.id} style={{background:"#fff",borderRadius:18,border:"1.5px solid var(--brd)",marginBottom:12,overflow:"hidden",boxShadow:"var(--sh)"}}>
-                          <div style={{display:"flex",gap:14,padding:"14px 14px 0"}}>
-                            <div style={{width:72,height:72,borderRadius:14,overflow:"hidden",flexShrink:0,background:"var(--bg)"}}>
-                              <ProdThumb prod={p} size={72}/>
-                            </div>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:800,fontSize:14,color:"var(--t1)",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"—"}</div>
-                              <div style={{fontSize:11,color:"var(--t3)",marginBottom:6}}>SKU: {p?p.sku:"—"}</div>
-                              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
-                                <div style={{display:"inline-flex",alignItems:"center",gap:5,background:otherUser?otherUser.color+"22":"var(--in-l)",borderRadius:20,padding:"3px 10px 3px 6px",border:"1.5px solid "+(otherUser?otherUser.color+"44":"var(--brd)")}}>
-                                  <div style={{width:18,height:18,borderRadius:"50%",background:otherUser?otherUser.color:"var(--in)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{otherUser?otherUser.name.charAt(0).toUpperCase():"?"}</div>
-                                  <span style={{fontSize:11,fontWeight:700,color:otherUser?otherUser.color:"var(--in-d)"}}>{otherUser?otherUser.name:"?"}</span>
-                                </div>
-                              </div>
-                              {dateStr&&<div style={{fontSize:10,color:"var(--t4)",display:"flex",alignItems:"center",gap:4}}><Ic n="clock" s={11}/>Enviado: {dateStr}</div>}
-                            </div>
-                            <div style={{display:"flex",gap:12,flexShrink:0,alignItems:"flex-start",paddingTop:4}}>
-                              <div style={{textAlign:"center"}}>
-                                <div style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:3}}>Enviada</div>
-                                <div style={{fontSize:22,fontWeight:900,fontFamily:"var(--mf)",color:"var(--t1)",lineHeight:1}}>{tx.qty}</div>
-                              </div>
-                              <div style={{textAlign:"center"}}>
-                                <div style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:3}}>Pendiente</div>
-                                <div style={{fontSize:22,fontWeight:900,fontFamily:"var(--mf)",color:qtyDisp>0?"#ff6b35":"var(--em-d)",lineHeight:1}}>{consignTab==="recibido"?qtyDisp:tx.qty}</div>
-                              </div>
-                            </div>
-                          </div>
-                          {consignTab==="recibido"&&tx.qty>0&&(
-                            <div style={{padding:"8px 14px 0"}}>
-                              <div style={{height:5,borderRadius:3,background:"var(--brd)",overflow:"hidden"}}>
-                                <div style={{height:"100%",width:((qtySold/tx.qty)*100)+"%",background:"linear-gradient(90deg,var(--em),var(--em-d))",borderRadius:3,transition:"width .4s"}}/>
-                              </div>
-                              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--t4)",marginTop:3}}>
-                                <span>{qtySold} vendidas</span><span>{qtyDisp} disponibles</span>
-                              </div>
-                            </div>
-                          )}
-                          <div style={{padding:"10px 14px 14px"}}>
-                            {canReturn?(
-                              <button onClick={function(){setRetModal(tx);setRetQty(consignTab==="recibido"?qtyDisp:tx.qty);}} style={{width:"100%",padding:"11px",borderRadius:12,border:"2px solid var(--in)",background:"#fff",color:"var(--in-d)",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                                <Ic n="undo" s={15}/>Devolver
-                              </button>
-                            ):(
-                              <div style={{textAlign:"center",padding:"8px",fontSize:12,color:"var(--em-d)",fontWeight:700,background:"var(--em-l)",borderRadius:10}}>✅ Todo vendido</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  }
-                  <div style={{background:"var(--in-l)",border:"1.5px solid var(--brd)",borderRadius:14,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start",marginTop:8}}>
-                    <div style={{fontSize:16,flexShrink:0}}>ℹ️</div>
-                    <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.6}}>Los productos vendidos no se muestran aquí.<br/><span style={{fontWeight:700,color:"var(--in-d)",cursor:"pointer"}} onClick={function(){setTab("ventas");}}>Ver historial de ventas →</span></div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+          {tab==="consigna"&&(
+            <ConsignacionModule
+              sb={sb}
+              me={me}
+              products={products}
+              inventory={inventory}
+              contacts={contacts}
+              transfers={transfers}
+              onRefresh={function(){ loadData(me.id, me.role); loadRecvInventory(); }}
+              toast={toast}
+              fmtARS={fmtARS}
+            />
+          )}
 
           {/* ══ PRECIOS ══ */}
           {tab==="precios"&&(
