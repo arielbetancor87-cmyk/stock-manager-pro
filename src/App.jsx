@@ -362,7 +362,9 @@ export default function App() {
   const [bulkSel, setBulkSel] = useState({});  // {prodId: true}
 
   // ── QUICK LOAD ──────────────────────────────────────────────────────────────
-  const [qlMode,   setQlMode]   = useState("add");
+  const [qlMode,      setQlMode]      = useState("add");
+  const [qlStockType, setQlStockType] = useState("PROPIO");       // 'PROPIO' | 'CONSIGNACION'
+  const [qlSupplierId,setQlSupplierId]= useState("");              // contact id when CONSIGNACION
   const [qlPid,    setQlPid]    = useState("");
   const [qlQty,    setQlQty]    = useState(1);
   const [qlSku,    setQlSku]    = useState("");
@@ -401,7 +403,9 @@ export default function App() {
   const [movType,    setMovType]    = useState("entrada"); // "entrada"|"salida"|"ajuste"
   const [movQty,     setMovQty]     = useState(1);
   const [movNote,    setMovNote]    = useState("");
-  const [movHistory, setMovHistory] = useState([]);  // local movement log
+  const [movHistory,   setMovHistory]   = useState([]);
+  // Deudas de consignación: {id, supplier_id, supplier_name, product_name, qty, amount, date}
+  const [consignDebts, setConsignDebts] = useState(function(){ try{ return JSON.parse(localStorage.getItem("smp_debts")||"[]"); }catch(e){ return []; } });
   const [retModal,    setRetModal]    = useState(null);
   const [retQty,      setRetQty]      = useState(1);
   const [consignSrch, setConsignSrch] = useState("");
@@ -515,6 +519,10 @@ export default function App() {
   useEffect(function(){
     try { localStorage.setItem("smp_ganancia", String(ganancia)); } catch(e){}
   }, [ganancia]);
+
+  useEffect(function(){
+    try { localStorage.setItem("smp_debts", JSON.stringify(consignDebts)); } catch(e){}
+  }, [consignDebts]);
 
   // ── SUPABASE DATA LOADERS ────────────────────────────────────────────────────
   const loadData = useCallback(async function(userId, userRole) {
@@ -731,8 +739,31 @@ export default function App() {
   }
 
   function doEntregarPedido(id) {
+    var ped = pedidos.find(function(p){ return p.id===id; });
     var updated = pedidos.map(function(p){ return p.id===id?Object.assign({},p,{estado:"entregado",entregado_at:new Date().toISOString()}):p; });
     savePedidos(updated);
+
+    // If product came from consignment inventory, record debt to supplier
+    if (ped && ped.product_id) {
+      var invRow = inventory.find(function(i){ return i.product_id===ped.product_id && i.source==="consigna"; });
+      if (invRow && invRow.supplier_id) {
+        var supplier = contacts.find(function(c){ return c.id===invRow.supplier_id; });
+        var debtAmount = (ped.product_price||0) * (ped.qty||1);
+        var newDebt = {
+          id: uid(),
+          supplier_id: invRow.supplier_id,
+          supplier_name: supplier ? supplier.name : "Proveedor",
+          product_name: ped.product_name || "",
+          qty: ped.qty || 1,
+          amount: debtAmount,
+          date: new Date().toISOString(),
+          paid: false
+        };
+        setConsignDebts(function(prev){ return [newDebt, ...prev]; });
+        toast("Pedido entregado!", "Deuda registrada: "+fmtARS(debtAmount)+" a "+(supplier?supplier.name:"proveedor"), "s");
+        return;
+      }
+    }
     toast("Pedido entregado!", "", "s");
   }
 
@@ -880,32 +911,52 @@ export default function App() {
 
   // ── QUICK LOAD ────────────────────────────────────────────────────────────────
   async function doQuickLoad() {
+    // Validate supplier for consignación
+    if (qlStockType==="CONSIGNACION" && !qlSupplierId) {
+      toast("Seleccioná el proveedor para consignación","","e"); return;
+    }
+    const srcValue = qlStockType==="CONSIGNACION" ? "consigna" : "own";
+    const supplierMeta = qlStockType==="CONSIGNACION" ? {supplier_id: qlSupplierId} : {};
+
     if (qlMode==="add") {
       if (!qlPid){ toast("Selecciona un producto","","e"); return; }
-      var existing = inventory.find(function(i){ return i.product_id===qlPid; });
-      if (existing) {
-        var upd = await sb.from("inventory").update({qty_available:existing.qty_available+qlQty, source:'own'}).eq("id",existing.id).select("*, products(*)").single();
-        if (upd.data) setInventory(function(p){ return p.map(function(i){ return i.id===existing.id?upd.data:i; }); });
+      // For 'PROPIO' and 'CONSIGNACION', always create separate rows if source differs
+      const existingSameSource = inventory.find(function(i){
+        return i.product_id===qlPid && (i.source||"own")===srcValue;
+      });
+      if (existingSameSource) {
+        const upd = await sb.from("inventory")
+          .update({qty_available: existingSameSource.qty_available+qlQty})
+          .eq("id", existingSameSource.id)
+          .select("*, products(*)").single();
+        if (upd.data) setInventory(function(p){ return p.map(function(i){ return i.id===existingSameSource.id?upd.data:i; }); });
       } else {
-        var ins = await sb.from("inventory").insert({user_id:me.id,product_id:qlPid,qty_available:qlQty,qty_sold:0,source:'own'}).select("*, products(*)").single();
+        const ins = await sb.from("inventory")
+          .insert(Object.assign({user_id:me.id,product_id:qlPid,qty_available:qlQty,qty_sold:0,source:srcValue}, supplierMeta))
+          .select("*, products(*)").single();
         if (ins.data) setInventory(function(p){ return [...p,ins.data]; });
       }
-      var p=products.find(function(x){ return x.id===qlPid; });
-      toast("Stock cargado!","+"+ qlQty+" u. de "+(p?p.name:""),"s");
-      setQlQty(1); setQlPid("");
+      const p=products.find(function(x){ return x.id===qlPid; });
+      const typeLabel = qlStockType==="CONSIGNACION"?" (consignación)":"";
+      toast("Stock cargado!","+"+ qlQty+" u. de "+(p?p.name:"")+typeLabel,"s");
+      setQlQty(1); setQlPid(""); setQlSupplierId("");
     } else {
       if (!qlSku.trim()||!qlName.trim()||!qlPrice){ toast("Completa todos los campos","","e"); return; }
-      var skuC=qlSku.trim().toUpperCase();
+      const skuC=qlSku.trim().toUpperCase();
       if (products.some(function(p){ return p.sku===skuC; })){ toast("SKU ya existe","","e"); return; }
-      var pr = await sb.from("products").insert({sku:skuC,name:qlName.trim(),price:parseFloat(qlPrice)||0,emoji:qlEmoji,photo_url:qlPhoto||null,category:qlCat,created_by:me.id}).select().single();
+      const pr = await sb.from("products")
+        .insert({sku:skuC,name:qlName.trim(),price:parseFloat(qlPrice)||0,emoji:qlEmoji,photo_url:qlPhoto||null,category:qlCat,created_by:me.id})
+        .select().single();
       if (pr.error){ toast("Error",""+pr.error.message,"e"); return; }
       setProducts(function(p){ return [...p,pr.data]; });
       if (qlQty>0){
-        var ii = await sb.from("inventory").insert({user_id:me.id,product_id:pr.data.id,qty_available:qlQty,qty_sold:0}).select("*, products(*)").single();
+        const ii = await sb.from("inventory")
+          .insert(Object.assign({user_id:me.id,product_id:pr.data.id,qty_available:qlQty,qty_sold:0,source:srcValue}, supplierMeta))
+          .select("*, products(*)").single();
         if (ii.data) setInventory(function(p){ return [...p,ii.data]; });
       }
       toast("Producto creado!",qlName.trim()+" con "+qlQty+" u.","s");
-      setQlSku(""); setQlName(""); setQlPrice(""); setQlQty(1); setQlPhoto(null); setQlMode("add");
+      setQlSku(""); setQlName(""); setQlPrice(""); setQlQty(1); setQlPhoto(null); setQlMode("add"); setQlSupplierId("");
     }
   }
 
@@ -1469,6 +1520,56 @@ export default function App() {
                 <div className="card">
                   <div className="card-h"><div className="card-title">Modo de carga</div></div>
                   <div style={{padding:"14px 14px 0"}}>
+
+                    {/* ── TIPO DE STOCK — obligatorio ── */}
+                    <div className="fld">
+                      <label className="fl">Tipo de stock *</label>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        {[
+                          {v:"PROPIO",       lbl:"📦 Stock Propio",   sub:"Mercadería comprada",         bg:"var(--in-l)",  brd:"var(--in)",  col:"var(--in-d)"},
+                          {v:"CONSIGNACION", lbl:"🤝 Consignación",   sub:"Mercadería de proveedor",     bg:"var(--am-l)",  brd:"var(--am)",  col:"var(--am-d)"},
+                        ].map(function(opt){
+                          const sel = qlStockType===opt.v;
+                          return (
+                            <div key={opt.v} onClick={function(){setQlStockType(opt.v);setQlSupplierId("");}}
+                              style={{padding:"12px 10px",borderRadius:14,border:"2px solid "+(sel?opt.brd:"var(--brd)"),background:sel?opt.bg:"var(--card)",textAlign:"center",cursor:"pointer",transition:"all .15s"}}>
+                              <div style={{fontSize:20,marginBottom:3}}>{opt.lbl.split(" ")[0]}</div>
+                              <div style={{fontWeight:800,fontSize:12,color:sel?opt.col:"var(--t2)"}}>{opt.lbl.substring(3)}</div>
+                              <div style={{fontSize:10,color:sel?opt.col:"var(--t3)",marginTop:2,opacity:.8}}>{opt.sub}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── PROVEEDOR — solo para consignación ── */}
+                    {qlStockType==="CONSIGNACION"&&(
+                      <div className="fld" style={{background:"var(--am-l)",borderRadius:14,padding:"12px 14px",border:"1.5px solid rgba(255,122,0,.2)"}}>
+                        <label className="fl" style={{color:"var(--am-d)"}}>Proveedor / Remitente *</label>
+                        {contacts.length===0
+                          ?<div style={{fontSize:12,color:"var(--am-d)",fontWeight:600}}>Sin contactos. Agregá uno en la tab Red.</div>
+                          :<div>
+                            {contacts.map(function(c){
+                              const sel = qlSupplierId===c.id;
+                              return (
+                                <div key={c.id} onClick={function(){setQlSupplierId(c.id);}}
+                                  style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"1.5px solid "+(sel?"var(--am)":"var(--brd)"),background:sel?"var(--card)":"transparent",marginBottom:6,cursor:"pointer",transition:"all .13s"}}>
+                                  <div style={{width:32,height:32,borderRadius:10,background:c.color||"var(--am)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:"#fff",flexShrink:0}}>
+                                    {c.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div style={{flex:1}}>
+                                    <div style={{fontWeight:700,fontSize:13}}>{c.name}</div>
+                                    <div style={{fontSize:10,color:"var(--t3)"}}>{c.email}</div>
+                                  </div>
+                                  {sel&&<div style={{color:"var(--am-d)",fontWeight:900,fontSize:16}}>✓</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        }
+                      </div>
+                    )}
+
                     <div className="ql-tabs">
                       <div className={"ql-tab"+(qlMode==="add"?" on":"")} onClick={function(){setQlMode("add");}}>Agregar a existente</div>
                       <div className={"ql-tab"+(qlMode==="new"?" on":"")} onClick={function(){setQlMode("new");}}>Crear producto nuevo</div>
@@ -1859,6 +1960,38 @@ export default function App() {
                       <div className="metric-lbl">Unidades vendidas</div>
                     </div>
                   </div>
+
+                  {/* Deudas de Consignación */}
+                  {consignDebts.filter(function(d){return !d.paid;}).length>0&&(
+                    <div className="card" style={{marginBottom:16,border:"2px solid var(--am)"}}>
+                      <div className="card-h" style={{background:"var(--am-l)"}}>
+                        <div className="card-title" style={{color:"var(--am-d)"}}>🤝 Deudas de Consignación</div>
+                        <span className="badge b-am">{fmtARS(consignDebts.filter(function(d){return !d.paid;}).reduce(function(s,d){return s+d.amount;},0))}</span>
+                      </div>
+                      <div style={{padding:"8px 0"}}>
+                        {consignDebts.filter(function(d){return !d.paid;}).map(function(debt){
+                          return (
+                            <div key={debt.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid var(--brd)"}}>
+                              <div style={{width:36,height:36,borderRadius:10,background:"var(--am-l)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:14,color:"var(--am-d)",flexShrink:0}}>
+                                {debt.supplier_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontWeight:700,fontSize:13}}>{debt.supplier_name}</div>
+                                <div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{debt.product_name} · {debt.qty} u. · {new Date(debt.date).toLocaleDateString("es-AR")}</div>
+                              </div>
+                              <div style={{textAlign:"right",flexShrink:0}}>
+                                <div style={{fontFamily:"var(--mf)",fontWeight:900,color:"var(--am-d)",fontSize:14}}>{fmtARS(debt.amount)}</div>
+                                <button className="btn btn-xs b-em" style={{marginTop:4}} onClick={function(){
+                                  setConsignDebts(function(prev){ return prev.map(function(d){ return d.id===debt.id?Object.assign({},d,{paid:true}):d; }); });
+                                  toast("Deuda liquidada",""+debt.supplier_name,"s");
+                                }}>✓ Liquidar</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Ganancia card */}
                   <div className="card" style={{marginBottom:16,border:"2px solid var(--in-t)"}}>
