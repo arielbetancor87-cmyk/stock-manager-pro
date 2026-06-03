@@ -1572,21 +1572,46 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ─ ALERTAS PENDIENTES ─ */}
+                {/* ─ ENVÍOS PENDIENTES: LOS QUE YO MANDÉ ─ */}
+                {sentTx.length>0&&(
+                  <div style={{margin:"0 14px 16px"}}>
+                    <div style={{background:"var(--bl-l)",border:"1.5px solid rgba(0,150,199,.25)",borderRadius:14,padding:"12px 14px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--bl-d)",marginBottom:8}}>
+                        📤 {sentTx.length} envío{sentTx.length!==1?"s":""} esperando que los confirmen
+                      </div>
+                      {sentTx.map(function(tx){
+                        const p=tx.product;
+                        const dest=tx.to_user;
+                        return (
+                          <div key={tx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--card)",borderRadius:12,marginBottom:6,border:"1px solid var(--brd)"}}>
+                            <div style={{width:38,height:38,borderRadius:10,background:"var(--bl-l)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{p?p.emoji:"📦"}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"Producto"}</div>
+                              <div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{tx.qty} u. → <strong>{dest?dest.name:"?"}</strong></div>
+                            </div>
+                            <span style={{background:"var(--bl-l)",color:"var(--bl-d)",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:800,flexShrink:0}}>⏳ Pendiente</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ─ ENVÍOS PENDIENTES: LOS QUE ME MANDARON A MÍ ─ */}
                 {pendingTx.length>0&&(
                   <div style={{margin:"0 14px 16px"}}>
                     <div style={{background:"var(--am-l)",border:"1.5px solid rgba(255,122,0,.25)",borderRadius:14,padding:"12px 14px"}}>
-                      <div style={{fontWeight:800,fontSize:13,color:"var(--am-d)",marginBottom:8}}>🔔 {pendingTx.length} envío{pendingTx.length!==1?"s":""} esperando confirmación</div>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--am-d)",marginBottom:8}}>🔔 {pendingTx.length} envío{pendingTx.length!==1?"s":""} esperando tu confirmación</div>
                       {pendingTx.map(function(tx){
                         const p=tx.product;
                         return (
                           <div key={tx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--card)",borderRadius:12,marginBottom:6,border:"1px solid var(--brd)"}}>
-                            <div style={{fontSize:22}}>{p?p.emoji:"📦"}</div>
+                            <div style={{width:38,height:38,borderRadius:10,background:"var(--am-l)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{p?p.emoji:"📦"}</div>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"Producto"}</div>
-                              <div style={{fontSize:11,color:"var(--t3)"}}>{tx.qty} u. de {tx.from_user?tx.from_user.name:""}</div>
+                              <div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{tx.qty} u. de <strong>{tx.from_user?tx.from_user.name:""}</strong></div>
                             </div>
-                            <button className="btn btn-xs b-em" onClick={function(){confirmTransfer(tx);}}>✓ Confirmar</button>
+                            <button className="btn btn-xs b-em" onClick={function(){confirmTransfer(tx);}}>✓ Recibí</button>
                           </div>
                         );
                       })}
@@ -1603,7 +1628,10 @@ export default function App() {
                       <div style={{width:10,height:10,borderRadius:3,background:"var(--em)"}}/>
                       <div className="sec-hdr-t">Stock Propio</div>
                     </div>
-                    <span className="badge" style={{background:"var(--em-l)",color:"var(--em-d)"}}>{ownFilt.length}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {sentTx.length>0&&<span style={{background:"var(--bl-l)",color:"var(--bl-d)",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:800}}>📤 {sentTx.length} en tránsito</span>}
+                      <span className="badge" style={{background:"var(--em-l)",color:"var(--em-d)"}}>{ownFilt.length}</span>
+                    </div>
                   </div>
                   {ownFilt.length===0
                     ?<div style={{textAlign:"center",padding:"24px 20px",color:"var(--t3)",fontSize:13,background:"var(--card)",borderRadius:14,marginBottom:16,border:"1px solid var(--brd)"}}>
