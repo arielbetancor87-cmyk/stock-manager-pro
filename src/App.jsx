@@ -64,26 +64,27 @@ const Ic = memo(IcBase);
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f7f7fa;--bg2:#eeeef5;--card:#fff;
-  --brd:#e8e6f0;--brd2:#d8d4ec;
-  --t1:#1a1836;--t2:#4a4870;--t3:#9290b0;--t4:#c8c6de;
-  --in:#7c3aed;--in-d:#6d28d9;--in-l:#ede9fe;--in-t:rgba(124,58,237,.1);
+  --bg:#f4f4f4;--bg2:#ebebeb;--card:#fff;
+  --brd:#e0e0e0;--brd2:#cccccc;
+  --t1:#1a1a1a;--t2:#444444;--t3:#888888;--t4:#bbbbbb;
+  --in:#cc0000;--in-d:#aa0000;--in-l:#ffeaea;--in-t:rgba(204,0,0,.1);
   --em:#00b87a;--em-d:#009a66;--em-l:#e6faf4;--em-t:rgba(0,184,122,.1);
   --am:#ff7a00;--am-d:#e06a00;--am-l:#fff3e6;--am-t:rgba(255,122,0,.1);
   --cr:#e63946;--cr-d:#c1121f;--cr-l:#fde8ea;--cr-t:rgba(230,57,70,.08);
   --bl:#0096c7;--bl-d:#0077a3;--bl-l:#e0f4fb;--bl-t:rgba(0,150,199,.1);
   --wa:#25d366;--wa-d:#128c7e;--wa-l:#e8fdf1;
   --pu:#a855f7;--pu-d:#9333ea;
-  --grad:linear-gradient(135deg,#6d28d9 0%,#7c3aed 60%,#a855f7 100%);
-  --hf:'Plus Jakarta Sans',sans-serif;--mf:'JetBrains Mono',monospace;
-  --r:14px;--r2:20px;--r3:28px;
-  --sh:0 2px 16px rgba(26,24,54,.06);
-  --sh2:0 8px 32px rgba(26,24,54,.12);
-  --sh3:0 20px 60px rgba(26,24,54,.18);
-  --tab:66px;
+  --pri:#cc0000;--pri-d:#aa0000;--pri-l:#ffeaea;
+  --grad:linear-gradient(135deg,#cc0000 0%,#ee1111 60%,#ff3333 100%);
+  --hf:'Nunito',sans-serif;--mf:'JetBrains Mono',monospace;
+  --r:12px;--r2:18px;--r3:24px;
+  --sh:0 2px 10px rgba(0,0,0,.07);
+  --sh2:0 6px 24px rgba(0,0,0,.12);
+  --sh3:0 16px 48px rgba(0,0,0,.16);
+  --tab:62px;
 }
 html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf);font-size:14px;-webkit-font-smoothing:antialiased}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
@@ -96,16 +97,20 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .spin{animation:spin 1s linear infinite}
 
 /* HEADER */
-.hdr{background:var(--card);padding:14px 18px;flex-shrink:0;border-bottom:1px solid var(--brd);position:relative}
-.hdr-btn{width:42px;height:42px;border-radius:14px;border:none;background:var(--bg2);cursor:pointer;color:var(--t2);display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
-.hdr-btn:hover{background:var(--brd);color:var(--t1)}
+.hdr{background:var(--grad);padding:0;flex-shrink:0;position:sticky;top:0;z-index:60}
+.hdr-btn{width:38px;height:38px;border-radius:10px;border:none;background:rgba(255,255,255,.2);cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.hdr-btn:hover{background:rgba(255,255,255,.3)}
 
+.hdr-top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px}
+.hdr-search{margin:0 16px 10px;position:relative}
+.hdr-search input{width:100%;padding:10px 14px 10px 38px;border-radius:10px;border:none;background:#fff;color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;font-weight:600}
+.hdr-search-ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
 /* TABBAR */
 .tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tab);background:var(--card);display:flex;z-index:50;box-shadow:0 -1px 0 var(--brd),0 -6px 20px rgba(26,24,54,.07);border-radius:20px 20px 0 0}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--t3);transition:all .2s;position:relative;padding:6px 2px 4px;min-width:0}
-.tab.on{color:var(--in)}
+.tab.on{color:var(--pri)}
 .tab-bub{width:36px;height:26px;border-radius:13px;display:flex;align-items:center;justify-content:center;transition:all .2s}
-.tab.on .tab-bub{background:var(--in-l)}
+.tab.on .tab-bub{background:var(--pri-l)}
 .tab-lbl{font-size:10px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58px}
 .tab-dot{position:absolute;top:4px;right:calc(50% - 20px);width:7px;height:7px;border-radius:50%;background:var(--cr);border:2px solid var(--card)}
 
@@ -144,7 +149,7 @@ tr:last-child td{border-bottom:none}
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:var(--r);border:none;cursor:pointer;font-family:var(--hf);font-size:12px;font-weight:800;transition:all .14s;white-space:nowrap;flex-shrink:0}
 .btn:disabled{opacity:.3;cursor:not-allowed}.btn:active:not(:disabled){transform:scale(.96)}
-.b-pri{background:linear-gradient(135deg,var(--in),var(--in-d));color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.3)}
+.b-pri{background:linear-gradient(135deg,var(--pri),var(--pri-d));color:#fff;box-shadow:0 4px 14px rgba(204,0,0,.3)}
 .b-em{background:var(--em-l);color:var(--em-d);border:1px solid rgba(0,184,122,.2)}.b-em:hover:not(:disabled){background:var(--em);color:#fff}
 .b-am{background:var(--am-l);color:var(--am-d);border:1px solid rgba(255,122,0,.2)}.b-am:hover:not(:disabled){background:var(--am);color:#fff}
 .b-cr{background:var(--cr-l);color:var(--cr);border:1px solid rgba(230,57,70,.2)}.b-cr:hover:not(:disabled){background:var(--cr);color:#fff}
@@ -157,7 +162,7 @@ tr:last-child td{border-bottom:none}
 .cta-am{background:linear-gradient(135deg,#ff7a00,#e06a00);color:#fff;box-shadow:0 6px 20px rgba(255,122,0,.3)}
 .cta-em{background:linear-gradient(135deg,#00b87a,#009a66);color:#fff;box-shadow:0 6px 20px rgba(0,184,122,.3)}
 .cta-wa{background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;box-shadow:0 6px 20px rgba(37,211,102,.3)}
-.cta-in{background:linear-gradient(135deg,var(--in),var(--in-d));color:#fff;box-shadow:0 6px 20px rgba(124,58,237,.3)}
+.cta-in{background:linear-gradient(135deg,var(--pri),var(--pri-d));color:#fff;box-shadow:0 6px 20px rgba(204,0,0,.3)}
 
 /* MODAL */
 .ovl{position:fixed;inset:0;background:rgba(26,24,54,.5);backdrop-filter:blur(10px);z-index:200;display:flex;align-items:flex-end;justify-content:center;animation:fadeUp .2s ease}
@@ -169,7 +174,7 @@ tr:last-child td{border-bottom:none}
 .ic-btn:hover{background:var(--brd);color:var(--t1)}
 
 /* LOGIN */
-.login-bg{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#6d28d9 0%,#a855f7 100%);padding:20px}
+.login-bg{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#cc0000 0%,#ff4444 100%);padding:20px}
 .lbox{background:var(--card);border-radius:var(--r3);width:100%;max-width:420px;padding:36px 28px;box-shadow:var(--sh3)}
 .lbox.shake{animation:shake .38s ease}
 .ltabs{display:flex;border-radius:var(--r);overflow:hidden;border:1.5px solid var(--brd);padding:3px;background:var(--bg);margin-bottom:22px}
@@ -213,7 +218,7 @@ tr:last-child td{border-bottom:none}
 .wa-banner:active{transform:scale(.98)}
 
 /* LOADING */
-.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#6d28d9,#a855f7);gap:16px}
+.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:linear-gradient(160deg,#cc0000,#ff3333);gap:16px}
 .loading-spinner{width:44px;height:44px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite}
 
 /* EMPTY */
@@ -223,6 +228,33 @@ tr:last-child td{border-bottom:none}
 .toast-wrap{position:fixed;bottom:calc(var(--tab) + 12px);left:14px;right:14px;z-index:500;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .toast-wrap > *{pointer-events:all;animation:toastIn .3s cubic-bezier(.16,1,.3,1)}
 
+/* CARRUSEL */
+.carousel-wrap{overflow-x:auto;scroll-snap-type:x mandatory;display:flex;gap:10px;padding:0 14px 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.carousel-wrap::-webkit-scrollbar{display:none}
+.carousel-slide{flex-shrink:0;scroll-snap-align:start;border-radius:14px;overflow:hidden;cursor:pointer}
+.carousel-slide img{display:block;width:100%;height:100%;object-fit:cover}
+.carousel-slide-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-weight:800;font-size:13px}
+.carousel-dots{display:flex;justify-content:center;gap:5px;margin-top:6px}
+.carousel-dot{width:6px;height:6px;border-radius:3px;background:var(--brd2);transition:all .25s;cursor:pointer}
+.carousel-dot.on{width:18px;background:var(--in)}
+/* SECCIONES FAVORITAS */
+.fav-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px;margin-bottom:16px}
+.fav-card{background:var(--card);border-radius:14px;border:1px solid var(--brd);padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;box-shadow:var(--sh);transition:transform .12s}
+.fav-card:active{transform:scale(.97)}
+.fav-card-ico{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.fav-card-lbl{font-size:12px;font-weight:800;color:var(--t1);line-height:1.3}
+.fav-card-sub{font-size:10px;color:var(--t3);font-weight:600;margin-top:1px}
+/* CATEGORÍAS */
+.cats-wrap{overflow-x:auto;display:flex;gap:10px;padding:0 14px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.cats-wrap::-webkit-scrollbar{display:none}
+.cat-item{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
+.cat-ico{width:60px;height:60px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:28px;transition:transform .12s}
+.cat-item:active .cat-ico{transform:scale(.92)}
+.cat-lbl{font-size:10px;font-weight:700;color:var(--t2);text-align:center;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* SECTION HEADERS */
+.sec-hdr{display:flex;justify-content:space-between;align-items:center;padding:0 14px;margin-bottom:10px}
+.sec-hdr-t{font-size:16px;font-weight:900;color:var(--t1)}
+.sec-hdr-a{font-size:12px;font-weight:700;color:var(--in);cursor:pointer}
 /* MISC */
 .row{display:flex;align-items:center}.jb{justify-content:space-between}.g8{gap:8px}.g12{gap:12px}
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:4px}
@@ -389,6 +421,19 @@ export default function App() {
   const [impQty,  setImpQty]  = useState(0);
   const [impFile, setImpFile] = useState(null);
 
+  // ── CAROUSEL ─────────────────────────────────────────────────────────────────
+  const [carousels,    setCarousels]    = useState([]);  // rows from offer_carousels table
+  const [carouselIdx,  setCarouselIdx]  = useState(0);   // active slide index
+  const [carouselEdit, setCarouselEdit] = useState(false);
+  const [cTitle,       setCTitle]       = useState("");
+  const [cSubtitle,    setCSubtitle]    = useState("");
+  const [cBg,          setCBg]          = useState("#cc0000");
+  const [cEmoji,       setCEmoji]       = useState("🔥");
+  const [cLink,        setCLink]        = useState("");
+  const [cEditId,      setCEditId]      = useState(null);
+  const [cDelConf,     setCDelConf]     = useState(null);
+  const [cSaving,      setCSaving]      = useState(false);
+
   // ── CONTACTS ────────────────────────────────────────────────────────────────
   const [ctQ,     setCtQ]     = useState("");
 
@@ -526,6 +571,46 @@ export default function App() {
   }, [consignDebts]);
 
   // ── SUPABASE DATA LOADERS ────────────────────────────────────────────────────
+  async function loadCarousels() {
+    try {
+      const { data } = await sb.from("offer_carousels")
+        .select("*").eq("active", true)
+        .order("sort_order", { ascending: true });
+      setCarousels(data || []);
+    } catch(e) { /* no carousel table yet = ok */ }
+  }
+
+  async function saveCarousel() {
+    if (!cTitle.trim()) return;
+    setCSaving(true);
+    try {
+      const row = { title: cTitle.trim(), subtitle: cSubtitle.trim(), bg_color: cBg, emoji: cEmoji, link_tab: cLink.trim(), active: true, sort_order: carousels.length };
+      if (cEditId) {
+        await sb.from("offer_carousels").update(row).eq("id", cEditId);
+      } else {
+        await sb.from("offer_carousels").insert(row);
+      }
+      await loadCarousels();
+      setCTitle(""); setCSubtitle(""); setCBg("#cc0000"); setCEmoji("🔥"); setCLink(""); setCEditId(null);
+      toast(cEditId?"Carrusel actualizado":"Carrusel creado","","s");
+    } catch(e) { toast("Error",e.message,"e"); }
+    finally { setCSaving(false); }
+  }
+
+  async function deleteCarousel(id) {
+    try {
+      await sb.from("offer_carousels").delete().eq("id", id);
+      setCDelConf(null);
+      await loadCarousels();
+      toast("Eliminado","","s");
+    } catch(e) { toast("Error",e.message,"e"); }
+  }
+
+  async function toggleCarouselActive(row) {
+    await sb.from("offer_carousels").update({ active: !row.active }).eq("id", row.id);
+    await loadCarousels();
+  }
+
   const loadData = useCallback(async function(userId, userRole) {
     try {
       // Products - paginate to get ALL (bypass 1000 row limit)
@@ -581,6 +666,7 @@ export default function App() {
         if (pr.data) {
           setMe(pr.data);
           await loadData(pr.data.id, pr.data.role);
+          loadCarousels();
         }
       }
       setLoading(false);
@@ -1305,24 +1391,25 @@ export default function App() {
       <div className="app">
 
         {/* HEADER */}
-        {/* HEADER */}
         <div className="hdr">
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div style={{cursor:"pointer",flex:1,minWidth:0}} onClick={function(){setTab("stock");}}>
-              <div style={{fontSize:18,fontWeight:900,color:"var(--t1)",letterSpacing:"-.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                ¡Hola, {me.name.split(" ")[0]}! 👋
-              </div>
-              <div style={{fontSize:11,color:"var(--t3)",marginTop:2,fontWeight:600}}>
-                {me.role==="superadmin"?"👑 Administrador":"Usuario"}
+          <div className="hdr-top">
+            <div style={{cursor:"pointer"}} onClick={function(){setTab("stock");}}>
+              <img src={LOGO_URL} alt="Venta Directa" style={{height:28,maxWidth:160,objectFit:"contain",display:"block",filter:"brightness(0) invert(1)"}} onError={function(e){e.target.style.display='none';}}/>
+              <div style={{fontSize:10,color:"rgba(255,255,255,.75)",marginTop:2,fontWeight:700,letterSpacing:".04em",textTransform:"uppercase"}}>
+                {me.role==="superadmin"?"👑 Administrador":("¡Hola, "+me.name.split(" ")[0]+"!")}
               </div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
               <div style={{position:"relative",cursor:"pointer"}} onClick={function(){setTab("contacts");}}>
-                <button className="hdr-btn"><Ic n="bell" s={20}/></button>
-                {totalBadge>0&&<div style={{position:"absolute",top:-2,right:-2,width:18,height:18,background:"var(--cr)",borderRadius:"50%",fontSize:9,fontWeight:900,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--card)"}}>{totalBadge}</div>}
+                <button className="hdr-btn"><Ic n="bell" s={18}/></button>
+                {totalBadge>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,background:"#ffcc00",borderRadius:"50%",fontSize:8,fontWeight:900,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--in)"}}>{totalBadge}</div>}
               </div>
               <button className="hdr-btn" onClick={doLogout}><Ic n="logout" s={18}/></button>
             </div>
+          </div>
+          <div className="hdr-search">
+            <span className="hdr-search-ico"><Ic n="search" s={16}/></span>
+            <input placeholder="Buscar productos..." value={srchStock} onChange={function(e){setSrchStock(e.target.value);if(e.target.value)setTab("stock");}} onFocus={function(){setTab("stock");}}/>
           </div>
         </div>
 
@@ -1390,39 +1477,76 @@ export default function App() {
               );
             }
 
-            return (
-              <div>
-                <div style={{padding:"14px 14px 0"}}>
-                  <button className="wa-banner" onClick={function(){setShareM(true);setShareSel({});}}>
-                    <div className="row g12">
-                      <div style={{width:44,height:44,borderRadius:14,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ic n="wa" s={22}/></div>
-                      <div style={{textAlign:"left"}}>
-                        <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>Compartir por WhatsApp</div>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:1}}>Selecciona productos y enviá con fotos</div>
-                      </div>
-                    </div>
-                    <div style={{color:"rgba(255,255,255,.7)"}}><Ic n="send" s={18}/></div>
-                  </button>
+            // ── Carousel slides (real + default) ────────────────────────────
+            var slides = carousels.length>0 ? carousels : [
+              {id:"d1",title:"¡Bienvenida!",subtitle:"Tu catálogo digital",bg_color:"#cc0000",emoji:"🛍️",link_tab:"catalog"},
+              {id:"d2",title:"Compartí tus productos",subtitle:"Enviá lista por WhatsApp",bg_color:"#00b87a",emoji:"📲",link_tab:""},
+            ];
 
-                  {/* Metrics */}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+            return (
+              <div style={{paddingBottom:24}}>
+
+                {/* ─ CARRUSEL DE OFERTAS ─ */}
+                {slides.length>0&&(
+                  <div style={{marginBottom:18,paddingTop:10}}>
+                    <div className="carousel-wrap" id="main-carousel"
+                      onScroll={function(e){
+                        var w=e.target.scrollWidth/slides.length;
+                        setCarouselIdx(Math.round(e.target.scrollLeft/w));
+                      }}>
+                      {slides.map(function(sl,i){
+                        return (
+                          <div key={sl.id} className="carousel-slide"
+                            style={{width:"calc(100vw - 44px)",height:140,background:sl.bg_color||"#cc0000",cursor:sl.link_tab?"pointer":"default"}}
+                            onClick={function(){if(sl.link_tab)setTab(sl.link_tab);}}>
+                            <div style={{display:"flex",alignItems:"center",height:"100%",padding:"16px 20px",gap:16}}>
+                              <div style={{fontSize:52,flexShrink:0,filter:"drop-shadow(0 4px 8px rgba(0,0,0,.2))"}}>{sl.emoji||"🔥"}</div>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1.15,marginBottom:5}}>{sl.title}</div>
+                                {sl.subtitle&&<div style={{fontSize:12,color:"rgba(255,255,255,.85)",fontWeight:600}}>{sl.subtitle}</div>}
+                                {sl.link_tab&&<div style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.25)",borderRadius:20,padding:"4px 12px",fontSize:11,color:"#fff",fontWeight:800}}>Ver ahora →</div>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {slides.length>1&&(
+                      <div className="carousel-dots">
+                        {slides.map(function(_,i){return <div key={i} className={"carousel-dot"+(i===carouselIdx?" on":"")} onClick={function(){setCarouselIdx(i);var el=document.getElementById("main-carousel");if(el){var w=el.scrollWidth/slides.length;el.scrollTo({left:w*i,behavior:"smooth"});}}}/>;})}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ─ SECCIONES FAVORITAS ─ */}
+                <div style={{marginBottom:18}}>
+                  <div className="sec-hdr"><div className="sec-hdr-t">Tus secciones</div><span className="sec-hdr-a" onClick={function(){setShareM(true);setShareSel({});}}>📲 WhatsApp</span></div>
+                  <div className="fav-grid">
                     {[
-                      {ico:"📦",lbl:"Propios",   val:ownStock.reduce(function(s,i){return s+i.qty_available;},0),    bg:"var(--in-l)",  col:"var(--in-d)"},
-                      {ico:"🤝",lbl:"Consigna",  val:consignStock.reduce(function(s,i){return s+i.qty_available;},0), bg:"var(--am-l)", col:"var(--am-d)"},
-                      {ico:"💰",lbl:"Valor prop.",val:fmtARS(totalVal).replace("$ ","$"),                             bg:"var(--em-l)",  col:"var(--em-d)"},
-                    ].map(function(m,i){
+                      {ico:"📦",bg:"var(--in-l)",col:"var(--in)",lbl:"Mi Stock",sub:ownStock.reduce(function(s,i){return s+i.qty_available;},0)+" productos",tab:"stock",scroll:true},
+                      {ico:"🤝",bg:"var(--am-l)",col:"var(--am)",lbl:"Consigna",sub:consignaEnv>0?consignaEnv+" activas":"Ver consignaciones",tab:"consigna",badge:consignaEnv||null},
+                      {ico:"📋",bg:"#fff3e6",col:"#e06a00",lbl:"Pedidos",sub:pedPendCount>0?pedPendCount+" pendientes":"Ver pedidos",tab:"pedidos",badge:pedPendCount||null},
+                      {ico:"💰",bg:"var(--em-l)",col:"var(--em-d)",lbl:"Ventas",sub:fmtARS(totalVal).replace("$ ","$"),tab:"ventas"},
+                    ].map(function(f,i){
                       return (
-                        <div key={i} style={{background:m.bg,borderRadius:16,padding:"12px 10px",textAlign:"center"}}>
-                          <div style={{fontSize:22,marginBottom:3}}>{m.ico}</div>
-                          <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:i===2?11:18,color:m.col,lineHeight:1}}>{m.val}</div>
-                          <div style={{fontSize:9,fontWeight:800,color:m.col,marginTop:3,textTransform:"uppercase",letterSpacing:".06em",opacity:.8}}>{m.lbl}</div>
+                        <div key={i} className="fav-card" onClick={function(){setTab(f.tab);}} style={{position:"relative"}}>
+                          <div className="fav-card-ico" style={{background:f.bg,color:f.col}}>{f.ico}</div>
+                          <div>
+                            <div className="fav-card-lbl">{f.lbl}</div>
+                            <div className="fav-card-sub">{f.sub}</div>
+                          </div>
+                          {f.badge&&<div style={{position:"absolute",top:8,right:8,background:"var(--cr)",color:"#fff",borderRadius:20,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,padding:"0 4px"}}>{f.badge}</div>}
                         </div>
                       );
                     })}
                   </div>
+                </div>
 
-                  {pendingTx.length>0&&(
-                    <div style={{background:"var(--am-l)",border:"1.5px solid rgba(255,122,0,.25)",borderRadius:16,padding:"12px 14px",marginBottom:14}}>
+                {/* ─ ALERTAS PENDIENTES ─ */}
+                {pendingTx.length>0&&(
+                  <div style={{margin:"0 14px 16px"}}>
+                    <div style={{background:"var(--am-l)",border:"1.5px solid rgba(255,122,0,.25)",borderRadius:14,padding:"12px 14px"}}>
                       <div style={{fontWeight:800,fontSize:13,color:"var(--am-d)",marginBottom:8}}>🔔 {pendingTx.length} envío{pendingTx.length!==1?"s":""} esperando confirmación</div>
                       {pendingTx.map(function(tx){
                         const p=tx.product;
@@ -1438,62 +1562,39 @@ export default function App() {
                         );
                       })}
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:14}}>
-                    {[
-                      {id:"consigna",lbl:"Consigna",    sub:consignaEnv>0?consignaEnv+" enviados":"Ver consignaciones",ico:"users", bg:"#ff7a00",badge:consignaEnv>0?consignaEnv:null},
-                      {id:"enviar",  lbl:"Enviar",       sub:"Transferir a contactos",  ico:"send",  bg:"#7c3aed"},
-                      {id:"catalog", lbl:"Catálogo",     sub:"Lista de precios",         ico:"list",  bg:"#0096c7"},
-                      {id:"contacts",lbl:"Red",          sub:"Contactos y notif.",       ico:"users", bg:"#a855f7",badge:totalBadge>0?totalBadge:null},
-                      {id:"ventas",  lbl:"Ventas",       sub:"Ver mis ventas del mes",   ico:"chart", bg:"#e63946"},
-                      {id:"cargar",  lbl:"Cargar Stock", sub:"Agregar unidades",         ico:"plus",  bg:"#00b87a"},
-                    ].map(function(tile){
-                      const tabId=!isAdmin&&tile.id==="catalog"?"precios":tile.id;
+                {/* ─ CATEGORÍAS ─ */}
+                <div style={{marginBottom:18}}>
+                  <div className="sec-hdr"><div className="sec-hdr-t">Categorías</div><span className="sec-hdr-a" onClick={function(){setTab(isAdmin?"catalog":"precios");}}>Ver todas</span></div>
+                  <div className="cats-wrap">
+                    {["General","Linea Kaloe","Cosmetica","Joyas","Premium Femenino","Beauty Collagen","Pocket x 10ml","Exhibidores"].map(function(cat){
+                      var catEmojis={"General":"📦","Linea Kaloe":"🧴","Cosmetica":"💄","Joyas":"💎","Premium Femenino":"🌸","Beauty Collagen":"✨","Pocket x 10ml":"🍃","Exhibidores":"🏷️"};
                       return (
-                        <div key={tile.id} onClick={function(){setTab(tabId);}}
-                          style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:18,background:tile.bg,cursor:"pointer",position:"relative",overflow:"hidden",boxShadow:"0 4px 16px rgba(0,0,0,.1)",transition:"transform .12s"}}
-                          onTouchStart={function(e){e.currentTarget.style.transform="scale(.98)";}}
-                          onTouchEnd={function(e){e.currentTarget.style.transform="scale(1)";}}>
-                          <div style={{position:"absolute",right:-16,top:-16,width:70,height:70,borderRadius:"50%",background:"rgba(255,255,255,.1)"}}/>
-                          <div style={{width:42,height:42,borderRadius:13,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#fff"}}>
-                            <Ic n={tile.ico} s={20}/>
-                          </div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{tile.lbl}</div>
-                            <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:1}}>{tile.sub}</div>
-                          </div>
-                          {tile.badge&&<div style={{background:"#ff4757",borderRadius:20,minWidth:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#fff",padding:"0 6px"}}>{tile.badge}</div>}
+                        <div key={cat} className="cat-item" onClick={function(){setSrchStock(cat);setTab("stock");}}>
+                          <div className="cat-ico">{catEmojis[cat]||"📦"}</div>
+                          <div className="cat-lbl">{cat}</div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
 
-                <div style={{padding:"0 14px 24px"}}>
-                  <SearchBar value={srchStock} onChange={setSrchStock} placeholder="Buscar por nombre, SKU o categoría..."/>
-
-                  {/* ── STOCK PROPIO ── */}
+                {/* ─ STOCK TABLE ─ */}
+                <div style={{padding:"0 14px 8px"}}>
+                  <div className="sec-hdr" style={{padding:"0 0 10px"}}><div className="sec-hdr-t">Mi stock</div><span className="badge b-in">{ownFilt.length}</span></div>
                   <div className="card" style={{marginBottom:12}}>
-                    <div className="card-h">
-                      <div className="card-title"><div className="card-ico" style={{background:"var(--in-l)",color:"var(--in-d)"}}><Ic n="box" s={14}/></div>Stock Propio</div>
-                      <span className="badge b-in">{ownFilt.length}</span>
-                    </div>
                     {ownFilt.length===0
-                      ?<div className="empty" style={{padding:"20px"}}>{srchStock?"Sin resultados.":"Sin stock propio. Usá Cargar Stock."}</div>
+                      ?<div className="empty" style={{padding:"20px"}}>{srchStock?"Sin resultados para \""+srchStock+"\"":"Sin stock. Usá Cargar Stock."}</div>
                       :StockTable(ownFilt, false)
                     }
                   </div>
-
-                  {/* ── EN CONSIGNA RECIBIDA ── */}
                   {(consignFilt.length>0||consignStock.length>0)&&(
                     <div className="card">
                       <div className="card-h">
                         <div className="card-title"><div className="card-ico" style={{background:"var(--am-l)",color:"var(--am-d)"}}><Ic n="send" s={14}/></div>Recibido en Consigna</div>
                         <span className="badge b-am">{consignFilt.length}</span>
-                      </div>
-                      <div style={{padding:"8px 14px 0",background:"var(--am-l)",borderBottom:"1px solid var(--brd)"}}>
-                        <div style={{fontSize:11,color:"var(--am-d)",fontWeight:600,paddingBottom:8}}>Productos enviados por otras revendedoras. Podés venderlos o devolverlos desde Consigna.</div>
                       </div>
                       {consignFilt.length===0
                         ?<div className="empty" style={{padding:"16px"}}>Sin resultados.</div>
@@ -1862,6 +1963,20 @@ export default function App() {
             );
           })()}
 
+          {/* ══ CONSIGNA ══ */}
+          {tab==="consigna"&&(
+            <ConsignacionModule
+              sb={sb}
+              me={me}
+              products={products}
+              inventory={inventory}
+              contacts={contacts}
+              onRefresh={function(){ loadData(me.id, me.role); }}
+              toast={toast}
+              fmtARS={fmtARS}
+            />
+          )}
+
           {/* ══ VENTAS ══ */}
           {tab==="ventas"&&(function(){
             var now = new Date();
@@ -2169,6 +2284,93 @@ export default function App() {
                     {[["Usuarios registrados",adminStats.total_users,"var(--in)"],["Nuevos (30 días)",adminStats.new_users_30d,"var(--em)"],["Productos activos",adminStats.total_products,"var(--am)"],["Ventas este mes",adminStats.units_sold_30d,"var(--cr)"],["Envíos pendientes",adminStats.pending_transfers,"var(--in)"],["Stock total sistema",adminStats.total_stock_system,"var(--em)"]].map(function(m){ return (<div key={m[0]} className="metric-card"><div className="metric-val" style={{color:m[2]}}>{m[1]||0}</div><div className="metric-lbl">{m[0]}</div></div>); })}
                   </div>
                 )}
+                {/* ── GESTOR DE CARRUSELES ── */}
+                <div className="card" style={{marginBottom:12}}>
+                  <div className="card-h">
+                    <div className="card-title"><div className="card-ico" style={{background:"var(--in-l)",color:"var(--in)"}}><Ic n="img" s={14}/></div>🎠 Carruseles de Ofertas</div>
+                    <button className="btn btn-xs b-in" onClick={function(){setCarouselEdit(function(v){return !v;});setCEditId(null);setCTitle("");setCSubtitle("");setCBg("#cc0000");setCEmoji("🔥");setCLink("");}}>
+                      {carouselEdit?"✕ Cerrar":"+ Nuevo"}
+                    </button>
+                  </div>
+                  {carouselEdit&&(
+                    <div style={{padding:"14px 16px",borderBottom:"1px solid var(--brd)",background:"var(--bg)"}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                        <div>
+                          <label className="fl">Emoji</label>
+                          <select className="fi fi-sel" value={cEmoji} onChange={function(e){setCEmoji(e.target.value);}}>
+                            {["🔥","⭐","💥","🎉","🛍️","💄","🧴","💎","🌸","✨","📦","🏷️","💰","🎀","📲","🆕"].map(function(e){ return <option key={e}>{e}</option>; })}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="fl">Color de fondo</label>
+                          <input type="color" value={cBg} onChange={function(e){setCBg(e.target.value);}} style={{width:"100%",height:44,border:"1.5px solid var(--brd)",borderRadius:12,cursor:"pointer",padding:"2px 4px"}}/>
+                        </div>
+                      </div>
+                      <div className="fld">
+                        <label className="fl">Título *</label>
+                        <input className="fi" placeholder="Ej: ¡25% de descuento esta semana!" value={cTitle} onChange={function(e){setCTitle(e.target.value);}}/>
+                      </div>
+                      <div className="fld">
+                        <label className="fl">Subtítulo</label>
+                        <input className="fi" placeholder="Ej: En productos seleccionados" value={cSubtitle} onChange={function(e){setCSubtitle(e.target.value);}}/>
+                      </div>
+                      <div className="fld">
+                        <label className="fl">Tab al tocar (opcional)</label>
+                        <select className="fi fi-sel" value={cLink} onChange={function(e){setCLink(e.target.value);}}>
+                          <option value="">Sin acción</option>
+                          <option value="catalog">Catálogo</option>
+                          <option value="consigna">Consigna</option>
+                          <option value="ventas">Ventas</option>
+                          <option value="pedidos">Pedidos</option>
+                        </select>
+                      </div>
+                      {/* Preview */}
+                      <div style={{borderRadius:14,overflow:"hidden",marginBottom:12,height:110,background:cBg,display:"flex",alignItems:"center",padding:"14px 18px",gap:14}}>
+                        <div style={{fontSize:44}}>{cEmoji}</div>
+                        <div>
+                          <div style={{fontSize:17,fontWeight:900,color:"#fff",lineHeight:1.15}}>{cTitle||"Título del carrusel"}</div>
+                          {cSubtitle&&<div style={{fontSize:11,color:"rgba(255,255,255,.85)",marginTop:4,fontWeight:600}}>{cSubtitle}</div>}
+                        </div>
+                      </div>
+                      <button className="cta cta-in" style={{marginTop:0}} onClick={saveCarousel} disabled={cSaving||!cTitle.trim()}>
+                        {cSaving?"Guardando...":cEditId?"💾 Guardar cambios":"✅ Crear carrusel"}
+                      </button>
+                    </div>
+                  )}
+                  {carousels.length===0&&!carouselEdit&&(
+                    <div className="empty">Sin carruseles. Creá el primero con el botón "Nuevo".</div>
+                  )}
+                  {carousels.map(function(sl){
+                    return (
+                      <div key={sl.id} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderBottom:"1px solid var(--brd)"}}>
+                        <div style={{width:52,height:52,borderRadius:12,background:sl.bg_color||"#cc0000",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>
+                          {sl.emoji||"🔥"}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:800,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sl.title}</div>
+                          {sl.subtitle&&<div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{sl.subtitle}</div>}
+                          <div style={{fontSize:10,color:sl.active?"var(--em-d)":"var(--t4)",fontWeight:700,marginTop:2}}>{sl.active?"● Activo":"○ Inactivo"}</div>
+                        </div>
+                        <div style={{display:"flex",gap:6,flexShrink:0}}>
+                          <button className="btn btn-xs b-ghost" onClick={function(){
+                            setCEditId(sl.id);setCTitle(sl.title);setCSubtitle(sl.subtitle||"");setCBg(sl.bg_color||"#cc0000");setCEmoji(sl.emoji||"🔥");setCLink(sl.link_tab||"");setCarouselEdit(true);
+                          }}><Ic n="edit" s={11}/></button>
+                          <button className="btn btn-xs" style={{background:sl.active?"var(--am-l)":"var(--em-l)",color:sl.active?"var(--am-d)":"var(--em-d)",border:"1px solid var(--brd)",borderRadius:8,padding:"5px 9px",fontSize:10,fontWeight:700,cursor:"pointer"}} onClick={function(){toggleCarouselActive(sl);}}>
+                            {sl.active?"Pausar":"Activar"}
+                          </button>
+                          {cDelConf===sl.id
+                            ?<div style={{display:"flex",gap:5}}>
+                              <button className="btn btn-xs b-cr" onClick={function(){deleteCarousel(sl.id);}}>Sí</button>
+                              <button className="btn btn-xs b-ghost" onClick={function(){setCDelConf(null);}}>No</button>
+                            </div>
+                            :<button className="btn btn-xs b-cr" onClick={function(){setCDelConf(sl.id);}}><Ic n="trash" s={11}/></button>
+                          }
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 <div className="card">
                   <div className="card-h"><div className="card-title"><Ic n="users" s={14}/>Usuarios registrados ({allUsers.length})</div></div>
                   {allUsers.length===0?<div className="empty">Sin usuarios aún</div>:(
