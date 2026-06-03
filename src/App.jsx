@@ -1439,41 +1439,70 @@ export default function App() {
             function StockTable(list, isConsigna){
               if(list.length===0) return <div className="empty" style={{padding:"16px"}}>Sin productos.</div>;
               return (
-                <div className="tw"><table>
-                  <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Precio</th><th>Disp.</th><th></th></tr></thead>
-                  <tbody>{list.map(function(item){
+                <div>
+                  {list.map(function(item){
                     const p=item.products||products.find(function(x){return x.id===item.product_id;});
                     if(!p) return null;
-                    // For consigna: find who sent it
                     const senderTx = isConsigna ? transfers.find(function(t){
                       return t.to_user_id===me.id && t.product_id===item.product_id && t.status==="confirmed";
                     }) : null;
                     const sender = senderTx ? senderTx.from_user : null;
+                    // Colores por tipo
+                    var accentBg  = isConsigna ? "var(--am-l)"  : "var(--em-l)";
+                    var accentCol = isConsigna ? "var(--am-d)"  : "var(--em-d)";
+                    var tagBg     = isConsigna ? "#fff3e0"      : "#e8f5e9";
+                    var tagCol    = isConsigna ? "#e65100"      : "#2e7d32";
+                    var tagTxt    = isConsigna ? ("📨 De "+( sender?sender.name:"otro vendedor")) : "📦 Stock propio";
+                    var borderCol = isConsigna ? "rgba(255,122,0,.3)" : "rgba(0,184,122,.2)";
                     return (
-                      <tr key={item.id} className="tr">
-                        <td><ProdThumb prod={p} size={36}/></td>
-                        <td>
-                          <span style={{color:"var(--in-d)",fontFamily:"var(--mf)",fontSize:10,background:"var(--in-l)",padding:"2px 6px",borderRadius:5,fontWeight:700}}>{p.sku}</span>
-                          {sender&&<div style={{fontSize:9,color:"var(--am-d)",fontWeight:700,marginTop:2}}>de {sender.name}</div>}
-                        </td>
-                        <td>
-                          <div style={{fontWeight:600,fontSize:12,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-                          <div style={{fontSize:10,color:"var(--t3)"}}>{p.category}</div>
-                        </td>
-                        <td><span style={{fontFamily:"var(--mf)",fontWeight:700,fontSize:12}}>{fmtARS(p.price)}</span></td>
-                        <td><span style={{fontFamily:"var(--mf)",fontWeight:900,color:isConsigna?"var(--am-d)":"var(--em-d)",fontSize:15}}>{item.qty_available}</span></td>
-                        <td>
-                          <div className="row g8" style={{justifyContent:"flex-end",flexWrap:"wrap"}}>
-                            <button className="btn btn-xs b-wa" onClick={function(){shareOne(p);}}><Ic n="wa" s={12}/></button>
-                            <button className="btn btn-xs b-in" onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}><Ic n="plus" s={11}/>Mov.</button>
-                            {!isConsigna&&<button className="btn btn-xs b-am" onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}><Ic n="send" s={11}/>Pasar</button>}
-                            <button className="btn btn-xs b-em" onClick={function(){doSell(item);}} disabled={item.qty_available===0}><Ic n="check" s={11}/>Venta</button>
+                      <div key={item.id} style={{
+                        background:"var(--card)",
+                        borderRadius:14,
+                        border:"1.5px solid "+borderCol,
+                        marginBottom:10,
+                        overflow:"hidden",
+                        boxShadow:"var(--sh)"
+                      }}>
+                        {/* Etiqueta de tipo */}
+                        <div style={{background:tagBg,padding:"5px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                          <span style={{fontSize:10,fontWeight:800,color:tagCol,letterSpacing:".02em"}}>{tagTxt}</span>
+                          <span style={{fontFamily:"var(--mf)",fontSize:10,fontWeight:700,color:"var(--t3)"}}>
+                            {p.sku}
+                          </span>
+                        </div>
+                        {/* Cuerpo */}
+                        <div style={{display:"flex",alignItems:"center",gap:12,padding:"11px 13px"}}>
+                          <ProdThumb prod={p} size={46}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:800,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--t1)"}}>{p.name}</div>
+                            <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{p.category}</div>
+                            <div style={{fontSize:13,fontWeight:800,color:accentCol,marginTop:3,fontFamily:"var(--mf)"}}>{fmtARS(p.price)}</div>
                           </div>
-                        </td>
-                      </tr>
+                          {/* Disponibles destacado */}
+                          <div style={{textAlign:"center",flexShrink:0,background:accentBg,borderRadius:12,padding:"8px 14px",minWidth:52}}>
+                            <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:24,color:accentCol,lineHeight:1}}>{item.qty_available}</div>
+                            <div style={{fontSize:9,fontWeight:700,color:accentCol,textTransform:"uppercase",letterSpacing:".05em",marginTop:2}}>unid.</div>
+                          </div>
+                        </div>
+                        {/* Acciones */}
+                        <div style={{display:"flex",borderTop:"1px solid var(--brd)"}}>
+                          <button className="btn btn-xs b-wa" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)"}} onClick={function(){shareOne(p);}}><Ic n="wa" s={13}/></button>
+                          <button className="btn btn-xs b-in" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)",color:"var(--pri)",background:"var(--pri-l)"}} onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}>
+                            <Ic n="plus" s={13}/><span style={{fontSize:11}}>Movimiento</span>
+                          </button>
+                          {!isConsigna&&(
+                            <button className="btn btn-xs b-am" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)"}} onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}>
+                              <Ic n="send" s={13}/><span style={{fontSize:11}}>Enviar</span>
+                            </button>
+                          )}
+                          <button className="btn btn-xs b-em" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none"}} onClick={function(){doSell(item);}} disabled={item.qty_available===0}>
+                            <Ic n="check" s={13}/><span style={{fontSize:11}}>Venta</span>
+                          </button>
+                        </div>
+                      </div>
                     );
-                  })}</tbody>
-                </table></div>
+                  })}
+                </div>
               );
             }
 
@@ -1565,36 +1594,36 @@ export default function App() {
                   </div>
                 )}
 
-                {/* ─ CATEGORÍAS ─ */}
-                <div style={{marginBottom:18}}>
-                  <div className="sec-hdr"><div className="sec-hdr-t">Categorías</div><span className="sec-hdr-a" onClick={function(){setTab(isAdmin?"catalog":"precios");}}>Ver todas</span></div>
-                  <div className="cats-wrap">
-                    {["General","Linea Kaloe","Cosmetica","Joyas","Premium Femenino","Beauty Collagen","Pocket x 10ml","Exhibidores"].map(function(cat){
-                      var catEmojis={"General":"📦","Linea Kaloe":"🧴","Cosmetica":"💄","Joyas":"💎","Premium Femenino":"🌸","Beauty Collagen":"✨","Pocket x 10ml":"🍃","Exhibidores":"🏷️"};
-                      return (
-                        <div key={cat} className="cat-item" onClick={function(){setSrchStock(cat);setTab("stock");}}>
-                          <div className="cat-ico">{catEmojis[cat]||"📦"}</div>
-                          <div className="cat-lbl">{cat}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* ─ STOCK TABLE ─ */}
+                {/* ─ STOCK ─ */}
                 <div style={{padding:"0 14px 8px"}}>
-                  <div className="sec-hdr" style={{padding:"0 0 10px"}}><div className="sec-hdr-t">Mi stock</div><span className="badge b-in">{ownFilt.length}</span></div>
-                  <div className="card" style={{marginBottom:12}}>
-                    {ownFilt.length===0
-                      ?<div className="empty" style={{padding:"20px"}}>{srchStock?"Sin resultados para \""+srchStock+"\"":"Sin stock. Usá Cargar Stock."}</div>
-                      :StockTable(ownFilt, false)
-                    }
+
+                  {/* Stock Propio */}
+                  <div className="sec-hdr" style={{padding:"0 0 10px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:10,height:10,borderRadius:3,background:"var(--em)"}}/>
+                      <div className="sec-hdr-t">Stock Propio</div>
+                    </div>
+                    <span className="badge" style={{background:"var(--em-l)",color:"var(--em-d)"}}>{ownFilt.length}</span>
                   </div>
+                  {ownFilt.length===0
+                    ?<div style={{textAlign:"center",padding:"24px 20px",color:"var(--t3)",fontSize:13,background:"var(--card)",borderRadius:14,marginBottom:16,border:"1px solid var(--brd)"}}>
+                      {srchStock?("Sin resultados para \""+srchStock+"\""):<span>Sin stock propio.<br/>Usá <strong>Cargar Stock</strong> para agregar.</span>}
+                    </div>
+                    :StockTable(ownFilt, false)
+                  }
+
+                  {/* Recibido de otro vendedor */}
                   {(consignFilt.length>0||consignStock.length>0)&&(
-                    <div className="card">
-                      <div className="card-h">
-                        <div className="card-title"><div className="card-ico" style={{background:"var(--am-l)",color:"var(--am-d)"}}><Ic n="send" s={14}/></div>Recibido en Consigna</div>
-                        <span className="badge b-am">{consignFilt.length}</span>
+                    <div style={{marginTop:8}}>
+                      <div className="sec-hdr" style={{padding:"0 0 10px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{width:10,height:10,borderRadius:3,background:"var(--am)"}}/>
+                          <div className="sec-hdr-t">Recibido de otro vendedor</div>
+                        </div>
+                        <span className="badge" style={{background:"var(--am-l)",color:"var(--am-d)"}}>{consignFilt.length}</span>
+                      </div>
+                      <div style={{background:"var(--am-l)",border:"1.5px solid rgba(255,122,0,.2)",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:11,color:"var(--am-d)",fontWeight:700}}>
+                        📨 Estos productos te los enviaron en consignación. Podés venderlos o devolverlos desde la tab <strong>Consigna</strong>.
                       </div>
                       {consignFilt.length===0
                         ?<div className="empty" style={{padding:"16px"}}>Sin resultados.</div>
