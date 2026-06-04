@@ -421,6 +421,9 @@ export default function App() {
   const [impQty,  setImpQty]  = useState(0);
   const [impFile, setImpFile] = useState(null);
 
+  // ── CONSIGNACIONES (conteo para badge) ──────────────────────────────────────
+  const [consignActivas, setConsignActivas] = useState([]);
+
   // ── CAROUSEL ─────────────────────────────────────────────────────────────────
   const [carousels,    setCarousels]    = useState([]);  // rows from offer_carousels table
   const [carouselIdx,  setCarouselIdx]  = useState(0);   // active slide index
@@ -654,6 +657,14 @@ export default function App() {
         var stats = await sb.from("admin_dashboard").select("*").single();
         if (stats.data) setAdminStats(stats.data);
       }
+      // Consignaciones activas (enviadas + recibidas)
+      try {
+        const [envC, recC] = await Promise.all([
+          sb.from("consignaciones").select("id,status").eq("owner_id",userId).eq("status","activa"),
+          sb.from("consignaciones").select("id,status").eq("vendedora_id",userId).eq("status","activa"),
+        ]);
+        setConsignActivas([...(envC.data||[]),...(recC.data||[])]);
+      } catch(e) { /* tablas pueden no existir aún */ }
     } catch(e) { console.error("loadData error:", e); }
   }, []);
 
@@ -1434,7 +1445,7 @@ export default function App() {
               const p=i.products||products.find(function(x){return x.id===i.product_id;});
               return s+(p?parseFloat(p.price||0)*i.qty_available:0);
             },0);
-            const consignaEnv = transfers.filter(function(t){return t.from_user_id===me.id&&t.status==="confirmed"&&t.qty>0;}).length;
+            const consignaEnv = consignActivas.length;
 
             function StockTable(list, isConsigna){
               if(list.length===0) return <div className="empty" style={{padding:"16px"}}>Sin productos.</div>;
