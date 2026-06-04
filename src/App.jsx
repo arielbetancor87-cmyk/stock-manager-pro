@@ -954,6 +954,35 @@ export default function App() {
     await loadData(me.id,me.role);
   }
 
+  // ── CANCEL TRANSFER ─────────────────────────────────────────────────────────
+  async function cancelTransfer(tx) {
+    var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
+    try {
+      // 1. Devolver el stock al remitente
+      var senderInv = await sb.from("inventory")
+        .select("*").eq("user_id", tx.from_user_id).eq("product_id", tx.product_id).maybeSingle();
+      if (senderInv.data) {
+        await sb.from("inventory")
+          .update({ qty_available: senderInv.data.qty_available + tx.qty })
+          .eq("id", senderInv.data.id);
+      } else {
+        await sb.from("inventory")
+          .insert({ user_id: tx.from_user_id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: "own" });
+      }
+      // 2. Marcar transfer como cancelada
+      await sb.from("transfers").update({ status: "cancelled" }).eq("id", tx.id);
+      // 3. Notificar al destinatario
+      await sb.from("notifications").insert({
+        to_user_id: tx.to_user_id, from_name: me.name, type: "confirm",
+        message: me.name + " canceló el envío de " + tx.qty + "× " + (prod ? prod.name : "producto") + ". El stock volvió al remitente."
+      });
+      toast("✅ Envío cancelado", (prod ? prod.name : "") + " volvió a tu stock", "s");
+      await loadData(me.id, me.role);
+    } catch(e) {
+      toast("Error al cancelar", e.message, "e");
+    }
+  }
+
   // ── MULTI SEND ──────────────────────────────────────────────────────────────
   async function doMultiSend() {
     var entries = Object.entries(sendCart).filter(function(e){ return Number(e[1])>0; });
@@ -1329,6 +1358,7 @@ export default function App() {
   var qlFiltered = products.filter(function(p){ var q=qlSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
   var pendingTx = transfers.filter(function(t){ return t.to_user_id===me?.id&&t.status==="pending"; });
   var sentTx = transfers.filter(function(t){ return t.from_user_id===me?.id&&t.status==="pending"; }).slice(0,10);
+  var [cancelConfirm, setCancelConfirm] = React.useState(null); // tx.id being confirmed
   var myNotifs = notifs.filter(function(n){ return n.to_user_id===me?.id; });
 
   // ── LOADING SCREEN ────────────────────────────────────────────────────────────
@@ -1593,14 +1623,38 @@ export default function App() {
                       {sentTx.map(function(tx){
                         const p=tx.product;
                         const dest=tx.to_user;
+                        const confirmingCancel = cancelConfirm===tx.id;
                         return (
-                          <div key={tx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--card)",borderRadius:12,marginBottom:6,border:"1px solid var(--brd)"}}>
-                            <div style={{width:38,height:38,borderRadius:10,background:"var(--bl-l)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{p?p.emoji:"📦"}</div>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"Producto"}</div>
-                              <div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{tx.qty} u. → <strong>{dest?dest.name:"?"}</strong></div>
+                          <div key={tx.id} style={{background:"var(--card)",borderRadius:12,marginBottom:6,border:"1px solid var(--brd)",overflow:"hidden"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}>
+                              <div style={{width:38,height:38,borderRadius:10,background:"var(--bl-l)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{p?p.emoji:"📦"}</div>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p?p.name:"Producto"}</div>
+                                <div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{tx.qty} u. → <strong>{dest?dest.name:"?"}</strong></div>
+                              </div>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                                <span style={{background:"var(--bl-l)",color:"var(--bl-d)",borderRadius:20,padding:"3px 8px",fontSize:10,fontWeight:800}}>⏳ Pendiente</span>
+                                <button onClick={function(){setCancelConfirm(confirmingCancel?null:tx.id);}}
+                                  style={{background:"var(--cr-l)",color:"var(--cr-d)",border:"none",borderRadius:8,padding:"4px 8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                  ✕
+                                </button>
+                              </div>
                             </div>
-                            <span style={{background:"var(--bl-l)",color:"var(--bl-d)",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:800,flexShrink:0}}>⏳ Pendiente</span>
+                            {confirmingCancel&&(
+                              <div style={{padding:"10px 12px",background:"#fff3f3",borderTop:"1px solid var(--brd)",display:"flex",alignItems:"center",gap:10}}>
+                                <div style={{flex:1,fontSize:11,color:"var(--cr-d)",fontWeight:700}}>
+                                  ¿Cancelar el envío? El stock vuelve a tu inventario.
+                                </div>
+                                <button onClick={function(){setCancelConfirm(null);cancelTransfer(tx);}}
+                                  style={{background:"var(--cr)",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:800,cursor:"pointer",flexShrink:0}}>
+                                  Sí, cancelar
+                                </button>
+                                <button onClick={function(){setCancelConfirm(null);}}
+                                  style={{background:"#eee",color:"#666",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                                  No
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
