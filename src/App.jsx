@@ -1358,7 +1358,7 @@ export default function App() {
   var qlFiltered = products.filter(function(p){ var q=qlSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
   var pendingTx = transfers.filter(function(t){ return t.to_user_id===me?.id&&t.status==="pending"; });
   var sentTx = transfers.filter(function(t){ return t.from_user_id===me?.id&&t.status==="pending"; }).slice(0,10);
-  var [cancelConfirm, setCancelConfirm] = React.useState(null); // tx.id being confirmed
+  var [cancelConfirm, setCancelConfirm] = useState(null); // tx.id being confirmed
   var myNotifs = notifs.filter(function(n){ return n.to_user_id===me?.id; });
 
   // ── LOADING SCREEN ────────────────────────────────────────────────────────────
