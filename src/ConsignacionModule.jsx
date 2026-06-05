@@ -52,10 +52,12 @@ function ProgBar({ vendidas, devueltas, total }) {
   );
 }
 
-export default function ConsignacionModule({ sb, me, products, inventory, contacts, onRefresh, toast, fmtARS }) {
+export default function ConsignacionModule({ sb, me, products, inventory, contacts, onRefresh, toast, fmtARS, vistaInicial }) {
   const COMISION_DEFAULT = 30;
 
-  const [view,    setView]    = useState("main");
+  // vistaInicial: "enviados" muestra solo entregas, "recibidos" muestra solo recibidas
+  const vistaDefault = vistaInicial === "enviados" ? "main_env" : vistaInicial === "recibidos" ? "main_rec" : "main";
+  const [view,    setView]    = useState(vistaDefault);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
 
@@ -290,8 +292,9 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
   const enviActivas    = enviadas.filter(c=>c.status==="activa");
   const recibActivas   = recibidas.filter(c=>c.status==="activa");
 
+  const vistaOrigen = vistaInicial === "enviados" ? "main_env" : vistaInicial === "recibidos" ? "main_rec" : "main_env";
   const BtnBack = () => (
-    <button onClick={()=>setView("main")} style={{ background:"rgba(255,255,255,.2)",border:"none",borderRadius:10,padding:"7px 14px",color:"#fff",fontFamily:"var(--hf)",fontWeight:700,fontSize:12,cursor:"pointer",marginBottom:12,display:"inline-flex",alignItems:"center",gap:6 }}>← Volver</button>
+    <button onClick={()=>setView(vistaOrigen)} style={{ background:"rgba(255,255,255,.2)",border:"none",borderRadius:10,padding:"7px 14px",color:"#fff",fontFamily:"var(--hf)",fontWeight:700,fontSize:12,cursor:"pointer",marginBottom:12,display:"inline-flex",alignItems:"center",gap:6 }}>← Volver</button>
   );
 
   if (loading) return (
@@ -331,8 +334,8 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     </div>
   );
 
-  // ══════════════════ MAIN ══════════════════
-  if (view==="main") return (
+  // ══════════════════ MAIN ENVIADOS ══════════════════
+  if (view==="main_env" || view==="main") return (
     <div style={{ paddingBottom:32 }}>
       {/* Header */}
       <div style={{ background:"linear-gradient(135deg,#cc0000,#ff3333)",padding:"20px 16px 24px" }}>
@@ -355,8 +358,8 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
       </div>
 
       <div style={{ padding:"14px 14px 0" }}>
-        {/* CTA nueva entrega */}
-        <button onClick={()=>{ setView("nueva"); setCarrito({}); setVendedoraId(""); setNotas(""); setPaso(1); }}
+        {/* CTA nueva entrega — solo en vista enviados */}
+        {view!=="main_rec"&&<button onClick={()=>{ setView("nueva"); setCarrito({}); setVendedoraId(""); setNotas(""); setPaso(1); }}
           style={{ width:"100%",display:"flex",alignItems:"center",gap:14,padding:"16px",borderRadius:16,background:"linear-gradient(135deg,#ff7a00,#e06a00)",border:"none",cursor:"pointer",boxShadow:"0 4px 16px rgba(255,122,0,.3)",marginBottom:20 }}>
           <div style={{ width:46,height:46,borderRadius:14,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0 }}>📦</div>
           <div style={{ textAlign:"left",flex:1 }}>
@@ -364,10 +367,10 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
             <div style={{ fontSize:11,color:"rgba(255,255,255,.8)",marginTop:2 }}>Elegí persona, productos y cantidades</div>
           </div>
           <div style={{ color:"rgba(255,255,255,.7)",fontSize:22 }}>›</div>
-        </button>
+        </button>}
 
-        {/* Deudas agrupadas */}
-        {Object.values(deudasPorVend).length>0&&(
+        {/* Deudas agrupadas — solo en vista enviados */}
+        {view!=="main_rec"&&Object.values(deudasPorVend).length>0&&(
           <div style={{ marginBottom:22 }}>
             <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:10,textTransform:"uppercase",letterSpacing:".07em" }}>💰 Pendiente de cobro</div>
             {Object.values(deudasPorVend).map(g=>(
@@ -399,8 +402,8 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           </div>
         )}
 
-        {/* Recibidas — lo que tengo que rendir */}
-        {recibActivas.length>0&&(
+        {/* Recibidas — solo en vista recibidos */}
+        {(view==="main_rec"||view==="main")&&recibActivas.length>0&&(
           <div style={{ marginBottom:22 }}>
             <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:10,textTransform:"uppercase",letterSpacing:".07em" }}>📥 Lo que me entregaron — tengo que rendir</div>
             {recibActivas.map(consig=>{
@@ -443,8 +446,8 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           </div>
         )}
 
-        {/* Entregas enviadas */}
-        {enviActivas.length>0&&(
+        {/* Entregas enviadas — solo en vista enviados */}
+        {view!=="main_rec"&&enviActivas.length>0&&(
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:10,textTransform:"uppercase",letterSpacing:".07em" }}>📤 Lo que entregué</div>
             {enviActivas.map(consig=>{
@@ -479,10 +482,16 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           </div>
         )}
 
-        {enviadas.length===0&&recibidas.length===0&&(
+        {view==="main_rec" && recibActivas.length===0 && (
           <div style={{ textAlign:"center",padding:"40px 20px",color:"#bbb",fontSize:13 }}>
             <div style={{ fontSize:44,marginBottom:8 }}>📭</div>
-            Todavía no hay consignaciones.<br/>Tocá el botón de arriba para crear la primera.
+            No recibiste ningún producto en consignación todavía.
+          </div>
+        )}
+        {view!=="main_rec" && enviActivas.length===0 && (
+          <div style={{ textAlign:"center",padding:"40px 20px",color:"#bbb",fontSize:13 }}>
+            <div style={{ fontSize:44,marginBottom:8 }}>📭</div>
+            No entregaste productos todavía.<br/>Tocá el botón de arriba para crear la primera entrega.
           </div>
         )}
       </div>
@@ -772,7 +781,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
             <div style={{ background:"rgba(255,255,255,.2)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,.3)" }}>
               <div style={{ fontSize:10,color:"rgba(255,255,255,.8)",fontWeight:700,textTransform:"uppercase" }}>💰 Pendiente de cobro</div>
               <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:26,color:"#fff",marginTop:2 }}>{fmt(deudaC)}</div>
-              <button onClick={()=>abrirLiquidar(detEnv.vendedora)}
+              <button onClick={()=>{ abrirLiquidar(detEnv.vendedora); }}
                 style={{ marginTop:8,background:"#fff",border:"none",borderRadius:10,padding:"8px 16px",color:"#cc0000",fontFamily:"var(--hf)",fontWeight:900,fontSize:12,cursor:"pointer" }}>
                 💰 Cobrar ahora
               </button>
