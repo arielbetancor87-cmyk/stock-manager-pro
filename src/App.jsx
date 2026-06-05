@@ -1035,23 +1035,31 @@ export default function App() {
           stock_propio: tx.qty, stock_recibido: 0, source: "own"
         });
       }
-      await sb.from("transfers").update({ status: "cancelled" }).eq("id", tx.id);
-      // Actualización optimista: sacar inmediatamente de la lista local
-      setTransfers(function(prev){ return prev.map(function(t){ return t.id===tx.id ? Object.assign({},t,{status:"cancelled"}) : t; }); });
-      await sb.from("notifications").insert({
+      // 1. Marcar como cancelado en DB
+      var { error: cancelErr } = await sb.from("transfers")
+        .update({ status: "cancelled" }).eq("id", tx.id);
+      if (cancelErr) throw cancelErr;
+
+      // 2. Sacar de la lista local INMEDIATAMENTE (antes de loadData)
+      setTransfers(function(prev){ return prev.filter(function(t){ return t.id !== tx.id; }); });
+      setCancelConfirm(null);
+      toast("✅ Envío cancelado", (prod ? prod.name + " volvió a tu stock" : ""), "s");
+
+      // 3. Notificar y ledger en background (no bloquean la UI)
+      sb.from("notifications").insert({
         to_user_id: tx.to_user_id, from_name: me.name, type: "confirm",
         message: me.name + " canceló el envío de " + tx.qty + "× " + (prod ? prod.name : "producto") + ". El envío fue cancelado."
       });
-      await logMovimiento({
+      logMovimiento({
         product_id: tx.product_id, qty: tx.qty,
         estado_anterior: "en_transito", estado_nuevo: "stock_central",
         related_user_id: tx.to_user_id,
         referencia_tipo: "cancelacion", referencia_id: tx.id,
         nota: "Envío cancelado — stock restituido"
       });
-      setCancelConfirm(null);
-      toast("✅ Envío cancelado", (prod ? prod.name + " volvió a tu stock" : ""), "s");
-      await loadData(me.id, me.role);
+
+      // 4. Reload en background para sincronizar inventario
+      loadData(me.id, me.role);
     } catch(e) {
       setCancelConfirm(null);
       toast("Error al cancelar", e.message, "e");
