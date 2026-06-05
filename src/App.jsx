@@ -422,7 +422,8 @@ export default function App() {
   const [impFile, setImpFile] = useState(null);
 
   // ── CONSIGNACIONES (conteo para badge) ──────────────────────────────────────
-  const [consignActivas, setConsignActivas] = useState([]);
+  const [consignActivas,  setConsignActivas]  = useState([]);
+  const [cancelConfirm,   setCancelConfirm]   = useState(null); // tx.id esperando confirmación de cancelación
 
   // ── CAROUSEL ─────────────────────────────────────────────────────────────────
   const [carousels,    setCarousels]    = useState([]);  // rows from offer_carousels table
@@ -652,8 +653,10 @@ export default function App() {
       // Consignaciones activas (enviadas + recibidas)
       try {
         const [envC, recC] = await Promise.all([
-          sb.from("consignaciones").select("id,status").eq("owner_id",userId).eq("status","activa"),
-          sb.from("consignaciones").select("id,status").eq("vendedora_id",userId).eq("status","activa"),
+          sb.from("consignaciones").select("id,status,owner_id,vendedora_id,comision_pct,created_at")
+            .eq("owner_id",userId).neq("status","cancelada"),
+          sb.from("consignaciones").select("id,status,owner_id,vendedora_id,comision_pct,created_at")
+            .eq("vendedora_id",userId).neq("status","cancelada"),
         ]);
         setConsignActivas([...(envC.data||[]),...(recC.data||[])]);
       } catch(e) { /* tablas pueden no existir aún */ }
@@ -1004,9 +1007,11 @@ export default function App() {
         referencia_tipo: "cancelacion", referencia_id: tx.id,
         nota: "Envío cancelado — stock restituido"
       });
+      setCancelConfirm(null);
       toast("✅ Envío cancelado", (prod ? prod.name + " volvió a tu stock" : ""), "s");
       await loadData(me.id, me.role);
     } catch(e) {
+      setCancelConfirm(null);
       toast("Error al cancelar", e.message, "e");
     }
   }
@@ -1411,7 +1416,6 @@ export default function App() {
   var qlFiltered = products.filter(function(p){ var q=qlSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
   var pendingTx = transfers.filter(function(t){ return t.to_user_id===me?.id&&t.status==="pending"; });
   var sentTx = transfers.filter(function(t){ return t.from_user_id===me?.id&&t.status==="pending"; }).slice(0,10);
-  var [cancelConfirm, setCancelConfirm] = useState(null); // tx.id being confirmed
   var myNotifs = notifs.filter(function(n){ return n.to_user_id===me?.id; });
 
   // ── LOADING SCREEN ────────────────────────────────────────────────────────────
@@ -1528,7 +1532,7 @@ export default function App() {
               const p=i.products||products.find(function(x){return x.id===i.product_id;});
               return s+(p?parseFloat(p.price||0)*i.qty_available:0);
             },0);
-            const consignaEnv = consignActivas.length;
+            const consignaEnv = consignActivas.filter(function(c){ return c.owner_id===me.id || c.vendedora_id===me.id; }).length;
 
             function StockTable(list, isConsigna){
               if(list.length===0) return <div className="empty" style={{padding:"16px"}}>Sin productos.</div>;
