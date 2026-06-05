@@ -995,6 +995,8 @@ export default function App() {
       await sb.from("transfers")
         .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
         .eq("id", tx.id);
+      // Actualización optimista
+      setTransfers(function(prev){ return prev.map(function(t){ return t.id===tx.id ? Object.assign({},t,{status:"confirmed"}) : t; }); });
       await sb.from("notifications").insert({
         to_user_id: tx.from_user_id, from_name: me.name, type: "confirm",
         message: me.name + " confirmó la recepción de " + tx.qty + "× " + (prod ? prod.name : "producto") + " ✅"
@@ -1034,6 +1036,8 @@ export default function App() {
         });
       }
       await sb.from("transfers").update({ status: "cancelled" }).eq("id", tx.id);
+      // Actualización optimista: sacar inmediatamente de la lista local
+      setTransfers(function(prev){ return prev.map(function(t){ return t.id===tx.id ? Object.assign({},t,{status:"cancelled"}) : t; }); });
       await sb.from("notifications").insert({
         to_user_id: tx.to_user_id, from_name: me.name, type: "confirm",
         message: me.name + " canceló el envío de " + tx.qty + "× " + (prod ? prod.name : "producto") + ". El envío fue cancelado."
