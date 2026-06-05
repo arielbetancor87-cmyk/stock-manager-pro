@@ -751,7 +751,17 @@ export default function App() {
     var prod = invRow.products || products.find(function(p){ return p.id===invRow.product_id; });
 
     // Update inventory
-    var r = await sb.from("inventory").update({qty_available:invRow.qty_available-1, qty_sold:invRow.qty_sold+1}).eq("id",invRow.id).select().single();
+    var sellUpdFields = {
+      qty_available: invRow.qty_available - 1,
+      qty_sold: (invRow.qty_sold||0) + 1,
+    };
+    // Descontar del canal correcto
+    if (originTransfer || invRow.source==="consigna") {
+      sellUpdFields.stock_recibido = Math.max(0, (invRow.stock_recibido||0) - 1);
+    } else {
+      sellUpdFields.stock_propio = Math.max(0, (invRow.stock_propio||0) - 1);
+    }
+    var r = await sb.from("inventory").update(sellUpdFields).eq("id",invRow.id).select().single();
     if (r.error){ toast("Error",""+r.error.message,"e"); return; }
     setInventory(function(p){ return p.map(function(i){ return i.id===invRow.id?r.data:i; }); });
 
@@ -951,12 +961,17 @@ export default function App() {
       var recInv = await sb.from("inventory")
         .select("*").eq("user_id", me.id).eq("product_id", tx.product_id).maybeSingle();
       if (recInv.data) {
-        await sb.from("inventory")
-          .update({ qty_available: recInv.data.qty_available + tx.qty })
-          .eq("id", recInv.data.id);
+        await sb.from("inventory").update({
+          qty_available:  recInv.data.qty_available + tx.qty,
+          stock_recibido: (recInv.data.stock_recibido || 0) + tx.qty,
+          source: recInv.data.stock_propio > 0 ? recInv.data.source : "consigna"
+        }).eq("id", recInv.data.id);
       } else {
-        await sb.from("inventory")
-          .insert({ user_id: me.id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: "own" });
+        await sb.from("inventory").insert({
+          user_id: me.id, product_id: tx.product_id,
+          qty_available: tx.qty, qty_sold: 0,
+          stock_propio: 0, stock_recibido: tx.qty, source: "consigna"
+        });
       }
       await sb.from("transfers")
         .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
@@ -988,12 +1003,16 @@ export default function App() {
       var sndInv = await sb.from("inventory")
         .select("*").eq("user_id", tx.from_user_id).eq("product_id", tx.product_id).maybeSingle();
       if (sndInv.data) {
-        await sb.from("inventory")
-          .update({ qty_available: sndInv.data.qty_available + tx.qty })
-          .eq("id", sndInv.data.id);
+        await sb.from("inventory").update({
+          qty_available: sndInv.data.qty_available + tx.qty,
+          stock_propio:  (sndInv.data.stock_propio || 0) + tx.qty
+        }).eq("id", sndInv.data.id);
       } else {
-        await sb.from("inventory")
-          .insert({ user_id: tx.from_user_id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: "own" });
+        await sb.from("inventory").insert({
+          user_id: tx.from_user_id, product_id: tx.product_id,
+          qty_available: tx.qty, qty_sold: 0,
+          stock_propio: tx.qty, stock_recibido: 0, source: "own"
+        });
       }
       await sb.from("transfers").update({ status: "cancelled" }).eq("id", tx.id);
       await sb.from("notifications").insert({
@@ -1027,7 +1046,11 @@ export default function App() {
       if (!invRow) continue;
       if (invRow.qty_available < qty) { toast("Stock insuficiente", (invRow.products||{}).name||"", "e"); continue; }
       // 1. Descontar del stock del remitente inmediatamente
-      await sb.from("inventory").update({ qty_available: invRow.qty_available - qty }).eq("id", invId);
+      var nuevoPropio = Math.max(0, (invRow.stock_propio != null ? invRow.stock_propio : invRow.qty_available) - qty);
+      await sb.from("inventory").update({
+        qty_available: invRow.qty_available - qty,
+        stock_propio:  nuevoPropio
+      }).eq("id", invId);
       // 2. Guardar transfer como pending
       var { data: txData } = await sb.from("transfers").insert({
         from_user_id: me.id, to_user_id: sendTo,
@@ -1095,10 +1118,11 @@ export default function App() {
           referencia_tipo: "carga",
           nota: "Carga de stock — +" + qlQty + " unidades"
         });
-        const upd = await sb.from("inventory")
-          .update({qty_available: existing.qty_available + qlQty, source: "own"})
-          .eq("id", existing.id)
-          .select("*, products(*)").single();
+        const upd = await sb.from("inventory").update({
+          qty_available: existing.qty_available + qlQty,
+          stock_propio:  (existing.stock_propio || 0) + qlQty,
+          source: "own"
+        }).eq("id", existing.id).select("*, products(*)").single();
         if (upd.data) setInventory(function(p){ return p.map(function(i){ return i.id===existing.id?upd.data:i; }); });
         if (upd.error){ toast("Error",""+upd.error.message,"e"); return; }
       } else {
@@ -1108,9 +1132,11 @@ export default function App() {
           referencia_tipo: "carga",
           nota: "Stock inicial — " + qlQty + " unidades"
         });
-        const ins = await sb.from("inventory")
-          .insert({user_id:me.id, product_id:qlPid, qty_available:qlQty, qty_sold:0, source:"own"})
-          .select("*, products(*)").single();
+        const ins = await sb.from("inventory").insert({
+          user_id:me.id, product_id:qlPid,
+          qty_available:qlQty, qty_sold:0,
+          stock_propio:qlQty, stock_recibido:0, source:"own"
+        }).select("*, products(*)").single();
         if (ins.error){ toast("Error",""+ins.error.message,"e"); return; }
         if (ins.data) setInventory(function(p){ return [...p, ins.data]; });
       }
@@ -1127,9 +1153,11 @@ export default function App() {
       if (pr.error){ toast("Error",""+pr.error.message,"e"); return; }
       setProducts(function(p){ return [...p, pr.data]; });
       if (qlQty>0){
-        const ii = await sb.from("inventory")
-          .insert({user_id:me.id, product_id:pr.data.id, qty_available:qlQty, qty_sold:0, source:"own"})
-          .select("*, products(*)").single();
+        const ii = await sb.from("inventory").insert({
+          user_id:me.id, product_id:pr.data.id,
+          qty_available:qlQty, qty_sold:0,
+          stock_propio:qlQty, stock_recibido:0, source:"own"
+        }).select("*, products(*)").single();
         if (ii.data) setInventory(function(p){ return [...p, ii.data]; });
       }
       toast("Producto creado!", qlName.trim()+" con "+qlQty+" u.", "s");
@@ -1516,9 +1544,13 @@ export default function App() {
 
           {/* ══ STOCK ══ */}
           {tab==="stock"&&(function(){
-            // Unified stock — no split needed (consigna tracked via transfers)
-            const ownStock     = myStock;
-            const consignStock = [];   // consigna detail shown in Consigna tab
+            // Separar por source: 'own' = stock propio, 'consigna' = recibido de otro usuario
+            const ownStock      = inventory.filter(function(i){
+              return i.user_id===me.id && (i.source==="own" || !i.source) && i.qty_available>0;
+            });
+            const consignStock  = inventory.filter(function(i){
+              return i.user_id===me.id && i.source==="consigna" && i.qty_available>0;
+            });
 
             const q = srchStock.toLowerCase();
             function filtrar(list){ return list.filter(function(i){
@@ -1527,7 +1559,7 @@ export default function App() {
               return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q)||(p.category||"").toLowerCase().includes(q);
             });}
             const ownFilt     = filtrar(ownStock);
-            const consignFilt = filtrar(consignStock);
+            const consignFilt  = filtrar(consignStock);
 
             const totalVal = ownStock.reduce(function(s,i){
               const p=i.products||products.find(function(x){return x.id===i.product_id;});
@@ -1553,6 +1585,10 @@ export default function App() {
                     var tagCol    = isConsigna ? "#e65100"      : "#2e7d32";
                     var tagTxt    = isConsigna ? ("📨 De "+( sender?sender.name:"otro vendedor")) : "📦 Stock propio";
                     var borderCol = isConsigna ? "rgba(255,122,0,.3)" : "rgba(0,184,122,.2)";
+                    // Calcular propio vs recibido
+                    var stockPropio   = item.stock_propio   != null ? item.stock_propio   : (isConsigna ? 0 : item.qty_available);
+                    var stockRecibido = item.stock_recibido != null ? item.stock_recibido : (isConsigna ? item.qty_available : 0);
+                    var stockTotal    = item.qty_available;
                     return (
                       <div key={item.id} style={{
                         background:"var(--card)",
@@ -1565,9 +1601,7 @@ export default function App() {
                         {/* Etiqueta de tipo */}
                         <div style={{background:tagBg,padding:"5px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                           <span style={{fontSize:10,fontWeight:800,color:tagCol,letterSpacing:".02em"}}>{tagTxt}</span>
-                          <span style={{fontFamily:"var(--mf)",fontSize:10,fontWeight:700,color:"var(--t3)"}}>
-                            {p.sku}
-                          </span>
+                          <span style={{fontFamily:"var(--mf)",fontSize:10,fontWeight:700,color:"var(--t3)"}}>{p.sku}</span>
                         </div>
                         {/* Cuerpo */}
                         <div style={{display:"flex",alignItems:"center",gap:12,padding:"11px 13px"}}>
@@ -1577,12 +1611,25 @@ export default function App() {
                             <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>{p.category}</div>
                             <div style={{fontSize:13,fontWeight:800,color:accentCol,marginTop:3,fontFamily:"var(--mf)"}}>{fmtARS(p.price)}</div>
                           </div>
-                          {/* Disponibles destacado */}
+                          {/* Total disponible */}
                           <div style={{textAlign:"center",flexShrink:0,background:accentBg,borderRadius:12,padding:"8px 14px",minWidth:52}}>
-                            <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:24,color:accentCol,lineHeight:1}}>{item.qty_available}</div>
-                            <div style={{fontSize:9,fontWeight:700,color:accentCol,textTransform:"uppercase",letterSpacing:".05em",marginTop:2}}>unid.</div>
+                            <div style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:24,color:accentCol,lineHeight:1}}>{stockTotal}</div>
+                            <div style={{fontSize:9,fontWeight:700,color:accentCol,textTransform:"uppercase",letterSpacing:".05em",marginTop:2}}>total</div>
                           </div>
                         </div>
+                        {/* Desglose propio / recibido */}
+                        {(stockPropio>0||stockRecibido>0)&&(
+                          <div style={{display:"flex",background:"var(--bg)",margin:"0 12px 10px",borderRadius:10,overflow:"hidden",border:"1px solid var(--brd)"}}>
+                            <div style={{flex:1,textAlign:"center",padding:"8px 6px",borderRight:"1px solid var(--brd)"}}>
+                              <div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:16,color:"var(--em-d)"}}>{stockPropio}</div>
+                              <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,marginTop:1}}>📦 Propio</div>
+                            </div>
+                            <div style={{flex:1,textAlign:"center",padding:"8px 6px"}}>
+                              <div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:16,color:"var(--bl-d)"}}>{stockRecibido}</div>
+                              <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,marginTop:1}}>📩 Recibido</div>
+                            </div>
+                          </div>
+                        )}
                         {/* Acciones */}
                         <div style={{display:"flex",borderTop:"1px solid var(--brd)"}}>
                           <button className="btn btn-xs b-wa" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)"}} onClick={function(){shareOne(p);}}><Ic n="wa" s={13}/></button>
