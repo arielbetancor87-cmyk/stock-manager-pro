@@ -803,16 +803,35 @@ export default function App() {
   // ── TRANSFER (send to contact, pending confirmation) ─────────────────────────
   async function doTx() {
     if (txQty>txModal.qty_available){ toast("Stock insuficiente","","e"); return; }
-    var prod = txModal.products || products.find(function(p){ return p.id===txModal.product_id; });
+    var prod  = txModal.products || products.find(function(p){ return p.id===txModal.product_id; });
     var tUser = contacts.find(function(c){ return c.id===txTo; });
-    // Deduct from sender
-    var upd = await sb.from("inventory").update({qty_available:txModal.qty_available-txQty}).eq("id",txModal.id).select().single();
+    var nuevoPropio = Math.max(0, (txModal.stock_propio != null ? txModal.stock_propio : txModal.qty_available) - txQty);
+    // 1. Descontar stock del remitente
+    var upd = await sb.from("inventory").update({
+      qty_available: txModal.qty_available - txQty,
+      stock_propio:  nuevoPropio
+    }).eq("id",txModal.id).select().single();
     if (upd.error){ toast("Error",""+upd.error.message,"e"); return; }
     setInventory(function(p){ return p.map(function(i){ return i.id===txModal.id?upd.data:i; }); });
-    // Create pending transfer
-    await sb.from("transfers").insert({from_user_id:me.id,to_user_id:txTo,product_id:txModal.product_id,qty:txQty,status:"pending"});
-    // Notify recipient
-    await sb.from("notifications").insert({to_user_id:txTo,from_name:me.name,type:"transfer",message:me.name+" te envió "+txQty+"x "+(prod?prod.name:"producto")+". Confirmá la recepción!"});
+    // 2. Crear transfer pendiente
+    var { data:txInsert } = await sb.from("transfers").insert({
+      from_user_id:me.id, to_user_id:txTo,
+      product_id:txModal.product_id, qty:txQty,
+      status:"pending", inventory_id:txModal.id
+    }).select().single();
+    // 3. Ledger
+    await logMovimiento({
+      product_id: txModal.product_id, qty: -txQty,
+      estado_anterior:"stock_central", estado_nuevo:"en_transito",
+      related_user_id: txTo,
+      referencia_tipo:"transfer", referencia_id: txInsert?txInsert.id:null,
+      nota:"Enviado a "+(tUser?tUser.name:"")
+    });
+    // 4. Notificar
+    await sb.from("notifications").insert({
+      to_user_id:txTo, from_name:me.name, type:"transfer",
+      message:me.name+" te envió "+txQty+"× "+(prod?prod.name:"producto")+". Confirmá la recepción!"
+    });
     toast("Enviado!","Esperando confirmación de "+(tUser?tUser.name:""),"s");
     setTxModal(null);
     await loadData(me.id,me.role);
