@@ -519,14 +519,25 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               const vend=(consig.items||[]).reduce((s,i)=>s+i.qty_vendida,0);
               const dev=(consig.items||[]).reduce((s,i)=>s+i.qty_devuelta,0);
               const pend=tot-vend-dev;
+              // Deudas de esta consignación
+              const mis_deudas = deudas.filter(d=>d.consignacion_id===consig.id);
+              const deudas_pend = mis_deudas.filter(d=>!d.pagada);
+              const deudas_pagas = mis_deudas.filter(d=>d.pagada);
+              const total_vendido = mis_deudas.reduce((s,d)=>s+d.monto_total,0);
+              const total_comision = mis_deudas.reduce((s,d)=>s+d.comision,0);
+              const total_a_cobrar = deudas_pend.reduce((s,d)=>s+d.monto_a_pagar,0);
+              const total_cobrado  = deudas_pagas.reduce((s,d)=>s+d.monto_a_pagar,0);
+              const comision_pct = consig.comision_pct||30;
               return (
-                <div key={consig.id} onClick={()=>abrirDetEnv(consig)}
-                  style={{ background:"#fff",borderRadius:16,border:"1.5px solid #e0e0e0",marginBottom:10,overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,.07)",cursor:"pointer" }}>
-                  <div style={{ display:"flex",alignItems:"center",gap:12,padding:"13px 16px" }}>
+                <div key={consig.id}
+                  style={{ background:"#fff",borderRadius:16,border:"1.5px solid #e0e0e0",marginBottom:12,overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,.07)" }}>
+                  {/* Header con vendedora */}
+                  <div style={{ display:"flex",alignItems:"center",gap:12,padding:"13px 16px",background:"#fafafa",borderBottom:"1px solid #eee",cursor:"pointer" }}
+                    onClick={()=>abrirDetEnv(consig)}>
                     <Avatar name={consig.vendedora?.name} color={consig.vendedora?.color} size={44}/>
                     <div style={{ flex:1,minWidth:0 }}>
                       <div style={{ fontWeight:800,fontSize:14 }}>{consig.vendedora?.name}</div>
-                      <div style={{ fontSize:11,color:"#999",marginTop:1 }}>{(consig.items||[]).length} productos · {new Date(consig.created_at).toLocaleDateString("es-AR")}</div>
+                      <div style={{ fontSize:11,color:"#999",marginTop:1 }}>{tot} u. entregadas · {new Date(consig.created_at).toLocaleDateString("es-AR")}</div>
                     </div>
                     <div style={{ textAlign:"right",flexShrink:0 }}>
                       <div style={{ fontSize:10,color:"#999" }}>Pend.</div>
@@ -534,12 +545,69 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                     </div>
                     <div style={{ color:"#ccc",fontSize:20 }}>›</div>
                   </div>
-                  <div style={{ padding:"4px 16px 12px" }}>
+                  <div style={{ padding:"4px 16px 10px" }}>
                     <ProgBar vendidas={vend} devueltas={dev} total={tot}/>
                     <div style={{ display:"flex",justifyContent:"space-between",marginTop:5,fontSize:10,color:"#999",fontWeight:600 }}>
                       <span>✅ {vend} vendidos</span><span>⏳ {pend} pendientes</span><span>↩️ {dev} devueltos</span>
                     </div>
                   </div>
+                  {/* ── Desglose financiero ── */}
+                  {vend>0&&(
+                    <div style={{ margin:"0 12px 12px",borderRadius:12,overflow:"hidden",border:"1px solid #e0e0e0" }}>
+                      {/* Total vendido */}
+                      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 14px",background:"#f8f8f8",borderBottom:"1px solid #eee" }}>
+                        <span style={{ fontSize:12,color:"#555",fontWeight:700 }}>💰 Total vendido por ella</span>
+                        <span style={{ fontFamily:"var(--mf)",fontWeight:800,fontSize:13,color:"#222" }}>{fmt(total_vendido)}</span>
+                      </div>
+                      {/* Comisión vendedora */}
+                      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 14px",background:"#fff8e1",borderBottom:"1px solid #eee" }}>
+                        <div>
+                          <div style={{ fontSize:12,color:"#e06a00",fontWeight:700 }}>🤝 Comisión vendedora ({comision_pct}%)</div>
+                          <div style={{ fontSize:10,color:"#bbb",marginTop:1 }}>Se descuenta de lo que te debe</div>
+                        </div>
+                        <span style={{ fontFamily:"var(--mf)",fontWeight:800,fontSize:13,color:"#e06a00" }}>− {fmt(total_comision)}</span>
+                      </div>
+                      {/* Deuda */}
+                      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:total_a_cobrar>0?"#fde8ea":"#e8faf4" }}>
+                        <div>
+                          <div style={{ fontSize:12,fontWeight:800,color:total_a_cobrar>0?"#c1121f":"#009a66" }}>
+                            {total_a_cobrar>0?"🔴 Deuda pendiente":"✅ Todo cobrado"}
+                          </div>
+                          {total_cobrado>0&&<div style={{ fontSize:10,color:"#888",marginTop:1 }}>Ya cobrado: {fmt(total_cobrado)}</div>}
+                        </div>
+                        {total_a_cobrar>0&&(
+                          <div style={{ textAlign:"right" }}>
+                            <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:"#c1121f" }}>{fmt(total_a_cobrar)}</div>
+                            <button onClick={e=>{ e.stopPropagation(); abrirLiquidar(consig.vendedora); }}
+                              style={{ marginTop:6,background:"#cc0000",border:"none",borderRadius:10,padding:"6px 14px",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer" }}>
+                              Cobrar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {/* Detalle ventas pendientes */}
+                      {deudas_pend.length>0&&(
+                        <div style={{ padding:"8px 14px 10px",background:"#fafafa",borderTop:"1px solid #eee" }}>
+                          <div style={{ fontSize:10,fontWeight:800,color:"#aaa",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em" }}>Ventas sin cobrar</div>
+                          {deudas_pend.map((d,idx)=>{
+                            const p=products.find(x=>x.id===d.item?.product_id);
+                            return (
+                              <div key={d.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:idx<deudas_pend.length-1?"1px solid #f0f0f0":"none" }}>
+                                <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+                                  <span style={{ fontSize:15 }}>{p?.emoji||"📦"}</span>
+                                  <div>
+                                    <div style={{ fontSize:11,fontWeight:700,color:"#333" }}>{p?.name||"Producto"}</div>
+                                    <div style={{ fontSize:10,color:"#aaa" }}>Precio: {fmt(d.monto_total)} · Com: {fmt(d.comision)}</div>
+                                  </div>
+                                </div>
+                                <div style={{ fontFamily:"var(--mf)",fontWeight:800,fontSize:12,color:"#c1121f",flexShrink:0 }}>{fmt(d.monto_a_pagar)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
