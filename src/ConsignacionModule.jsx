@@ -61,6 +61,17 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
 
+  // Carga manual de stock propio
+  const [cargaPid,   setCargaPid]   = useState("");
+  const [cargaQty,   setCargaQty]   = useState(1);
+  const [cargaShow,  setCargaShow]  = useState(false);
+  const [cargaSaving,setCargaSaving]= useState(false);
+
+  // Historial de transfers
+  const [transfers,    setTransfers]    = useState([]);
+  const [txLoading,    setTxLoading]    = useState(false);
+  const [txExpanded,   setTxExpanded]   = useState(false);
+
   const [enviadas,  setEnviadas]  = useState([]);
   const [recibidas, setRecibidas] = useState([]);
   const [deudas,    setDeudas]    = useState([]);
@@ -115,8 +126,52 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
       setEnviadas(envRes.data||[]);
       setRecibidas(recRes.data||[]);
       setDeudas(deuRes.data||[]);
+      // Cargar historial de transfers
+      try {
+        const txRes = await sb.from("transfers")
+          .select("*, product:product_id(id,name,sku,emoji,photo_url), from_user:from_user_id(id,name,color), to_user:to_user_id(id,name,color)")
+          .or("from_user_id.eq."+me.id+",to_user_id.eq."+me.id)
+          .order("created_at",{ascending:false}).limit(50);
+        setTransfers(txRes.data||[]);
+      } catch(e) { /* ignore */ }
     } catch(e) { toast("Error cargando",""+e.message,"e"); }
     finally { setLoading(false); }
+  }
+
+  // ── CARGA MANUAL DE STOCK PROPIO ─────────────────────────────────────────────
+  async function cargarStockPropio() {
+    if (!cargaPid || cargaQty < 1) { toast("Elegí un producto y cantidad","","e"); return; }
+    setCargaSaving(true);
+    try {
+      const prod = products.find(p=>p.id===cargaPid);
+      const { data:inv } = await sb.from("inventory")
+        .select("*").eq("user_id",me.id).eq("product_id",cargaPid).maybeSingle();
+      if (inv) {
+        await sb.from("inventory").update({
+          qty_available: inv.qty_available + cargaQty,
+          stock_propio:  (inv.stock_propio||0) + cargaQty,
+          source: "own"
+        }).eq("id", inv.id);
+      } else {
+        await sb.from("inventory").insert({
+          user_id:me.id, product_id:cargaPid,
+          qty_available:cargaQty, qty_sold:0,
+          stock_propio:cargaQty, stock_recibido:0, source:"own"
+        });
+      }
+      try {
+        await sb.from("stock_movements").insert({
+          product_id:cargaPid, user_id:me.id, qty:cargaQty,
+          estado_anterior:null, estado_nuevo:"stock_central",
+          referencia_tipo:"carga",
+          nota:"Carga manual — "+(prod?.name||"")
+        });
+      } catch(e) {}
+      toast("✅ Stock cargado","+"+ cargaQty +" u. de "+(prod?.name||""),"s");
+      setCargaPid(""); setCargaQty(1); setCargaShow(false);
+      onRefresh();
+    } catch(e) { toast("Error",e.message,"e"); }
+    finally { setCargaSaving(false); }
   }
 
   async function crearConsignacion() {
@@ -489,11 +544,113 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           </div>
         )}
         {view!=="main_rec" && enviActivas.length===0 && (
-          <div style={{ textAlign:"center",padding:"40px 20px",color:"#bbb",fontSize:13 }}>
+          <div style={{ textAlign:"center",padding:"32px 20px 16px",color:"#bbb",fontSize:13 }}>
             <div style={{ fontSize:44,marginBottom:8 }}>📭</div>
             No entregaste productos todavía.<br/>Tocá el botón de arriba para crear la primera entrega.
           </div>
         )}
+
+        {/* ── CARGA MANUAL DE STOCK PROPIO ─────────────────────────── */}
+        <div style={{ marginBottom:16 }}>
+          <button onClick={()=>setCargaShow(v=>!v)}
+            style={{ width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderRadius:14,background:"#fff",border:"1.5px solid #e0e0e0",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.05)" }}>
+            <div style={{ width:40,height:40,borderRadius:12,background:"#e8faf4",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0 }}>📦</div>
+            <div style={{ textAlign:"left",flex:1 }}>
+              <div style={{ fontSize:14,fontWeight:800,color:"#222" }}>Cargar stock propio</div>
+              <div style={{ fontSize:11,color:"#999",marginTop:1 }}>Sumar unidades a mi inventario</div>
+            </div>
+            <div style={{ color:"#ccc",fontSize:18 }}>{cargaShow?"▲":"▼"}</div>
+          </button>
+          {cargaShow&&(
+            <div style={{ background:"#f8fffe",border:"1.5px solid rgba(0,184,122,.2)",borderRadius:14,padding:"14px 16px",marginTop:8 }}>
+              <div style={{ fontSize:12,fontWeight:800,color:"#555",marginBottom:10 }}>Elegí producto y cantidad</div>
+              <select value={cargaPid} onChange={e=>setCargaPid(e.target.value)}
+                style={{ width:"100%",padding:"11px 12px",borderRadius:10,border:"1.5px solid #e0e0e0",fontFamily:"var(--hf)",fontSize:14,marginBottom:10,outline:"none",color:"#222",background:"#fff" }}>
+                <option value="">— Seleccionar producto —</option>
+                {products.filter(p=>p.is_active!==false).map(p=>(
+                  <option key={p.id} value={p.id}>{p.emoji||"📦"} {p.name} ({p.sku})</option>
+                ))}
+              </select>
+              <div style={{ display:"flex",gap:10,alignItems:"center" }}>
+                <div style={{ display:"flex",alignItems:"center",border:"1.5px solid #e0e0e0",borderRadius:10,overflow:"hidden",flexShrink:0 }}>
+                  <button onClick={()=>setCargaQty(q=>Math.max(1,q-1))}
+                    style={{ width:36,height:36,border:"none",background:"#f5f5f5",cursor:"pointer",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",color:"#444" }}>−</button>
+                  <div style={{ minWidth:40,textAlign:"center",fontFamily:"var(--mf)",fontWeight:700,fontSize:16,color:"#cc0000" }}>{cargaQty}</div>
+                  <button onClick={()=>setCargaQty(q=>q+1)}
+                    style={{ width:36,height:36,border:"none",background:"#ffeaea",cursor:"pointer",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",color:"#cc0000" }}>+</button>
+                </div>
+                <button onClick={cargarStockPropio} disabled={!cargaPid||cargaSaving}
+                  style={{ flex:1,padding:"11px",borderRadius:10,border:"none",background:"#00b87a",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:14,cursor:"pointer",opacity:(!cargaPid||cargaSaving)?.5:1 }}>
+                  {cargaSaving?"Guardando...":"✅ Confirmar carga"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── HISTORIAL DE TRANSFERS ────────────────────────────────── */}
+        {(()=>{
+          const txFilt = view==="main_rec"
+            ? transfers.filter(t=>t.to_user_id===me.id)
+            : transfers.filter(t=>t.from_user_id===me.id);
+          if (txFilt.length===0) return null;
+          const visible = txExpanded ? txFilt : txFilt.slice(0,5);
+          const badgeCfg = {
+            pending:    {bg:"#fff8e1",col:"#e06a00",txt:"⏳ Pendiente"},
+            pendiente:  {bg:"#fff8e1",col:"#e06a00",txt:"⏳ Pendiente"},
+            confirmed:  {bg:"#e8faf4",col:"#009a66",txt:"✅ Confirmado"},
+            aceptado:   {bg:"#e8faf4",col:"#009a66",txt:"✅ Aceptado"},
+            cancelled:  {bg:"#fde8ea",col:"#c1121f",txt:"❌ Cancelado"},
+            rechazado:  {bg:"#fde8ea",col:"#c1121f",txt:"❌ Rechazado"},
+          };
+          return (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:10,textTransform:"uppercase",letterSpacing:".07em" }}>
+                {view==="main_rec" ? "📩 Envíos que recibí" : "📤 Historial de envíos"}
+                <span style={{ marginLeft:8,background:"#e0e0e0",color:"#555",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700 }}>{txFilt.length}</span>
+              </div>
+              <div style={{ background:"#fff",borderRadius:16,border:"1.5px solid #e0e0e0",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,.07)" }}>
+                {visible.map((tx,i)=>{
+                  const p   = tx.product;
+                  const usr = view==="main_rec" ? tx.from_user : tx.to_user;
+                  const badg = badgeCfg[tx.status] || {bg:"#f0f0f0",col:"#888",txt:tx.status};
+                  return (
+                    <div key={tx.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderBottom:i<visible.length-1?"1px solid #f5f5f5":"none" }}>
+                      {/* Producto */}
+                      <div style={{ width:40,height:40,borderRadius:10,background:"#f0f0f0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 }}>
+                        {p?.emoji||"📦"}
+                      </div>
+                      {/* Info */}
+                      <div style={{ flex:1,minWidth:0 }}>
+                        <div style={{ fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#222" }}>
+                          {p?.name||"Producto"}
+                        </div>
+                        <div style={{ fontSize:11,color:"#999",marginTop:1,display:"flex",gap:6,alignItems:"center" }}>
+                          <span>{view==="main_rec"?"De:":"Para:"} <strong style={{color:"#444"}}>{usr?.name||"?"}</strong></span>
+                          <span>·</span>
+                          <span style={{ fontFamily:"var(--mf)",fontWeight:700 }}>{tx.qty} u.</span>
+                          <span>·</span>
+                          <span>{new Date(tx.created_at).toLocaleDateString("es-AR")}</span>
+                        </div>
+                      </div>
+                      {/* Badge estado */}
+                      <div style={{ background:badg.bg,color:badg.col,borderRadius:20,padding:"4px 10px",fontSize:10,fontWeight:800,flexShrink:0,whiteSpace:"nowrap" }}>
+                        {badg.txt}
+                      </div>
+                    </div>
+                  );
+                })}
+                {txFilt.length>5&&(
+                  <div onClick={()=>setTxExpanded(v=>!v)}
+                    style={{ padding:"12px",textAlign:"center",fontSize:12,color:"#cc0000",fontWeight:700,cursor:"pointer",borderTop:"1px solid #f5f5f5" }}>
+                    {txExpanded?"▲ Ver menos":"▼ Ver todos ("+txFilt.length+")"}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
       </div>
     </div>
   );
