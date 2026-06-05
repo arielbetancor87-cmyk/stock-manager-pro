@@ -389,26 +389,35 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     </div>
   );
 
-  // ══════════════════ MAIN ENVIADOS ══════════════════
-  if (view==="main_env" || view==="main") return (
+  // ══════════════════ MAIN (ENVIADOS + RECIBIDOS) ══════════════════
+  if (view==="main_env" || view==="main" || view==="main_rec") return (
     <div style={{ paddingBottom:32 }}>
       {/* Header */}
-      <div style={{ background:"linear-gradient(135deg,#cc0000,#ff3333)",padding:"20px 16px 24px" }}>
-        <div style={{ fontSize:22,fontWeight:900,color:"#fff",marginBottom:4 }}>🤝 Consignaciones</div>
-        <div style={{ fontSize:12,color:"rgba(255,255,255,.8)",marginBottom:16 }}>Entregás productos → la otra los vende → te pagan</div>
+      <div style={{ background: view==="main_rec" ? "linear-gradient(135deg,#0096c7,#005f8a)" : "linear-gradient(135deg,#cc0000,#ff3333)", padding:"20px 16px 24px" }}>
+        <div style={{ fontSize:22,fontWeight:900,color:"#fff",marginBottom:4 }}>
+          {view==="main_rec" ? "📥 Recibidos" : "📤 Enviados"}
+        </div>
+        <div style={{ fontSize:12,color:"rgba(255,255,255,.8)",marginBottom:16 }}>
+          {view==="main_rec" ? "Productos que te entregaron para vender" : "Productos que entregaste a otras vendedoras"}
+        </div>
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
-          {[
-            {ico:"📤",val:enviActivas.length,lbl:"Entregas activas"},
+          {(view==="main_rec" ? [
             {ico:"📥",val:recibActivas.length,lbl:"Recibidas activas"},
+            {ico:"⏳",val:recibActivas.reduce(function(s,c){return s+(c.items||[]).reduce(function(s2,i){return s2+i.qty_enviada-i.qty_vendida-i.qty_devuelta;},0);},0),lbl:"Unidades pendientes"},
+            {ico:"💵",val:fmt(recibActivas.reduce(function(s,c){return s+(c.items||[]).reduce(function(s2,i){return s2+(i.qty_vendida*i.precio_venta*(c.comision_pct||30)/100);},0);},0)),lbl:"Ganancia estimada",sm:true},
+            {ico:"✅",val:recibActivas.reduce(function(s,c){return s+(c.items||[]).reduce(function(s2,i){return s2+i.qty_vendida;},0);},0),lbl:"Unidades vendidas"},
+          ] : [
+            {ico:"📤",val:enviActivas.length,lbl:"Entregas activas"},
+            {ico:"⏳",val:enviActivas.reduce(function(s,c){return s+(c.items||[]).reduce(function(s2,i){return s2+i.qty_enviada-i.qty_vendida-i.qty_devuelta;},0);},0),lbl:"Unidades pendientes"},
             {ico:"💰",val:fmt(totalPendiente),lbl:"Pendiente de cobro",sm:true},
-            {ico:"✅",val:deudas.filter(d=>d.pagada).length,lbl:"Pagos cobrados"},
-          ].map((m,i)=>(
+            {ico:"✅",val:deudas.filter(function(d){return d.pagada;}).length,lbl:"Pagos cobrados"},
+          ]).map(function(m,i){return (
             <div key={i} style={{ background:"rgba(255,255,255,.15)",borderRadius:14,padding:"12px",border:"1px solid rgba(255,255,255,.2)" }}>
               <div style={{ fontSize:20,marginBottom:2 }}>{m.ico}</div>
               <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:m.sm?11:20,color:"#fff",lineHeight:1 }}>{m.val}</div>
               <div style={{ fontSize:10,color:"rgba(255,255,255,.7)",marginTop:3,fontWeight:600 }}>{m.lbl}</div>
             </div>
-          ))}
+          );})}
         </div>
       </div>
 
