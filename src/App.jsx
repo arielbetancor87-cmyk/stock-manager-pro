@@ -364,7 +364,7 @@ export default function App() {
   const [srchCon,   setSrchCon]   = useState("");
   const [srchLog,   setSrchLog]   = useState("");
   // ── PEDIDOS ──────────────────────────────────────────────────────────────
-  const [pedidos,    setPedidos]   = useState(function(){ try{ return JSON.parse(localStorage.getItem("smp_pedidos")||"[]"); }catch(e){ return []; } });
+  const [pedidos,    setPedidos]   = useState([]);
   const [pedNombre,  setPedNombre] = useState("");
   const [pedWA,      setPedWA]     = useState("");
   const [pedProdId,  setPedProdId] = useState("");
@@ -374,7 +374,7 @@ export default function App() {
   const [pedPSrch,   setPedPSrch]  = useState("");
   const [pedFilter,  setPedFilter] = useState("todos"); // todos|pendiente|entregado
   const [pedEdit,    setPedEdit]   = useState(null);
-  const [ganancia,  setGanancia]  = useState(function(){ try{ return parseFloat(localStorage.getItem("smp_ganancia")||"30"); }catch(e){ return 30; } });
+  const [ganancia,  setGanancia]  = useState(30);
   const [editGan,   setEditGan]   = useState(false);
   const [ganInput,  setGanInput]  = useState("30");
   const [srchPrice, setSrchPrice] = useState("");
@@ -454,7 +454,7 @@ export default function App() {
   const [movNote,    setMovNote]    = useState("");
   const [movHistory,   setMovHistory]   = useState([]);
   // Deudas de consignación: {id, supplier_id, supplier_name, product_name, qty, amount, date}
-  const [consignDebts, setConsignDebts] = useState(function(){ try{ return JSON.parse(localStorage.getItem("smp_debts")||"[]"); }catch(e){ return []; } });
+  const [consignDebts, setConsignDebts] = useState([]);
   const [retModal,    setRetModal]    = useState(null);
   const [retQty,      setRetQty]      = useState(1);
   const [consignSrch, setConsignSrch] = useState("");
@@ -561,17 +561,7 @@ export default function App() {
   }
 
   // ── PERSISTENCIA LOCAL ─────────────────────────────────────────────────────
-  useEffect(function(){
-    try { localStorage.setItem("smp_pedidos", JSON.stringify(pedidos)); } catch(e){}
-  }, [pedidos]);
-
-  useEffect(function(){
-    try { localStorage.setItem("smp_ganancia", String(ganancia)); } catch(e){}
-  }, [ganancia]);
-
-  useEffect(function(){
-    try { localStorage.setItem("smp_debts", JSON.stringify(consignDebts)); } catch(e){}
-  }, [consignDebts]);
+  // [localStorage eliminado — pedidos y estado en Supabase]
 
   // ── SUPABASE DATA LOADERS ────────────────────────────────────────────────────
   async function loadCarousels() {
@@ -648,6 +638,8 @@ export default function App() {
 
       // My logs
       var lg = await sb.from("sale_logs").select("*, product:product_id(name,sku,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(100);
+      var ped = await sb.from("pedidos").select("*, product:product_id(id,name,sku,price,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(200);
+      if (!ped.error) setPedidos(ped.data||[]);
       if (lg.data) setLogs(lg.data);
 
       // Admin only
@@ -814,69 +806,76 @@ export default function App() {
   }
 
   // ── PEDIDOS FUNCTIONS ────────────────────────────────────────────────────────
-  function savePedidos(list) {
-    setPedidos(list);
-  }
-
-  function doAddPedido() {
-    if (!pedNombre.trim()){ return; }
+  async function doAddPedido() {
+    if (!pedNombre.trim()) return;
     var prod = products.find(function(p){ return p.id===pedProdId; });
-    var newP = {
-      id: Date.now().toString(36),
-      nombre: pedNombre.trim(),
-      wa: pedWA.trim(),
-      product_id: pedProdId||null,
-      product_name: prod?prod.name:"",
-      product_sku: prod?prod.sku:"",
-      product_price: prod?prod.price:0,
-      qty: pedQty,
-      nota: pedNota.trim(),
-      estado: "pendiente",
-      created_at: new Date().toISOString(),
+    var row = {
+      user_id:       me.id,
+      nombre:        pedNombre.trim(),
+      wa:            pedWA.trim()||null,
+      product_id:    pedProdId||null,
+      product_name:  prod ? prod.name  : null,
+      product_sku:   prod ? prod.sku   : null,
+      product_price: prod ? prod.price : 0,
+      qty:           pedQty,
+      nota:          pedNota.trim()||null,
+      estado:        "pendiente",
     };
-    var updated = [newP, ...pedidos];
-    savePedidos(updated);
+    var { data, error } = await sb.from("pedidos").insert(row).select().single();
+    if (error) { toast("Error al guardar pedido", error.message, "e"); return; }
+    setPedidos(function(prev){ return [data, ...prev]; });
     setPedNombre(""); setPedWA(""); setPedProdId(""); setPedQty(1); setPedNota(""); setPedPSrch("");
     toast("Pedido guardado!", pedNombre.trim()+(prod?" — "+prod.name:""), "s");
   }
 
-  function doEntregarPedido(id) {
+  async function doEntregarPedido(id) {
     var ped = pedidos.find(function(p){ return p.id===id; });
-    var updated = pedidos.map(function(p){ return p.id===id?Object.assign({},p,{estado:"entregado",entregado_at:new Date().toISOString()}):p; });
-    savePedidos(updated);
+    if (!ped) return;
+    var now = new Date().toISOString();
+    var { error } = await sb.from("pedidos")
+      .update({ estado: "entregado", entregado_at: now })
+      .eq("id", id);
+    if (error) { toast("Error", error.message, "e"); return; }
 
-    // If product came from consignment inventory, record debt to supplier
-    if (ped && ped.product_id) {
-      var invRow = inventory.find(function(i){ return i.product_id===ped.product_id && i.source==="consigna"; });
-      if (invRow && invRow.supplier_id) {
-        var supplier = contacts.find(function(c){ return c.id===invRow.supplier_id; });
-        var debtAmount = (ped.product_price||0) * (ped.qty||1);
-        var newDebt = {
-          id: uid(),
-          supplier_id: invRow.supplier_id,
-          supplier_name: supplier ? supplier.name : "Proveedor",
-          product_name: ped.product_name || "",
-          qty: ped.qty || 1,
-          amount: debtAmount,
-          date: new Date().toISOString(),
-          paid: false
-        };
-        setConsignDebts(function(prev){ return [newDebt, ...prev]; });
-        toast("Pedido entregado!", "Deuda registrada: "+fmtARS(debtAmount)+" a "+(supplier?supplier.name:"proveedor"), "s");
-        return;
+    // Actualizar inventario si tiene producto asociado
+    if (ped.product_id) {
+      var invRow = inventory.find(function(i){ return i.product_id===ped.product_id; });
+      if (invRow && invRow.qty_available >= ped.qty) {
+        await sb.from("inventory")
+          .update({ qty_available: invRow.qty_available - ped.qty, qty_sold: (invRow.qty_sold||0) + ped.qty })
+          .eq("id", invRow.id);
+        // Registrar venta en sale_logs
+        await sb.from("sale_logs").insert({
+          user_id: me.id, product_id: ped.product_id,
+          qty: ped.qty, sale_price: ped.product_price||0, source: "pedido"
+        });
+        // Ledger
+        var estadoAnt = invRow.source==="consigna" ? "en_consigna" : "stock_central";
+        await logMovimiento({
+          product_id: ped.product_id, qty: -(ped.qty),
+          estado_anterior: estadoAnt, estado_nuevo: "vendido",
+          referencia_tipo: "pedido", referencia_id: id,
+          nota: "Pedido entregado a " + ped.nombre
+        });
       }
     }
-    toast("Pedido entregado!", "", "s");
+
+    setPedidos(function(prev){ return prev.map(function(p){ return p.id===id ? Object.assign({},p,{estado:"entregado",entregado_at:now}) : p; }); });
+    toast("✅ Pedido entregado!", ped.nombre, "s");
+    await loadData(me.id, me.role);
   }
 
-  function doCancelarPedido(id) {
-    var updated = pedidos.map(function(p){ return p.id===id?Object.assign({},p,{estado:"cancelado"}):p; });
-    savePedidos(updated);
+  async function doCancelarPedido(id) {
+    var { error } = await sb.from("pedidos").update({ estado: "cancelado" }).eq("id", id);
+    if (error) { toast("Error", error.message, "e"); return; }
+    setPedidos(function(prev){ return prev.map(function(p){ return p.id===id ? Object.assign({},p,{estado:"cancelado"}) : p; }); });
     toast("Pedido cancelado", "", "i");
   }
 
-  function doDeletePedido(id) {
-    savePedidos(pedidos.filter(function(p){ return p.id!==id; }));
+  async function doDeletePedido(id) {
+    var { error } = await sb.from("pedidos").delete().eq("id", id);
+    if (error) { toast("Error", error.message, "e"); return; }
+    setPedidos(function(prev){ return prev.filter(function(p){ return p.id!==id; }); });
   }
 
   function doWAPedido(ped) {
@@ -889,6 +888,25 @@ export default function App() {
     var wa = ped.wa.replace(/\D/g,"");
     var url = wa ? "https://wa.me/"+wa+"?text="+encodeURIComponent(msg) : "https://wa.me/?text="+encodeURIComponent(msg);
     window.open(url, "_blank");
+  }
+
+
+  // ── LEDGER: registrar movimiento de stock ─────────────────────────────────
+  async function logMovimiento(opts) {
+    // opts: { product_id, user_id, related_user_id, qty, estado_anterior, estado_nuevo, referencia_tipo, referencia_id, nota }
+    try {
+      await sb.from("stock_movements").insert({
+        product_id:      opts.product_id,
+        user_id:         opts.user_id || me.id,
+        related_user_id: opts.related_user_id || null,
+        qty:             opts.qty,
+        estado_anterior: opts.estado_anterior || null,
+        estado_nuevo:    opts.estado_nuevo,
+        referencia_tipo: opts.referencia_tipo || null,
+        referencia_id:   opts.referencia_id   || null,
+        nota:            opts.nota || null,
+      });
+    } catch(e) { console.warn("logMovimiento error:", e.message); }
   }
 
   // ── LOAD RECV INV ON TAB CHANGE ──────────────────────────────────────────────
@@ -924,59 +942,69 @@ export default function App() {
   // ── CONFIRM TRANSFER ─────────────────────────────────────────────────────────
   async function confirmTransfer(tx) {
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
-
-    // Always query DB directly — don't rely on local state which may be stale
-    var existingRow = await sb.from("inventory")
-      .select("*")
-      .eq("user_id", me.id)
-      .eq("product_id", tx.product_id)
-      .single();
-
-    // Add qty to existing row or create new one (respects UNIQUE user_id+product_id)
-    if (existingRow.data) {
-      await sb.from("inventory")
-        .update({qty_available: existingRow.data.qty_available + tx.qty})
-        .eq("id", existingRow.data.id);
-    } else {
-      await sb.from("inventory")
-        .insert({user_id: me.id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: 'own'});
+    try {
+      // El stock del remitente ya fue descontado al enviar.
+      // Solo sumamos al receptor.
+      var recInv = await sb.from("inventory")
+        .select("*").eq("user_id", me.id).eq("product_id", tx.product_id).maybeSingle();
+      if (recInv.data) {
+        await sb.from("inventory")
+          .update({ qty_available: recInv.data.qty_available + tx.qty })
+          .eq("id", recInv.data.id);
+      } else {
+        await sb.from("inventory")
+          .insert({ user_id: me.id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: "own" });
+      }
+      await sb.from("transfers")
+        .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
+        .eq("id", tx.id);
+      await sb.from("notifications").insert({
+        to_user_id: tx.from_user_id, from_name: me.name, type: "confirm",
+        message: me.name + " confirmó la recepción de " + tx.qty + "× " + (prod ? prod.name : "producto") + " ✅"
+      });
+      await sb.from("notifications").update({ read: true }).eq("to_user_id", me.id).eq("type", "transfer");
+      await logMovimiento({
+        product_id: tx.product_id, qty: tx.qty,
+        estado_anterior: "en_transito", estado_nuevo: "stock_central",
+        related_user_id: tx.from_user_id,
+        referencia_tipo: "transfer", referencia_id: tx.id,
+        nota: "Recibido de " + (tx.from_user ? tx.from_user.name : "")
+      });
+      toast("✅ Recepción confirmada!", (prod ? prod.name : "") + " en tu stock", "s");
+      await loadData(me.id, me.role);
+    } catch(e) {
+      toast("Error al confirmar", e.message, "e");
     }
-    // Mark transfer confirmed
-    await sb.from("transfers").update({status:"confirmed",confirmed_at:new Date().toISOString()}).eq("id",tx.id);
-    // Force refresh transfers state immediately
-    var refreshTx = await sb.from("transfers").select("*, product:product_id(id,name,emoji,photo_url,sku,price,category), from_user:from_user_id(id,name,email,color), to_user:to_user_id(id,name,email,color)").or("from_user_id.eq."+me.id+",to_user_id.eq."+me.id).order("created_at",{ascending:false});
-    if (refreshTx.data) setTransfers(refreshTx.data);
-    // Notify sender
-    await sb.from("notifications").insert({to_user_id:tx.from_user_id,from_name:me.name,type:"confirm",message:me.name+" confirmó la recepción de "+tx.qty+"x "+(prod?prod.name:"producto")+"!"});
-    // Mark my notification read
-    await sb.from("notifications").update({read:true}).eq("to_user_id",me.id).eq("type","transfer");
-    toast("Recepción confirmada!",(prod?prod.name:"")+" en tu stock","s");
-    await loadData(me.id,me.role);
   }
 
   // ── CANCEL TRANSFER ─────────────────────────────────────────────────────────
   async function cancelTransfer(tx) {
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
     try {
-      // 1. Devolver el stock al remitente
-      var senderInv = await sb.from("inventory")
+      // Devolver stock al remitente (fue descontado al enviar)
+      var sndInv = await sb.from("inventory")
         .select("*").eq("user_id", tx.from_user_id).eq("product_id", tx.product_id).maybeSingle();
-      if (senderInv.data) {
+      if (sndInv.data) {
         await sb.from("inventory")
-          .update({ qty_available: senderInv.data.qty_available + tx.qty })
-          .eq("id", senderInv.data.id);
+          .update({ qty_available: sndInv.data.qty_available + tx.qty })
+          .eq("id", sndInv.data.id);
       } else {
         await sb.from("inventory")
           .insert({ user_id: tx.from_user_id, product_id: tx.product_id, qty_available: tx.qty, qty_sold: 0, source: "own" });
       }
-      // 2. Marcar transfer como cancelada
       await sb.from("transfers").update({ status: "cancelled" }).eq("id", tx.id);
-      // 3. Notificar al destinatario
       await sb.from("notifications").insert({
         to_user_id: tx.to_user_id, from_name: me.name, type: "confirm",
-        message: me.name + " canceló el envío de " + tx.qty + "× " + (prod ? prod.name : "producto") + ". El stock volvió al remitente."
+        message: me.name + " canceló el envío de " + tx.qty + "× " + (prod ? prod.name : "producto") + ". El envío fue cancelado."
       });
-      toast("✅ Envío cancelado", (prod ? prod.name : "") + " volvió a tu stock", "s");
+      await logMovimiento({
+        product_id: tx.product_id, qty: tx.qty,
+        estado_anterior: "en_transito", estado_nuevo: "stock_central",
+        related_user_id: tx.to_user_id,
+        referencia_tipo: "cancelacion", referencia_id: tx.id,
+        nota: "Envío cancelado — stock restituido"
+      });
+      toast("✅ Envío cancelado", (prod ? prod.name + " volvió a tu stock" : ""), "s");
       await loadData(me.id, me.role);
     } catch(e) {
       toast("Error al cancelar", e.message, "e");
@@ -992,9 +1020,22 @@ export default function App() {
       var invId = entries[i][0], qty = Number(entries[i][1]);
       var invRow = inventory.find(function(iv){ return iv.id===invId; });
       if (!invRow) continue;
-      var prod = invRow.products || products.find(function(p){ return p.id===invRow.product_id; });
-      await sb.from("inventory").update({qty_available:invRow.qty_available-qty}).eq("id",invId);
-      await sb.from("transfers").insert({from_user_id:me.id,to_user_id:sendTo,product_id:invRow.product_id,qty:qty,status:"pending"});
+      if (invRow.qty_available < qty) { toast("Stock insuficiente", (invRow.products||{}).name||"", "e"); continue; }
+      // 1. Descontar del stock del remitente inmediatamente
+      await sb.from("inventory").update({ qty_available: invRow.qty_available - qty }).eq("id", invId);
+      // 2. Guardar transfer como pending
+      var { data: txData } = await sb.from("transfers").insert({
+        from_user_id: me.id, to_user_id: sendTo,
+        product_id: invRow.product_id, qty: qty,
+        status: "pending", inventory_id: invId
+      }).select().single();
+      await logMovimiento({
+        product_id: invRow.product_id, qty: -qty,
+        estado_anterior: "stock_central", estado_nuevo: "en_transito",
+        related_user_id: sendTo,
+        referencia_tipo: "transfer", referencia_id: txData ? txData.id : null,
+        nota: "Enviado a " + (contacts.find(function(c){return c.id===sendTo;})||{}).name
+      });
     }
     await sb.from("notifications").insert({to_user_id:sendTo,from_name:me.name,type:"transfer",message:me.name+" te envió "+entries.length+" producto(s). Confirmá la recepción!"});
     toast("Envío completado!",entries.length+" producto(s) a "+(tUser?tUser.name:""),"s");
@@ -1043,6 +1084,12 @@ export default function App() {
       // Always upsert into single inventory row (UNIQUE constraint user_id+product_id)
       const existing = inventory.find(function(i){ return i.product_id===qlPid; });
       if (existing) {
+        await logMovimiento({
+          product_id: qlPid, qty: qlQty,
+          estado_anterior: "stock_central", estado_nuevo: "stock_central",
+          referencia_tipo: "carga",
+          nota: "Carga de stock — +" + qlQty + " unidades"
+        });
         const upd = await sb.from("inventory")
           .update({qty_available: existing.qty_available + qlQty, source: "own"})
           .eq("id", existing.id)
@@ -1050,6 +1097,12 @@ export default function App() {
         if (upd.data) setInventory(function(p){ return p.map(function(i){ return i.id===existing.id?upd.data:i; }); });
         if (upd.error){ toast("Error",""+upd.error.message,"e"); return; }
       } else {
+        await logMovimiento({
+          product_id: qlPid, qty: qlQty,
+          estado_anterior: null, estado_nuevo: "stock_central",
+          referencia_tipo: "carga",
+          nota: "Stock inicial — " + qlQty + " unidades"
+        });
         const ins = await sb.from("inventory")
           .insert({user_id:me.id, product_id:qlPid, qty_available:qlQty, qty_sold:0, source:"own"})
           .select("*, products(*)").single();
@@ -1617,8 +1670,13 @@ export default function App() {
                 {sentTx.length>0&&(
                   <div style={{margin:"0 14px 16px"}}>
                     <div style={{background:"var(--bl-l)",border:"1.5px solid rgba(0,150,199,.25)",borderRadius:14,padding:"12px 14px"}}>
-                      <div style={{fontWeight:800,fontSize:13,color:"var(--bl-d)",marginBottom:8}}>
-                        📤 {sentTx.length} envío{sentTx.length!==1?"s":""} esperando que los confirmen
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                        <div style={{fontWeight:800,fontSize:13,color:"var(--bl-d)"}}>
+                          📤 {sentTx.length} en camino — sin confirmar
+                        </div>
+                        <div style={{fontSize:10,color:"var(--bl-d)",fontWeight:600,opacity:.7}}>
+                          El stock vuelve si cancelás
+                        </div>
                       </div>
                       {sentTx.map(function(tx){
                         const p=tx.product;
