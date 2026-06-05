@@ -914,7 +914,7 @@ export default function App() {
 
   // ── LOAD RECV INV ON TAB CHANGE ──────────────────────────────────────────────
   useEffect(function(){
-    if (tab==="consigna" && me) loadRecvInventory();
+    if ((tab==="enviados" || tab==="recibidos") && me) loadRecvInventory();
   }, [tab, transfers]);
 
   // ── ANULAR ENVÍO (solo admin o emisor, antes de confirmación) ───────────────
@@ -1468,12 +1468,13 @@ export default function App() {
   // ── TABS ─────────────────────────────────────────────────────────────────────
   var pedPendCount = pedidos.filter(function(p){return p.estado==="pendiente";}).length;
   var TABS = [
-    {id:"stock",    lbl:"Stock",    ico:"box"},
-    {id:"pedidos",  lbl:"Pedidos",  ico:"list"},
-    {id:"enviar",   lbl:"Enviar",   ico:"send"},
-    {id:"consigna", lbl:"Consigna", ico:"users"},
-    {id:"ventas",   lbl:"Ventas",   ico:"chart"},
-    {id:"contacts", lbl:"Red",      ico:"clock"},
+    {id:"stock",     lbl:"Stock",     ico:"box"},
+    {id:"pedidos",   lbl:"Pedidos",   ico:"list"},
+    {id:"enviar",    lbl:"Enviar",    ico:"send"},
+    {id:"enviados",  lbl:"Enviados",  ico:"send"},
+    {id:"recibidos", lbl:"Recibidos", ico:"users"},
+    {id:"ventas",    lbl:"Ventas",    ico:"chart"},
+    {id:"contacts",  lbl:"Red",       ico:"clock"},
   ];
   if (isAdmin) {
     TABS.splice(2, 0, {id:"cargar",   lbl:"Cargar",   ico:"plus"});
@@ -1652,7 +1653,7 @@ export default function App() {
                   <div className="fav-grid">
                     {[
                       {ico:"📦",bg:"var(--in-l)",col:"var(--in)",lbl:"Mi Stock",sub:ownStock.reduce(function(s,i){return s+i.qty_available;},0)+" productos",tab:"stock",scroll:true},
-                      {ico:"🤝",bg:"var(--am-l)",col:"var(--am)",lbl:"Consigna",sub:consignaEnv>0?consignaEnv+" activas":"Ver consignaciones",tab:"consigna",badge:consignaEnv||null},
+                      {ico:"📤",bg:"var(--bl-l)",col:"var(--bl)",lbl:"Enviados",sub:consignaEnv>0?consignaEnv+" activos":"Ver enviados",tab:"enviados",badge:consignaEnv||null},
                       {ico:"📋",bg:"#fff3e6",col:"#e06a00",lbl:"Pedidos",sub:pedPendCount>0?pedPendCount+" pendientes":"Ver pedidos",tab:"pedidos",badge:pedPendCount||null},
                       {ico:"💰",bg:"var(--em-l)",col:"var(--em-d)",lbl:"Ventas",sub:fmtARS(totalVal).replace("$ ","$"),tab:"ventas"},
                     ].map(function(f,i){
@@ -1778,7 +1779,7 @@ export default function App() {
                         <span className="badge" style={{background:"var(--am-l)",color:"var(--am-d)"}}>{consignFilt.length}</span>
                       </div>
                       <div style={{background:"var(--am-l)",border:"1.5px solid rgba(255,122,0,.2)",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:11,color:"var(--am-d)",fontWeight:700}}>
-                        📨 Estos productos te los enviaron en consignación. Podés venderlos o devolverlos desde la tab <strong>Consigna</strong>.
+                        📨 Estos productos te los enviaron en consignación. Podés venderlos o devolverlos desde la tab <strong>Recibidos</strong>.
                       </div>
                       {consignFilt.length===0
                         ?<div className="empty" style={{padding:"16px"}}>Sin resultados.</div>
@@ -2147,8 +2148,8 @@ export default function App() {
             );
           })()}
 
-          {/* ══ CONSIGNA ══ */}
-          {tab==="consigna"&&(
+          {/* ══ ENVIADOS ══ */}
+          {tab==="enviados"&&(
             <ConsignacionModule
               sb={sb}
               me={me}
@@ -2158,6 +2159,22 @@ export default function App() {
               onRefresh={function(){ loadData(me.id, me.role); }}
               toast={toast}
               fmtARS={fmtARS}
+              vistaInicial="enviados"
+            />
+          )}
+
+          {/* ══ RECIBIDOS ══ */}
+          {tab==="recibidos"&&(
+            <ConsignacionModule
+              sb={sb}
+              me={me}
+              products={products}
+              inventory={inventory}
+              contacts={contacts}
+              onRefresh={function(){ loadData(me.id, me.role); }}
+              toast={toast}
+              fmtARS={fmtARS}
+              vistaInicial="recibidos"
             />
           )}
 
@@ -2503,7 +2520,8 @@ export default function App() {
                         <select className="fi fi-sel" value={cLink} onChange={function(e){setCLink(e.target.value);}}>
                           <option value="">Sin acción</option>
                           <option value="catalog">Catálogo</option>
-                          <option value="consigna">Consigna</option>
+                          <option value="enviados">Enviados</option>
+                          <option value="recibidos">Recibidos</option>
                           <option value="ventas">Ventas</option>
                           <option value="pedidos">Pedidos</option>
                         </select>
