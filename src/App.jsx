@@ -1738,10 +1738,18 @@ export default function App() {
                         {/* Acciones */}
                         <div style={{display:"flex",borderTop:"1px solid var(--brd)"}}>
                           <button className="btn btn-xs b-wa" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)"}} onClick={function(){shareOne(p);}}><Ic n="wa" s={13}/></button>
+                          <button className="btn btn-xs b-em" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)",color:"#00b87a",background:"#e8faf4"}}
+                            onClick={function(){
+                              setQlPid(p.id); setQlQty(1);
+                              var inv=inventory.find(function(i){return i.product_id===p.id&&i.user_id===me.id;});
+                              if(inv){ setQlName(""); setQlPrice(""); setQlEmoji("✨"); setQlCat("General"); setQlPhoto(null); }
+                              setTab("cargar");
+                            }}>
+                            <Ic n="plus" s={13}/><span style={{fontSize:11}}>Cargar</span>
+                          </button>
                           <button className="btn btn-xs b-in" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)",color:"var(--pri)",background:"var(--pri-l)"}} onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}>
                             <Ic n="plus" s={13}/><span style={{fontSize:11}}>Movimiento</span>
                           </button>
-
                           <button className="btn btn-xs b-em" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none"}} onClick={function(){doSell(item);}} disabled={item.qty_available===0}>
                             <Ic n="check" s={13}/><span style={{fontSize:11}}>Venta</span>
                           </button>
