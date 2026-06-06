@@ -223,12 +223,27 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     try {
       const p=item.product||products.find(x=>x.id===item.product_id);
       const precio=item.precio_venta;
-      const comis=Math.round(precio*consig.comision_pct/100*100)/100;
-      const aPagar=precio-comis;
+      // Deuda: precio / 1.30 — lo que le corresponde al propietario
+      const aPagar  = Math.round((precio / 1.30) * 100) / 100;
+      const comis   = Math.round((precio - aPagar) * 100) / 100;  // ganancia vendedora = diferencia
       await sb.from("consignacion_items").update({ qty_vendida:item.qty_vendida+1 }).eq("id",item.id);
       const { data:vInv } = await sb.from("inventory").select("*").eq("user_id",consig.vendedora_id).eq("product_id",item.product_id).maybeSingle();
       if (vInv) await sb.from("inventory").update({ qty_available:Math.max(0,vInv.qty_available-1), qty_sold:(vInv.qty_sold||0)+1 }).eq("id",vInv.id);
-      await sb.from("consignacion_deudas").insert({ consignacion_id:consig.id, item_id:item.id, owner_id:consig.owner_id, vendedora_id:consig.vendedora_id, qty:1, monto_total:precio, comision:comis, monto_a_pagar:aPagar, pagada:false });
+      var ahora = new Date().toISOString();
+      await sb.from("consignacion_deudas").insert({
+        consignacion_id: consig.id,
+        item_id:         item.id,
+        owner_id:        consig.owner_id,
+        vendedora_id:    consig.vendedora_id,
+        qty:             1,
+        monto_total:     precio,
+        comision:        comis,
+        monto_a_pagar:   aPagar,
+        pagada:          false,
+        fecha_venta:     ahora,
+        fecha_envio_consigna: consig.created_at,
+        notas_auditoria: "Venta registrada por " + me.name + " — Precio: " + fmt(precio) + " | Deuda propietario: " + fmt(aPagar) + " | Ganancia vendedora: " + fmt(comis)
+      });
       await sb.from("sale_logs").insert({ user_id:consig.vendedora_id, product_id:item.product_id, qty:1, sale_price:precio, source:"consignment" });
       await logMov(sb, me, {
         product_id: item.product_id, qty: -1,
