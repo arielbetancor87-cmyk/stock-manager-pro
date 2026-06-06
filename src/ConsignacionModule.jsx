@@ -121,7 +121,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
         .select("*, owner:owner_id(id,name,color), items:consignacion_items(*, product:product_id(id,name,sku,price,emoji,photo_url))")
         .eq("vendedora_id",me.id).neq("status","cancelada").order("created_at",{ascending:false});
       const deuRes = await sb.from("consignacion_deudas")
-        .select("*, vendedora:vendedora_id(id,name,color), item:item_id(id,product_id,consignacion_id)")
+        .select("*, vendedora:vendedora_id(id,name,color), item:item_id(id,product_id,consignacion_id,precio_venta), product:item_id(product_id(id,name,sku,emoji,price))")
         .eq("owner_id",me.id).order("created_at",{ascending:false});
       setEnviadas(envRes.data||[]);
       setRecibidas(recRes.data||[]);
@@ -480,7 +480,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                   </div>
                 </div>
                 <div style={{ borderTop:"1px solid #f5f5f5",padding:"8px 16px 12px" }}>
-                  {g.items.slice(0,3).map(d=>{ const p=products.find(x=>x.id===d.item?.product_id); return (
+                  {g.items.slice(0,3).map(d=>{ const pid=d.product?.product_id?.id||d.item?.product_id; const p=(d.product?.product_id)||products.find(x=>x.id===pid); return (
                     <div key={d.id} style={{ display:"flex",justifyContent:"space-between",fontSize:11,color:"#666",padding:"2px 0" }}>
                       <span>📦 {p?.name??"Producto"}</span><span style={{fontWeight:700}}>{fmt(d.monto_a_pagar)}</span>
                     </div>
@@ -616,17 +616,19 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                         <div style={{ padding:"8px 14px 10px",background:"#fafafa",borderTop:"1px solid #eee" }}>
                           <div style={{ fontSize:10,fontWeight:800,color:"#aaa",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em" }}>Ventas sin cobrar</div>
                           {deudas_pend.map((d,idx)=>{
-                            const p=products.find(x=>x.id===d.item?.product_id);
+                            // Buscar producto: desde join anidado, desde item.product_id, o desde lista
+                            const pid = d.product?.product_id?.id || d.item?.product_id;
+                            const p = (d.product?.product_id) || products.find(x=>x.id===pid);
                             return (
-                              <div key={d.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:idx<deudas_pend.length-1?"1px solid #f0f0f0":"none" }}>
-                                <div style={{ display:"flex",alignItems:"center",gap:6 }}>
-                                  <span style={{ fontSize:15 }}>{p?.emoji||"📦"}</span>
+                              <div key={d.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:idx<deudas_pend.length-1?"1px solid #f0f0f0":"none" }}>
+                                <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                                  <div style={{ width:36,height:36,borderRadius:9,background:"#f5f5f5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0 }}>{p?.emoji||"📦"}</div>
                                   <div>
-                                    <div style={{ fontSize:11,fontWeight:700,color:"#333" }}>{p?.name||"Producto"}</div>
-                                    <div style={{ fontSize:10,color:"#aaa" }}>Precio: {fmt(d.monto_total)} · Com: {fmt(d.comision)}</div>
+                                    <div style={{ fontSize:12,fontWeight:800,color:"#222" }}>{p?.name||"Producto"}</div>
+                                    <div style={{ fontSize:10,color:"#aaa",marginTop:1 }}>Precio: {fmt(d.monto_total)} · Com: {fmt(d.comision)}</div>
                                   </div>
                                 </div>
-                                <div style={{ fontFamily:"var(--mf)",fontWeight:800,fontSize:12,color:"#c1121f",flexShrink:0 }}>{fmt(d.monto_a_pagar)}</div>
+                                <div style={{ fontFamily:"var(--mf)",fontWeight:800,fontSize:13,color:"#9b1c1c",flexShrink:0 }}>{fmt(d.monto_a_pagar)}</div>
                               </div>
                             );
                           })}
@@ -1125,7 +1127,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           {/* Desglose */}
           <div style={{ background:"#fff",borderRadius:14,border:"1.5px solid #e0e0e0",marginBottom:16,overflow:"hidden" }}>
             <div style={{ padding:"12px 14px",borderBottom:"1px solid #f5f5f5",fontSize:12,fontWeight:800,color:"#555" }}>Detalle de ventas</div>
-            {liqTarget.deudas.slice(0,8).map(d=>{ const p=products.find(x=>x.id===d.item?.product_id); return (
+            {liqTarget.deudas.slice(0,8).map(d=>{ const pid=d.product?.product_id?.id||d.item?.product_id; const p=(d.product?.product_id)||products.find(x=>x.id===pid); return (
               <div key={d.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderBottom:"1px solid #fafafa",fontSize:12 }}>
                 <div>
                   <div style={{ fontWeight:600,color:"#222" }}>{p?.name??"Producto"}</div>
