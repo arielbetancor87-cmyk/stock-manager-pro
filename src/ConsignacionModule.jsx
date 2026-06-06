@@ -8,7 +8,7 @@
  *  - Pago parcial o total
  *  - Deudas agrupadas por persona
  */
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo, useMemo, useCallback } from "react";
 
 const ProdThumb = memo(({ prod, size = 40 }) => {
   if (!prod) return <div style={{ width:size,height:size,borderRadius:10,background:"#f0f0f0",flexShrink:0 }}/>;
@@ -351,16 +351,27 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     const r=new FileReader(); r.onload=ev=>setLiqFoto(ev.target.result); r.readAsDataURL(file);
   }
 
-  // derivados
-  const deudasPend     = deudas.filter(d=>!d.pagada);
-  const totalPendiente = deudasPend.reduce((s,d)=>s+d.monto_a_pagar,0);
-  const cartItems      = Object.entries(carrito).filter(([,q])=>q>0);
-  const cartUnits      = cartItems.reduce((s,[,q])=>s+q,0);
-  const cartTotal      = cartItems.reduce((s,[pid,q])=>{ const p=products.find(x=>x.id===pid); return s+(p?p.price*q:0); },0);
-  const deudasPorVend  = deudasPend.reduce((acc,d)=>{ const id=d.vendedora_id; if(!acc[id]) acc[id]={vendedora:d.vendedora,items:[],total:0}; acc[id].items.push(d); acc[id].total+=d.monto_a_pagar; return acc; },{});
-  const prodsFilt      = products.filter(p=>{ const q=prodSrch.toLowerCase(); return !q||p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q); });
-  const enviActivas    = enviadas.filter(c=>c.status==="activa");
-  const recibActivas   = recibidas.filter(c=>c.status==="activa");
+  // derivados — con useMemo para evitar recálculos en cada render
+  const deudasPend     = useMemo(()=>deudas.filter(d=>!d.pagada), [deudas]);
+  const totalPendiente = useMemo(()=>deudasPend.reduce((s,d)=>s+d.monto_a_pagar,0), [deudasPend]);
+  const cartItems      = useMemo(()=>Object.entries(carrito).filter(([,q])=>q>0), [carrito]);
+  const cartUnits      = useMemo(()=>cartItems.reduce((s,[,q])=>s+q,0), [cartItems]);
+  const cartTotal      = useMemo(()=>cartItems.reduce((s,[pid,q])=>{ const p=products.find(x=>x.id===pid); return s+(p?p.price*q:0); },0), [cartItems,products]);
+  const deudasPorVend  = useMemo(()=>deudasPend.reduce((acc,d)=>{ const id=d.vendedora_id; if(!acc[id]) acc[id]={vendedora:d.vendedora,items:[],total:0}; acc[id].items.push(d); acc[id].total+=d.monto_a_pagar; return acc; },{}), [deudasPend]);
+  // Productos propios del usuario con stock disponible
+  const miInventario   = useMemo(()=>inventory.filter(i=>i.user_id===me.id && i.qty_available>0), [inventory, me.id]);
+  const prodsFilt      = useMemo(()=>{
+    const q = prodSrch.toLowerCase();
+    const pidsConStock = new Set(miInventario.map(i=>i.product_id));
+    return products.filter(p=>{
+      if (!pidsConStock.has(p.id)) return false;
+      if (!q) return true;
+      return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+    });
+  }, [products, miInventario, prodSrch]);
+  // Filtrar activas usando neq cancelada (coincide con lo que carga Supabase)
+  const enviActivas    = useMemo(()=>enviadas.filter(c=>c.status!=="cancelada"), [enviadas]);
+  const recibActivas   = useMemo(()=>recibidas.filter(c=>c.status!=="cancelada"), [recibidas]);
 
   const vistaOrigen = vistaInicial === "enviados" ? "main_env" : vistaInicial === "recibidos" ? "main_rec" : "main_env";
   const BtnBack = () => (
@@ -823,10 +834,11 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                   placeholder="Buscar producto..." value={prodSrch} onChange={e=>setProdSrch(e.target.value)}/>
               </div>
               <div style={{ marginBottom:16 }}>
-                {prodsFilt.slice(0,20).map(p=>{
-                  const inv=inventory.find(i=>i.product_id===p.id);
+                {prodsFilt.map(p=>{
+                  const inv=inventory.find(i=>i.product_id===p.id && i.user_id===me.id);
                   const avail=inv?.qty_available??0;
                   const inC=carrito[p.id]??0;
+                  // No mostrar si no hay stock (ya filtrado en prodsFilt, pero por si acaso)
                   if (avail===0&&inC===0) return null;
                   return (
                     <div key={p.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"11px 13px",borderRadius:14,border:`1.5px solid ${inC>0?"#cc0000":"#e0e0e0"}`,background:inC>0?"#ffeaea":"#fff",marginBottom:8,boxShadow:"0 1px 6px rgba(0,0,0,.05)" }}>
