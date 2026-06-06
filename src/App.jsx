@@ -2209,6 +2209,173 @@ export default function App() {
             );
           })()}
 
+          {/* ══ CATÁLOGO ══ */}
+          {tab==="catalog"&&isAdmin&&(function(){
+            var catGroups = {};
+            catFiltered.forEach(function(p){ var c=p.category||"General"; if(!catGroups[c]) catGroups[c]=[]; catGroups[c].push(p); });
+            return (
+              <div>
+                <div className="ph">
+                  <div><div className="ph-h">Catálogo</div><div className="ph-s">{catFiltered.length} productos</div></div>
+                  <div style={{display:"flex",gap:8}}>
+                    {isAdmin&&<button className="btn b-ghost" onClick={function(){setShowInactive(function(v){return !v;});}}>
+                      {showInactive?"Ver activos":"Ver inactivos"}
+                    </button>}
+                    <button className="btn b-pri" onClick={function(){cancelEdit();setTab("catalog");}}>
+                      <Ic n="plus" s={15}/>{editP?"Cancelar":"Nuevo"}
+                    </button>
+                  </div>
+                </div>
+                <div className="pc">
+                  <SearchBar value={srchCat} onChange={setSrchCat} placeholder="Buscar SKU, nombre, categoría..."/>
+                  {/* Formulario crear/editar */}
+                  {(editP!==null||editP===null&&false)&&false}
+                  <div className="card" style={{marginBottom:14}}>
+                    <div className="card-h"><div className="card-title">{editP?"✏️ Modificar":"✨ Nuevo producto"}</div>{editP&&<button className="btn btn-xs b-ghost" onClick={cancelEdit}>Cancelar</button>}</div>
+                    <form onSubmit={doSaveProd} style={{padding:"14px 16px 6px"}}>
+                      <div className="row g8" style={{marginBottom:12}}>
+                        <div style={{flex:1}}><label className="fl">SKU *</label><input className="fi" placeholder="PERF01" value={fSku} onChange={function(e){setFSku(e.target.value);}}/></div>
+                        <div style={{flex:1}}><label className="fl">Ícono</label><select className="fi fi-sel" value={fEmoji} onChange={function(e){setFEmoji(e.target.value);}}>{EMOJIS.map(function(o){return <option key={o.v} value={o.v}>{o.v} {o.l}</option>;})}</select></div>
+                      </div>
+                      <div className="fld"><label className="fl">Nombre *</label><input className="fi" placeholder="Perfume Lattafa 100ml" value={fName} onChange={function(e){setFName(e.target.value);}}/></div>
+                      <div className="row g8" style={{marginBottom:12}}>
+                        <div style={{flex:1}}><label className="fl">Precio ($) *</label><input className="fi" type="number" placeholder="0.00" value={fPrice} onChange={function(e){setFPrice(e.target.value);}}/></div>
+                        <div style={{flex:1}}><label className="fl">Categoría</label><select className="fi fi-sel" value={fCat} onChange={function(e){setFCat(e.target.value);}}>{CATS.map(function(c){return <option key={c}>{c}</option>;})}</select></div>
+                      </div>
+                      {/* Carrusel de imágenes */}
+                      <div className="fld">
+                        <label className="fl">Fotos del producto</label>
+                        {editP&&(prodImages[editP.id]||[]).length>0&&(
+                          <div style={{marginBottom:10}}>
+                            <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:6}}>
+                              {(prodImages[editP.id]||[]).map(function(img,i){
+                                return (
+                                  <div key={img.id} style={{position:"relative",flexShrink:0}}>
+                                    <img src={img.url} alt="" style={{width:72,height:72,borderRadius:10,objectFit:"cover",border:img.es_principal?"2.5px solid var(--pri)":"1.5px solid #ddd"}}/>
+                                    {img.es_principal&&<div style={{position:"absolute",top:2,left:2,background:"var(--pri)",borderRadius:6,padding:"1px 5px",fontSize:9,color:"#fff",fontWeight:800}}>★</div>}
+                                    <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:2}}>
+                                      <button type="button" onClick={function(){setPrincipalImage(img,editP.id);}} style={{width:18,height:18,borderRadius:4,background:"#ffcc00",border:"none",cursor:"pointer",fontSize:9}}>★</button>
+                                      <button type="button" onClick={function(){deleteProdImage(img,editP.id);}} style={{width:18,height:18,borderRadius:4,background:"var(--cr)",border:"none",cursor:"pointer",fontSize:9,color:"#fff"}}>✕</button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {editP?(
+                          <label style={{display:"block",background:"var(--in-l)",border:"1.5px dashed var(--in-m)",borderRadius:10,padding:"10px",textAlign:"center",cursor:"pointer"}}>
+                            <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={function(e){Array.from(e.target.files||[]).forEach(function(f){uploadProdImage(editP.id,f);});e.target.value="";}}/>
+                            {imgUploading?<div style={{fontSize:12,color:"var(--in-d)",fontWeight:700}}>Subiendo...</div>
+                              :<div><div style={{fontSize:20,marginBottom:2}}>📸</div><div style={{fontSize:12,fontWeight:700,color:"var(--in-d)"}}>Subir imágenes</div></div>}
+                          </label>
+                        ):(
+                          <div className="photo-zone"><input type="file" accept="image/*" onChange={function(e){handlePhoto(e,setFPhoto);}}/>{fPhoto?<img src={fPhoto} alt="" style={{width:56,height:56,borderRadius:10,objectFit:"cover",margin:"0 auto"}}/>:<div><div style={{fontSize:24,marginBottom:4}}>📸</div><div style={{fontSize:12,fontWeight:700,color:"var(--in)"}}>Tocar para subir</div></div>}</div>
+                        )}
+                        {!editP&&fPhoto&&<button type="button" onClick={function(){setFPhoto(null);}} style={{fontSize:11,color:"var(--cr)",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>Quitar foto</button>}
+                      </div>
+                      <button type="submit" className="cta cta-in"><Ic n="check" s={18}/>{editP?"Guardar cambios":"Crear producto"}</button>
+                    </form>
+                  </div>
+                  {/* Lista de productos por categoría */}
+                  {Object.keys(catGroups).sort().map(function(cat){
+                    return (
+                      <div key={cat} style={{marginBottom:8}}>
+                        <div style={{fontSize:10,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8,paddingLeft:2}}>{cat} · {catGroups[cat].length}</div>
+                        {catGroups[cat].map(function(p){
+                          var imgs=prodImages[p.id]||[];
+                          var inv=inventory.find(function(i){return i.product_id===p.id&&i.user_id===me.id;});
+                          return (
+                            <div key={p.id} style={{background:"var(--card)",borderRadius:"var(--r2)",border:"1px solid rgba(0,0,0,.055)",marginBottom:10,overflow:"hidden",boxShadow:"var(--sh)"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px"}}>
+                                <ProdThumb prod={p} images={imgs} size={52}/>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontWeight:800,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.emoji} {p.name}</div>
+                                  <div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{p.sku}</div>
+                                  <div style={{fontSize:13,fontWeight:800,color:"var(--pri)",marginTop:2,fontFamily:"var(--mf)"}}>{fmtARS(p.price)}</div>
+                                </div>
+                                <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+                                  {inv&&<div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:16,color:inv.qty_available>0?"var(--em-d)":"var(--t4)"}}>{inv.qty_available}</div>}
+                                  <button className="btn btn-xs b-ghost" onClick={function(){startEdit(p);}}><Ic n="edit" s={12}/>Editar</button>
+                                </div>
+                              </div>
+                              {p.is_active===false&&<div style={{background:"var(--cr-l)",padding:"4px 14px",fontSize:11,color:"var(--cr)",fontWeight:700}}>⚠️ Inactivo</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                  {catFiltered.length===0&&<div className="empty"><div style={{fontSize:40,marginBottom:8}}>📭</div>Sin productos</div>}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ══ IMPORTAR ══ */}
+          {tab==="importar"&&isAdmin&&(
+            <div>
+              <div className="ph"><div><div className="ph-h">Importar</div><div className="ph-s">Carga masiva de productos</div></div></div>
+              <div className="pc">
+                <div className="card">
+                  <div className="card-h"><div className="card-title">📂 Subir archivo Excel / CSV</div></div>
+                  <div style={{padding:"14px 16px"}}>
+                    <div className="drop-z" onClick={function(){document.getElementById("imp-file").click();}}>
+                      <input id="imp-file" type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={function(e){
+                        var f=e.target.files[0]; if(!f) return; setImpFile(f.name);
+                        var reader=new FileReader();
+                        reader.onload=function(ev){
+                          var data=new Uint8Array(ev.target.result);
+                          var wb=XLSX.read(data,{type:"array"});
+                          var ws=wb.Sheets[wb.SheetNames[0]];
+                          var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+                          var parsed=rows.slice(1).filter(function(r){return r[0]||r[1];}).map(function(r){
+                            var sku=String(r[0]||"X"+Math.random().toString(36).slice(2,6)).toUpperCase().trim();
+                            var name=String(r[1]||"Sin nombre").trim();
+                            var price=parseFloat(String(r[2]||0).replace(/[^0-9.]/g,""))||0;
+                            var cat=String(r[3]||"General").trim();
+                            return {sku,name,price,cat,ok:!!(sku&&name&&price)};
+                          });
+                          setImpRows(parsed);
+                          toast(parsed.filter(function(r){return r.ok;}).length+" filas válidas","Revisa y confirma","s");
+                        };
+                        reader.readAsArrayBuffer(f);
+                        e.target.value="";
+                      }}/>
+                      <div style={{fontSize:36,marginBottom:8}}>📊</div>
+                      <div style={{fontWeight:700,color:"var(--t2)"}}>{impFile?impFile:"Elegir Excel o CSV"}</div>
+                      <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>Columnas: SKU · Nombre · Precio · Categoría</div>
+                    </div>
+                  </div>
+                </div>
+                {impRows.length>0&&(
+                  <div>
+                    <div className="card">
+                      <div className="card-h"><div className="card-title">Vista previa ({impRows.filter(function(r){return r.ok;}).length} válidos)</div></div>
+                      <div style={{padding:"10px 14px"}}>
+                        {impRows.slice(0,20).map(function(r,i){
+                          return (
+                            <div key={i} className={"prev-row "+(r.ok?"prev-ok":"prev-err")}>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.sku} · {r.name}</div>
+                                <div style={{fontSize:11,opacity:.7}}>{fmtARS(r.price)} · {r.cat}</div>
+                              </div>
+                              <span style={{marginLeft:8}}>{r.ok?"✅":"❌"}</span>
+                            </div>
+                          );
+                        })}
+                        {impRows.length>20&&<div style={{textAlign:"center",padding:8,fontSize:12,color:"var(--t3)"}}>...y {impRows.length-20} más</div>}
+                      </div>
+                    </div>
+                    <button className="cta cta-in" onClick={doImport} disabled={impRows.filter(function(r){return r.ok;}).length===0}>
+                      <Ic n="upload" s={18}/>Importar {impRows.filter(function(r){return r.ok;}).length} productos
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ══ ENVIADOS ══ */}
           {tab==="enviados"&&(
             <ConsignacionModule
