@@ -392,6 +392,9 @@ export default function App() {
   const [imgUploading, setImgUploading] = useState(false);
   const [carouselIdx,  setCarouselIdx]  = useState({});  // { product_id: activeIdx }
   const [imgEditPid,   setImgEditPid]   = useState(null);
+  // Carga rápida inline en card de stock
+  const [quickLoadId,  setQuickLoadId]  = useState(null);  // inventory item.id abierto
+  const [quickLoadQty, setQuickLoadQty] = useState(1);
   const [fPrice,   setFPrice]   = useState("");
   const [fCat,     setFCat]     = useState("General");
   const [fEmoji,   setFEmoji]   = useState("✨");
@@ -1110,6 +1113,32 @@ export default function App() {
   }
 
   // ── CATALOG ABM (superadmin only) ────────────────────────────────────────────
+  // ── CARGA RÁPIDA INLINE ──────────────────────────────────────────────────────
+  async function doQuickLoadInline(item, qty) {
+    if (qty < 1) return;
+    try {
+      var newQtyAvail = item.qty_available + qty;
+      var newStockPropio = (item.stock_propio || 0) + qty;
+      var upd = await sb.from("inventory").update({
+        qty_available: newQtyAvail,
+        stock_propio:  newStockPropio
+      }).eq("id", item.id).select("*, products(*)").single();
+      if (upd.error) throw upd.error;
+      setInventory(function(prev){ return prev.map(function(i){ return i.id===item.id ? upd.data : i; }); });
+      // Ledger
+      await logMovimiento({
+        product_id: item.product_id, qty: qty,
+        estado_anterior: "stock_central", estado_nuevo: "stock_central",
+        referencia_tipo: "carga",
+        nota: "Carga rápida +" + qty + " u."
+      });
+      var p = item.products || products.find(function(x){ return x.id===item.product_id; });
+      toast("✅ Stock cargado", "+" + qty + " u. de " + (p ? p.name : ""), "s");
+      setQuickLoadId(null);
+      setQuickLoadQty(1);
+    } catch(e) { toast("Error", e.message, "e"); }
+  }
+
   // ── IMAGE HELPERS ──────────────────────────────────────────────────────────────
   async function loadProdImages(pid) {
     try {
@@ -1738,14 +1767,13 @@ export default function App() {
                         {/* Acciones */}
                         <div style={{display:"flex",borderTop:"1px solid var(--brd)"}}>
                           <button className="btn btn-xs b-wa" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)"}} onClick={function(){shareOne(p);}}><Ic n="wa" s={13}/></button>
-                          <button className="btn btn-xs b-em" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)",color:"#00b87a",background:"#e8faf4"}}
+                          <button className="btn btn-xs b-em"
+                            style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)",color:"#00b87a",background: quickLoadId===item.id ? "#00b87a" : "#e8faf4"}}
                             onClick={function(){
-                              setQlPid(p.id); setQlQty(1);
-                              var inv=inventory.find(function(i){return i.product_id===p.id&&i.user_id===me.id;});
-                              if(inv){ setQlName(""); setQlPrice(""); setQlEmoji("✨"); setQlCat("General"); setQlPhoto(null); }
-                              setTab("cargar");
+                              if (quickLoadId===item.id) { setQuickLoadId(null); }
+                              else { setQuickLoadId(item.id); setQuickLoadQty(1); }
                             }}>
-                            <Ic n="plus" s={13}/><span style={{fontSize:11}}>Cargar</span>
+                            <Ic n="plus" s={13}/><span style={{fontSize:11,color: quickLoadId===item.id ? "#fff" : "#00b87a"}}>Cargar</span>
                           </button>
                           <button className="btn btn-xs b-in" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)",color:"var(--pri)",background:"var(--pri-l)"}} onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}>
                             <Ic n="plus" s={13}/><span style={{fontSize:11}}>Movimiento</span>
@@ -1754,6 +1782,34 @@ export default function App() {
                             <Ic n="check" s={13}/><span style={{fontSize:11}}>Venta</span>
                           </button>
                         </div>
+                        {/* Panel carga rápida inline */}
+                        {quickLoadId===item.id&&(
+                          <div style={{
+                            background:"#f0fff8",
+                            border:"1.5px solid #00b87a",
+                            borderTop:"none",
+                            borderRadius:"0 0 12px 12px",
+                            padding:"12px 14px",
+                            display:"flex",
+                            alignItems:"center",
+                            gap:10
+                          }}>
+                            <div style={{fontSize:12,fontWeight:700,color:"#00b87a",flexShrink:0}}>+Stock</div>
+                            <div style={{display:"flex",alignItems:"center",border:"1.5px solid #b2dfdb",borderRadius:10,overflow:"hidden",flexShrink:0}}>
+                              <button onClick={function(){setQuickLoadQty(function(q){return Math.max(1,q-1);});}}
+                                style={{width:32,height:32,border:"none",background:"#e8faf4",cursor:"pointer",fontSize:18,fontWeight:700,color:"#00b87a",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                              <div style={{minWidth:36,textAlign:"center",fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:"#00b87a",padding:"0 4px"}}>{quickLoadQty}</div>
+                              <button onClick={function(){setQuickLoadQty(function(q){return q+1;});}}
+                                style={{width:32,height:32,border:"none",background:"#e8faf4",cursor:"pointer",fontSize:18,fontWeight:700,color:"#00b87a",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                            </div>
+                            <button onClick={function(){doQuickLoadInline(item,quickLoadQty);}}
+                              style={{flex:1,padding:"8px",borderRadius:10,border:"none",background:"#00b87a",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer"}}>
+                              ✅ Confirmar +{quickLoadQty}
+                            </button>
+                            <button onClick={function(){setQuickLoadId(null);}}
+                              style={{width:28,height:28,borderRadius:"50%",border:"none",background:"#e0e0e0",color:"#888",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
