@@ -368,6 +368,7 @@ export default function App() {
   // ── PEDIDOS ──────────────────────────────────────────────────────────────
   const [pedidos,    setPedidos]   = useState([]);
   const [pedNombre,  setPedNombre] = useState("");
+  const [showPedForm, setShowPedForm] = useState(false);
   const [pedWA,      setPedWA]     = useState("");
   const [pedProdId,  setPedProdId] = useState("");
   const [pedQty,     setPedQty]    = useState(1);
@@ -2049,6 +2050,133 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* ══ PEDIDOS ══ */}
+          {tab==="pedidos"&&(function(){
+            var pedFilt = pedidos.filter(function(p){
+              var q = srch.toLowerCase();
+              if (!q) return true;
+              return (p.nombre||"").toLowerCase().includes(q)||(p.product_name||"").toLowerCase().includes(q);
+            });
+            var pend = pedFilt.filter(function(p){return p.estado==="pendiente";});
+            var entregados = pedFilt.filter(function(p){return p.estado==="entregado";});
+            var cancelados = pedFilt.filter(function(p){return p.estado==="cancelado";});
+            function PedCard({ped}) {
+              var prod = ped.product || products.find(function(p){return p.id===ped.product_id;});
+              var statusCfg = {
+                pendiente:  {bg:"#fff8e1",col:"#e06a00",lbl:"⏳ Pendiente"},
+                entregado:  {bg:"#e8faf4",col:"#009a66",lbl:"✅ Entregado"},
+                cancelado:  {bg:"#fde8ea",col:"#c1121f",lbl:"❌ Cancelado"},
+              };
+              var sc = statusCfg[ped.estado]||statusCfg.pendiente;
+              return (
+                <div style={{background:"var(--card)",borderRadius:16,border:"1.5px solid var(--brd)",marginBottom:10,overflow:"hidden",boxShadow:"var(--sh)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px"}}>
+                    <div style={{width:44,height:44,borderRadius:12,background:"#f5f5f5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+                      {prod?<ProdThumb prod={prod} size={44}/>:<span>📦</span>}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:800,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ped.nombre}</div>
+                      {prod&&<div style={{fontSize:12,color:"var(--t3)",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{prod.name} · {fmtARS(prod.price||0)} × {ped.qty||1}</div>}
+                      {ped.wa&&<a href={"https://wa.me/"+ped.wa.replace(/\D/g,"")} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--wa-d)",marginTop:2,display:"block",fontWeight:700}}>📱 {ped.wa}</a>}
+                      {ped.nota&&<div style={{fontSize:11,color:"var(--t3)",marginTop:2,fontStyle:"italic"}}>{ped.nota}</div>}
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{background:sc.bg,color:sc.col,borderRadius:20,padding:"4px 10px",fontSize:11,fontWeight:800,marginBottom:4}}>{sc.lbl}</div>
+                      <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(ped.created_at).toLocaleDateString("es-AR")}</div>
+                    </div>
+                  </div>
+                  {ped.estado==="pendiente"&&(
+                    <div style={{display:"flex",borderTop:"1px solid var(--brd)"}}>
+                      <button onClick={function(){doEntregarPedido(ped.id);}} style={{flex:1,padding:"10px",border:"none",background:"#e8faf4",color:"#009a66",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                        <Ic n="check" s={14}/>Entregar
+                      </button>
+                      <button onClick={function(){doCancelarPedido(ped.id);}} style={{flex:1,padding:"10px",border:"none",borderLeft:"1px solid var(--brd)",background:"#fde8ea",color:"#c1121f",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                        <Ic n="x" s={14}/>Cancelar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <div>
+                <div className="ph">
+                  <div>
+                    <div className="ph-h">Pedidos</div>
+                    <div className="ph-s">{pedPendCount>0?pedPendCount+" pendientes de entrega":"Todos al día"}</div>
+                  </div>
+                  <button className="btn b-pri" onClick={function(){setShowPedForm(function(v){return !v;});}}>
+                    <Ic n="plus" s={15}/>{showPedForm?"Cancelar":"Nuevo"}
+                  </button>
+                </div>
+                <div className="pc">
+                  {/* Formulario nuevo pedido */}
+                  {showPedForm&&(
+                    <div style={{background:"var(--card)",borderRadius:16,border:"1.5px solid var(--brd)",marginBottom:14,padding:"14px 14px",boxShadow:"var(--sh)"}}>
+                      <div style={{fontWeight:800,fontSize:14,marginBottom:12,color:"var(--t1)"}}>Nuevo pedido</div>
+                      <div className="fld"><label className="fl">Nombre del cliente *</label><input className="fi" placeholder="Ej: María López" value={pedNombre} onChange={function(e){setPedNombre(e.target.value);}}/></div>
+                      <div className="fld"><label className="fl">WhatsApp</label><input className="fi" placeholder="+54 9 11..." type="tel" value={pedWA} onChange={function(e){setPedWA(e.target.value);}}/></div>
+                      <div className="fld">
+                        <label className="fl">Producto (opcional)</label>
+                        <SearchBar value={pedPSrch} onChange={setPedPSrch} placeholder="Buscar producto..."/>
+                        {pedPSrch&&(
+                          <div style={{maxHeight:180,overflowY:"auto",marginTop:6,borderRadius:10,border:"1px solid var(--brd)"}}>
+                            {products.filter(function(p){return p.name.toLowerCase().includes(pedPSrch.toLowerCase());}).slice(0,8).map(function(p){
+                              return (
+                                <div key={p.id} onClick={function(){setPedProdId(p.id);setPedPSrch(p.name);}} style={{padding:"10px 12px",cursor:"pointer",borderBottom:"1px solid var(--brd)",display:"flex",alignItems:"center",gap:8,background:pedProdId===p.id?"var(--pri-l)":"var(--card)"}}>
+                                  <ProdThumb prod={p} size={32}/>
+                                  <div><div style={{fontSize:13,fontWeight:700}}>{p.name}</div><div style={{fontSize:11,color:"var(--t3)"}}>{fmtARS(p.price)}</div></div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      {pedProdId&&(
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                          <label style={{fontSize:12,fontWeight:700,color:"var(--t2)"}}>Cantidad</label>
+                          <QtyControl val={pedQty} set={setPedQty}/>
+                        </div>
+                      )}
+                      <div className="fld"><label className="fl">Nota</label><input className="fi" placeholder="Ej: talla, color, etc." value={pedNota} onChange={function(e){setPedNota(e.target.value);}}/></div>
+                      <button className="cta cta-am" onClick={doAddPedido} disabled={!pedNombre.trim()}>
+                        <Ic n="check" s={16}/>Guardar pedido
+                      </button>
+                    </div>
+                  )}
+                  {/* Pendientes */}
+                  {pend.length>0&&(
+                    <div style={{marginBottom:16}}>
+                      <div style={{fontSize:11,fontWeight:800,color:"#e06a00",marginBottom:8,textTransform:"uppercase",letterSpacing:".07em"}}>⏳ Pendientes ({pend.length})</div>
+                      {pend.map(function(p){return <PedCard key={p.id} ped={p}/>;}) }
+                    </div>
+                  )}
+                  {/* Entregados */}
+                  {entregados.length>0&&(
+                    <div style={{marginBottom:16}}>
+                      <div style={{fontSize:11,fontWeight:800,color:"#009a66",marginBottom:8,textTransform:"uppercase",letterSpacing:".07em"}}>✅ Entregados ({entregados.length})</div>
+                      {entregados.map(function(p){return <PedCard key={p.id} ped={p}/>;}) }
+                    </div>
+                  )}
+                  {/* Cancelados */}
+                  {cancelados.length>0&&(
+                    <div style={{marginBottom:16}}>
+                      <div style={{fontSize:11,fontWeight:800,color:"#c1121f",marginBottom:8,textTransform:"uppercase",letterSpacing:".07em"}}>❌ Cancelados ({cancelados.length})</div>
+                      {cancelados.map(function(p){return <PedCard key={p.id} ped={p}/>;}) }
+                    </div>
+                  )}
+                  {pedFilt.length===0&&(
+                    <div style={{textAlign:"center",padding:"60px 20px",color:"var(--t3)"}}>
+                      <div style={{fontSize:48,marginBottom:12}}>📋</div>
+                      <div style={{fontSize:14,fontWeight:700}}>No hay pedidos</div>
+                      <div style={{fontSize:12,marginTop:4}}>Tocá "Nuevo" para crear el primero</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ══ ENVIADOS ══ */}
           {tab==="enviados"&&(
