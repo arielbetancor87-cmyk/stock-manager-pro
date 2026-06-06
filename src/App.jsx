@@ -271,9 +271,11 @@ const Avatar = memo(function Avatar(props) {
 });
 
 const ProdThumb = memo(function ProdThumb(props) {
-  var prod=props.prod, size=props.size||40;
+  var prod=props.prod, size=props.size||40, imgs=props.images;
   if (!prod) return <div style={{width:size,height:size,borderRadius:9,background:"var(--bg2)",flexShrink:0}}/>;
-  if (prod.photo_url) return <img src={prod.photo_url} alt="" style={{width:size,height:size,borderRadius:9,objectFit:"cover",flexShrink:0,border:"1px solid var(--brd)"}}/>;
+  var mainImg = imgs&&imgs.length>0 ? (imgs.find(function(i){return i.es_principal;})||imgs[0]) : null;
+  var url = mainImg ? mainImg.url : prod.photo_url;
+  if (url) return <img src={url} alt="" style={{width:size,height:size,borderRadius:9,objectFit:"cover",flexShrink:0,border:"1px solid var(--brd)"}}/>;
   return <div style={{width:size,height:size,borderRadius:9,background:"var(--bg2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(size*.5),flexShrink:0}}>{prod.emoji||"📦"}</div>;
 });
 
@@ -385,6 +387,11 @@ export default function App() {
   const [editP,    setEditP]    = useState(null);
   const [fSku,     setFSku]     = useState("");
   const [fName,    setFName]    = useState("");
+  // Carrusel de imágenes por producto
+  const [prodImages,   setProdImages]   = useState({});  // { product_id: [img,...] }
+  const [imgUploading, setImgUploading] = useState(false);
+  const [carouselIdx,  setCarouselIdx]  = useState({});  // { product_id: activeIdx }
+  const [imgEditPid,   setImgEditPid]   = useState(null);
   const [fPrice,   setFPrice]   = useState("");
   const [fCat,     setFCat]     = useState("General");
   const [fEmoji,   setFEmoji]   = useState("✨");
@@ -427,7 +434,7 @@ export default function App() {
 
   // ── CAROUSEL ─────────────────────────────────────────────────────────────────
   const [carousels,    setCarousels]    = useState([]);  // rows from offer_carousels table
-  const [carouselIdx,  setCarouselIdx]  = useState(0);   // active slide index
+  const [offerSlide,   setOfferSlide]   = useState(0);   // active offer carousel index
   const [carouselEdit, setCarouselEdit] = useState(false);
   const [cTitle,       setCTitle]       = useState("");
   const [cSubtitle,    setCSubtitle]    = useState("");
@@ -1103,6 +1110,74 @@ export default function App() {
   }
 
   // ── CATALOG ABM (superadmin only) ────────────────────────────────────────────
+  // ── IMAGE HELPERS ──────────────────────────────────────────────────────────────
+  async function loadProdImages(pid) {
+    try {
+      const { data } = await sb.from("product_images").select("*").eq("product_id",pid).order("orden",{ascending:true});
+      setProdImages(function(prev){ return Object.assign({},prev,{[pid]:data||[]}); });
+      return data||[];
+    } catch(e) { return []; }
+  }
+  async function uploadProdImage(pid, file) {
+    if (!file) return;
+    if (file.size>3000000){ toast("Imagen muy grande","Máx 3MB","e"); return; }
+    setImgUploading(true);
+    try {
+      const ext  = file.name.split(".").pop();
+      const path = "products/"+pid+"/"+Date.now()+"."+ext;
+      const { error:upErr } = await sb.storage.from("product-images").upload(path, file, {upsert:true});
+      if (upErr) throw upErr;
+      const { data:urlData } = sb.storage.from("product-images").getPublicUrl(path);
+      const existentes = prodImages[pid]||[];
+      await sb.from("product_images").insert({
+        product_id:pid, url:urlData.publicUrl, storage_path:path,
+        orden:existentes.length, es_principal:existentes.length===0
+      });
+      if (existentes.length===0){
+        await sb.from("products").update({photo_url:urlData.publicUrl}).eq("id",pid);
+        setProducts(function(prev){ return prev.map(function(p){ return p.id===pid?Object.assign({},p,{photo_url:urlData.publicUrl}):p; }); });
+      }
+      await loadProdImages(pid);
+      toast("✅ Imagen cargada","","s");
+    } catch(e){ toast("Error al subir",e.message,"e"); }
+    finally{ setImgUploading(false); }
+  }
+  async function deleteProdImage(img, pid) {
+    try {
+      if (img.storage_path) await sb.storage.from("product-images").remove([img.storage_path]);
+      await sb.from("product_images").delete().eq("id",img.id);
+      const resto=(prodImages[pid]||[]).filter(function(x){ return x.id!==img.id; });
+      if (img.es_principal && resto.length>0){
+        await sb.from("product_images").update({es_principal:true}).eq("id",resto[0].id);
+        await sb.from("products").update({photo_url:resto[0].url}).eq("id",pid);
+        setProducts(function(prev){ return prev.map(function(p){ return p.id===pid?Object.assign({},p,{photo_url:resto[0].url}):p; }); });
+      } else if (img.es_principal){
+        await sb.from("products").update({photo_url:null}).eq("id",pid);
+        setProducts(function(prev){ return prev.map(function(p){ return p.id===pid?Object.assign({},p,{photo_url:null}):p; }); });
+      }
+      await loadProdImages(pid);
+    } catch(e){ toast("Error",e.message,"e"); }
+  }
+  async function setPrincipalImage(img, pid) {
+    try {
+      await sb.from("product_images").update({es_principal:false}).eq("product_id",pid);
+      await sb.from("product_images").update({es_principal:true}).eq("id",img.id);
+      await sb.from("products").update({photo_url:img.url}).eq("id",pid);
+      setProducts(function(prev){ return prev.map(function(p){ return p.id===pid?Object.assign({},p,{photo_url:img.url}):p; }); });
+      await loadProdImages(pid);
+      toast("✅ Principal actualizada","","s");
+    } catch(e){ toast("Error",e.message,"e"); }
+  }
+  async function moverImagen(pid, fromIdx, toIdx) {
+    const imgs=[...(prodImages[pid]||[])];
+    if (fromIdx<0||toIdx<0||fromIdx>=imgs.length||toIdx>=imgs.length) return;
+    const [m]=imgs.splice(fromIdx,1); imgs.splice(toIdx,0,m);
+    try {
+      await Promise.all(imgs.map(function(img,i){ return sb.from("product_images").update({orden:i}).eq("id",img.id); }));
+      await loadProdImages(pid);
+    } catch(e){ toast("Error",e.message,"e"); }
+  }
+
   async function doSaveProd(e) {
     e.preventDefault();
     if (!fSku.trim()||!fName.trim()||!fPrice){ toast("Completa SKU, nombre y precio","","e"); return; }
@@ -1126,7 +1201,7 @@ export default function App() {
     await loadData(me.id,me.role);
   }
 
-  function startEdit(p){ setEditP(p); setFSku(p.sku); setFName(p.name); setFPrice(String(p.price)); setFCat(p.category||"General"); setFEmoji(p.emoji||"✨"); setFPhoto(null); setTab("catalog"); }
+  function startEdit(p){ setEditP(p); setFSku(p.sku); setFName(p.name); setFPrice(String(p.price)); setFCat(p.category||"General"); setFEmoji(p.emoji||"✨"); setFPhoto(null); setTab("catalog"); loadProdImages(p.id); }
   function cancelEdit(){ setEditP(null); setFSku(""); setFName(""); setFPrice(""); setFEmoji("✨"); setFStock("0"); setFPhoto(null); }
 
   async function doDelProd(prodId, sku) {
@@ -1719,7 +1794,7 @@ export default function App() {
                     </div>
                     {slides.length>1&&(
                       <div className="carousel-dots">
-                        {slides.map(function(_,i){return <div key={i} className={"carousel-dot"+(i===carouselIdx?" on":"")} onClick={function(){setCarouselIdx(i);var el=document.getElementById("main-carousel");if(el){var w=el.scrollWidth/slides.length;el.scrollTo({left:w*i,behavior:"smooth"});}}}/>;})}
+                        {slides.map(function(_,i){return <div key={i} className={"carousel-dot"+(i===offerSlide?" on":"")} onClick={function(){setOfferSlide(i);var el=document.getElementById("main-carousel");if(el){var w=el.scrollWidth/slides.length;el.scrollTo({left:w*i,behavior:"smooth"});}}}/>;})}
                       </div>
                     )}
                   </div>
@@ -1995,7 +2070,60 @@ export default function App() {
                         <div className="row g8" style={{marginBottom:12}}><div style={{flex:1}}><label className="fl">SKU</label><input className="fi" placeholder="Ej: KCG1" value={fSku} onChange={function(e){setFSku(e.target.value);}}/></div><div style={{flex:2}}><label className="fl">Nombre</label><input className="fi" placeholder="Nombre del producto" value={fName} onChange={function(e){setFName(e.target.value);}}/></div></div>
                         <div className="row g8" style={{marginBottom:12}}><div style={{flex:1}}><label className="fl">Precio ($)</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={fPrice} onChange={function(e){setFPrice(e.target.value);}}/></div><div style={{flex:1}}><label className="fl">Icono</label><select className="fi fi-sel" value={fEmoji} onChange={function(e){setFEmoji(e.target.value);}}>{EMOJIS.map(function(o){ return <option key={o.v} value={o.v}>{o.v} {o.l}</option>; })}</select></div></div>
                         <div className="fld"><label className="fl">Categoría</label><select className="fi fi-sel" value={fCat} onChange={function(e){setFCat(e.target.value);}}>{CATS.map(function(c){ return <option key={c}>{c}</option>; })}</select></div>
-                        <div className="fld"><label className="fl">Foto (opcional)</label><div className="photo-zone"><input type="file" accept="image/*" onChange={function(e){handlePhoto(e,setFPhoto);}}/>{fPhoto?<img src={fPhoto} alt="" style={{width:56,height:56,borderRadius:10,objectFit:"cover",margin:"0 auto"}}/>:<div><div style={{fontSize:24,marginBottom:4}}>📸</div><div style={{fontSize:12,fontWeight:700,color:"var(--in)"}}>Tocar para subir foto</div></div>}</div>{fPhoto&&<button type="button" onClick={function(){setFPhoto(null);}} style={{fontSize:11,color:"var(--cr)",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>Quitar foto</button>}</div>
+                        {/* ── Foto / carrusel de imágenes ── */}
+                        <div className="fld">
+                          <label className="fl">Fotos del producto</label>
+                          {/* Carrusel existente */}
+                          {editP&&(prodImages[editP.id]||[]).length>0&&(
+                            <div style={{marginBottom:10}}>
+                              <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:6}}>
+                                {(prodImages[editP.id]||[]).map(function(img,i){
+                                  var esPpal=img.es_principal;
+                                  return (
+                                    <div key={img.id} style={{position:"relative",flexShrink:0}}>
+                                      <img src={img.url} alt="" style={{width:72,height:72,borderRadius:10,objectFit:"cover",border:esPpal?"2.5px solid var(--pri)":"1.5px solid #ddd"}}/>
+                                      {esPpal&&<div style={{position:"absolute",top:2,left:2,background:"var(--pri)",borderRadius:6,padding:"1px 5px",fontSize:9,color:"#fff",fontWeight:800}}>★</div>}
+                                      <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:2}}>
+                                        <button type="button" onClick={function(){setPrincipalImage(img,editP.id);}} title="Hacer principal"
+                                          style={{width:18,height:18,borderRadius:4,background:"#ffcc00",border:"none",cursor:"pointer",fontSize:9,display:"flex",alignItems:"center",justifyContent:"center"}}>★</button>
+                                        <button type="button" onClick={function(){deleteProdImage(img,editP.id);}} title="Eliminar"
+                                          style={{width:18,height:18,borderRadius:4,background:"var(--cr)",border:"none",cursor:"pointer",fontSize:9,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                                      </div>
+                                      {/* Reordenar */}
+                                      <div style={{display:"flex",justifyContent:"center",gap:2,marginTop:2}}>
+                                        {i>0&&<button type="button" onClick={function(){moverImagen(editP.id,i,i-1);}}
+                                          style={{fontSize:9,background:"#f0f0f0",border:"none",borderRadius:3,padding:"1px 4px",cursor:"pointer"}}>◀</button>}
+                                        {i<(prodImages[editP.id]||[]).length-1&&<button type="button" onClick={function(){moverImagen(editP.id,i,i+1);}}
+                                          style={{fontSize:9,background:"#f0f0f0",border:"none",borderRadius:3,padding:"1px 4px",cursor:"pointer"}}>▶</button>}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div style={{fontSize:10,color:"var(--t3)",marginTop:4}}>★ = Principal · ✕ = Eliminar · ◀▶ = Reordenar</div>
+                            </div>
+                          )}
+                          {/* Subir nueva imagen (si es producto existente) */}
+                          {editP?(
+                            <div>
+                              <label style={{display:"block",background:"var(--in-l)",border:"1.5px dashed var(--in)",borderRadius:10,padding:"10px",textAlign:"center",cursor:"pointer"}}>
+                                <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={function(e){
+                                  Array.from(e.target.files||[]).forEach(function(f){ uploadProdImage(editP.id,f); });
+                                  e.target.value="";
+                                }}/>
+                                {imgUploading?<div style={{fontSize:12,color:"var(--in-d)",fontWeight:700}}>Subiendo...</div>
+                                  :<div><div style={{fontSize:20,marginBottom:2}}>📸</div><div style={{fontSize:12,fontWeight:700,color:"var(--in-d)"}}>Subir imágenes</div><div style={{fontSize:10,color:"var(--t3)"}}>Múltiples archivos</div></div>}
+                              </label>
+                              {(prodImages[editP.id]||[]).length===0&&editP.photo_url&&(
+                                <div style={{fontSize:10,color:"var(--t3)",marginTop:4}}>Imagen actual (de la ficha): <a href={editP.photo_url} target="_blank" rel="noreferrer" style={{color:"var(--in-d)"}}>ver</a></div>
+                              )}
+                            </div>
+                          ):(
+                            /* Para producto nuevo: foto única por ahora */
+                            <div className="photo-zone"><input type="file" accept="image/*" onChange={function(e){handlePhoto(e,setFPhoto);}}/>{fPhoto?<img src={fPhoto} alt="" style={{width:56,height:56,borderRadius:10,objectFit:"cover",margin:"0 auto"}}/>:<div><div style={{fontSize:24,marginBottom:4}}>📸</div><div style={{fontSize:12,fontWeight:700,color:"var(--in)"}}>Tocar para subir foto</div></div>}</div>
+                          )}
+                          {!editP&&fPhoto&&<button type="button" onClick={function(){setFPhoto(null);}} style={{fontSize:11,color:"var(--cr)",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>Quitar foto</button>}
+                        </div>
                         {!editP&&<div className="fld"><label className="fl">Mi stock inicial</label><input className="fi" type="number" min="0" value={fStock} onChange={function(e){setFStock(e.target.value);}}/></div>}
                         <button type="submit" className="cta cta-in" style={{marginTop:10}}><Ic n="check" s={18}/>{editP?"Guardar cambios":"Dar de alta"}</button>
                       </form>
