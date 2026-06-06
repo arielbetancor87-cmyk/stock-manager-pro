@@ -223,9 +223,11 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     try {
       const p=item.product||products.find(x=>x.id===item.product_id);
       const precio=item.precio_venta;
-      // Deuda: precio / 1.30 — lo que le corresponde al propietario
-      const aPagar  = Math.round((precio / 1.30) * 100) / 100;
-      const comis   = Math.round((precio - aPagar) * 100) / 100;  // ganancia vendedora = diferencia
+      // Regla de negocio: la vendedora se queda con comision_pct% del precio.
+      // La deuda al propietario es el resto. Ej: 30% comisión → deuda = 70% del precio.
+      const pct     = (consig.comision_pct!=null ? consig.comision_pct : 30) / 100;
+      const comis   = Math.round(precio * pct * 100) / 100;       // ganancia vendedora
+      const aPagar  = Math.round((precio - comis) * 100) / 100;   // deuda al propietario
       await sb.from("consignacion_items").update({ qty_vendida:item.qty_vendida+1 }).eq("id",item.id);
       const { data:vInv } = await sb.from("inventory").select("*").eq("user_id",consig.vendedora_id).eq("product_id",item.product_id).maybeSingle();
       if (vInv) await sb.from("inventory").update({ qty_available:Math.max(0,vInv.qty_available-1), qty_sold:(vInv.qty_sold||0)+1 }).eq("id",vInv.id);
