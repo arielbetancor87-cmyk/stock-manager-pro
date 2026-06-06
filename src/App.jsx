@@ -1741,11 +1741,7 @@ export default function App() {
                           <button className="btn btn-xs b-in" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)",color:"var(--pri)",background:"var(--pri-l)"}} onClick={function(){setMovModal(item);setMovType("entrada");setMovQty(1);setMovNote("");}}>
                             <Ic n="plus" s={13}/><span style={{fontSize:11}}>Movimiento</span>
                           </button>
-                          {!isConsigna&&(
-                            <button className="btn btn-xs b-am" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none",borderRight:"1px solid var(--brd)"}} onClick={function(){setTxModal(item);setTxQty(1);setTxTo(contacts[0]?contacts[0].id:"");}} disabled={item.qty_available===0}>
-                              <Ic n="send" s={13}/><span style={{fontSize:11}}>Enviar</span>
-                            </button>
-                          )}
+
                           <button className="btn btn-xs b-em" style={{flex:1,justifyContent:"center",borderRadius:0,padding:"10px 0",border:"none"}} onClick={function(){doSell(item);}} disabled={item.qty_available===0}>
                             <Ic n="check" s={13}/><span style={{fontSize:11}}>Venta</span>
                           </button>
