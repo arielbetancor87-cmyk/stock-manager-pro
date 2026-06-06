@@ -552,7 +552,7 @@ export default function App() {
     // 3. Actualizar cantidad del transfer
     var newQty = tx.qty - retQty;
     if (newQty <= 0) {
-      await sb.from("transfers").update({status:"rejected"}).eq("id", tx.id);
+      await sb.from("transfers").update({status:"rechazado"}).eq("id", tx.id);
     } else {
       await sb.from("transfers").update({qty: newQty}).eq("id", tx.id);
     }
@@ -792,31 +792,30 @@ export default function App() {
     if (invRow.qty_available<=0) return;
     var prod = invRow.products || products.find(function(p){ return p.id===invRow.product_id; });
 
-    // Update inventory
-    var sellUpdFields = {
-      qty_available: invRow.qty_available - 1,
-      qty_sold: (invRow.qty_sold||0) + 1,
-    };
-    // Descontar del canal correcto
-    if (originTransfer || invRow.source==="consigna") {
-      sellUpdFields.stock_recibido = Math.max(0, (invRow.stock_recibido||0) - 1);
-    } else {
-      sellUpdFields.stock_propio = Math.max(0, (invRow.stock_propio||0) - 1);
-    }
-    var r = await sb.from("inventory").update(sellUpdFields).eq("id",invRow.id).select().single();
-    if (r.error){ toast("Error",""+r.error.message,"e"); return; }
-    setInventory(function(p){ return p.map(function(i){ return i.id===invRow.id?r.data:i; }); });
-
-    // Check if this product was received via a confirmed transfer (consignment from someone)
+    // ¿Este producto vino por una consignación confirmada?
     var originTransfer = transfers.find(function(t){
       return t.to_user_id===me.id &&
              t.product_id===invRow.product_id &&
              t.status==="confirmed";
     });
 
+    // Venta atómica en el servidor (evita condiciones de carrera)
+    var r = await sb.rpc("rpc_vender_unidad", { p_inv_id: invRow.id });
+    if (r.error){ toast("No se pudo vender", r.error.message, "e"); return; }
+    // La RPC decrementa stock_propio; si era recibido, ajustamos el canal
+    var updated = r.data;
+    if ((originTransfer || invRow.source==="consigna") && updated) {
+      var fix = await sb.from("inventory").update({
+        stock_recibido: Math.max(0, (invRow.stock_recibido||0) - 1),
+        stock_propio:   invRow.stock_propio||0
+      }).eq("id", invRow.id).select().single();
+      if (fix.data) updated = fix.data;
+    }
+    if (updated) setInventory(function(p){ return p.map(function(i){ return i.id===invRow.id?updated:i; }); });
+
     var source = originTransfer ? "consignment" : "own_stock";
 
-    // Insert sale log and update local state immediately
+    // Registrar venta
     var logInsert = await sb.from("sale_logs").insert({
       user_id: me.id,
       product_id: invRow.product_id,
@@ -829,7 +828,15 @@ export default function App() {
       setLogs(function(prev){ return [logInsert.data, ...prev]; });
     }
 
-    // If consignment — notify the original sender
+    // Ledger
+    await logMovimiento({
+      product_id: invRow.product_id, qty: -1,
+      estado_anterior: originTransfer ? "en_consigna" : "stock_central",
+      estado_nuevo: "vendido", referencia_tipo: "venta",
+      nota: "Venta directa de " + (prod?prod.name:"producto")
+    });
+
+    // Si era consignación, avisar al remitente original
     if (originTransfer) {
       await sb.from("notifications").insert({
         to_user_id: originTransfer.from_user_id,
@@ -847,20 +854,19 @@ export default function App() {
     if (txQty>txModal.qty_available){ toast("Stock insuficiente","","e"); return; }
     var prod  = txModal.products || products.find(function(p){ return p.id===txModal.product_id; });
     var tUser = contacts.find(function(c){ return c.id===txTo; });
-    var nuevoPropio = Math.max(0, (txModal.stock_propio != null ? txModal.stock_propio : txModal.qty_available) - txQty);
-    // 1. Descontar stock del remitente
-    var upd = await sb.from("inventory").update({
-      qty_available: txModal.qty_available - txQty,
-      stock_propio:  nuevoPropio
-    }).eq("id",txModal.id).select().single();
-    if (upd.error){ toast("Error",""+upd.error.message,"e"); return; }
-    setInventory(function(p){ return p.map(function(i){ return i.id===txModal.id?upd.data:i; }); });
-    // 2. Crear transfer pendiente
-    var { data:txInsert } = await sb.from("transfers").insert({
-      from_user_id:me.id, to_user_id:txTo,
-      product_id:txModal.product_id, qty:txQty,
-      status:"pending", inventory_id:txModal.id
-    }).select().single();
+    // 1+2. Descontar stock y crear transfer de forma atómica
+    var r = await sb.rpc("rpc_transferir", { p_inv_id: txModal.id, p_to_user: txTo, p_qty: txQty });
+    if (r.error){ toast("No se pudo enviar", r.error.message, "e"); return; }
+    var txInsert = r.data;
+    // Reflejar el descuento localmente
+    setInventory(function(p){ return p.map(function(i){
+      return i.id===txModal.id
+        ? Object.assign({}, i, {
+            qty_available: i.qty_available - txQty,
+            stock_propio: Math.max(0, (i.stock_propio!=null?i.stock_propio:i.qty_available) - txQty)
+          })
+        : i;
+    }); });
     // 3. Ledger
     await logMovimiento({
       product_id: txModal.product_id, qty: -txQty,
@@ -999,7 +1005,7 @@ export default function App() {
       await sb.from("inventory").insert({user_id:tx.from_user_id,product_id:tx.product_id,qty_available:tx.qty,qty_sold:0});
     }
     // Cambiar estado a "anulado"
-    await sb.from("transfers").update({status:"anulado"}).eq("id",tx.id);
+    await sb.from("transfers").update({status:"cancelled"}).eq("id",tx.id);
     // Notificar al destinatario si era pendiente
     if (tx.status==="pending") {
       await sb.from("notifications").insert({
@@ -1017,26 +1023,9 @@ export default function App() {
   async function confirmTransfer(tx) {
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
     try {
-      // El stock del remitente ya fue descontado al enviar.
-      // Solo sumamos al receptor.
-      var recInv = await sb.from("inventory")
-        .select("*").eq("user_id", me.id).eq("product_id", tx.product_id).maybeSingle();
-      if (recInv.data) {
-        await sb.from("inventory").update({
-          qty_available:  recInv.data.qty_available + tx.qty,
-          stock_recibido: (recInv.data.stock_recibido || 0) + tx.qty,
-          source: recInv.data.stock_propio > 0 ? recInv.data.source : "consigna"
-        }).eq("id", recInv.data.id);
-      } else {
-        await sb.from("inventory").insert({
-          user_id: me.id, product_id: tx.product_id,
-          qty_available: tx.qty, qty_sold: 0,
-          stock_propio: 0, stock_recibido: tx.qty, source: "consigna"
-        });
-      }
-      await sb.from("transfers")
-        .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
-        .eq("id", tx.id);
+      // Confirmación atómica en el servidor (suma al receptor + marca confirmed)
+      var r = await sb.rpc("rpc_confirmar_transfer", { p_tx_id: tx.id });
+      if (r.error) throw r.error;
       // Actualización optimista
       setTransfers(function(prev){ return prev.map(function(t){ return t.id===tx.id ? Object.assign({},t,{status:"confirmed"}) : t; }); });
       await sb.from("notifications").insert({
@@ -1062,32 +1051,16 @@ export default function App() {
   async function cancelTransfer(tx) {
     var prod = tx.product || products.find(function(p){ return p.id===tx.product_id; });
     try {
-      // Devolver stock al remitente (fue descontado al enviar)
-      var sndInv = await sb.from("inventory")
-        .select("*").eq("user_id", tx.from_user_id).eq("product_id", tx.product_id).maybeSingle();
-      if (sndInv.data) {
-        await sb.from("inventory").update({
-          qty_available: sndInv.data.qty_available + tx.qty,
-          stock_propio:  (sndInv.data.stock_propio || 0) + tx.qty
-        }).eq("id", sndInv.data.id);
-      } else {
-        await sb.from("inventory").insert({
-          user_id: tx.from_user_id, product_id: tx.product_id,
-          qty_available: tx.qty, qty_sold: 0,
-          stock_propio: tx.qty, stock_recibido: 0, source: "own"
-        });
-      }
-      // 1. Marcar como cancelado en DB
-      var { error: cancelErr } = await sb.from("transfers")
-        .update({ status: "cancelled" }).eq("id", tx.id);
-      if (cancelErr) throw cancelErr;
+      // Cancelación atómica (restituye stock al emisor + marca cancelled)
+      var r = await sb.rpc("rpc_cancelar_transfer", { p_tx_id: tx.id });
+      if (r.error) throw r.error;
 
-      // 2. Sacar de la lista local INMEDIATAMENTE (antes de loadData)
+      // Sacar de la lista local INMEDIATAMENTE (antes de loadData)
       setTransfers(function(prev){ return prev.filter(function(t){ return t.id !== tx.id; }); });
       setCancelConfirm(null);
       toast("✅ Envío cancelado", (prod ? prod.name + " volvió a tu stock" : ""), "s");
 
-      // 3. Notificar y ledger en background (no bloquean la UI)
+      // Notificar y ledger en background (no bloquean la UI)
       sb.from("notifications").insert({
         to_user_id: tx.to_user_id, from_name: me.name, type: "confirm",
         message: me.name + " canceló el envío de " + tx.qty + "× " + (prod ? prod.name : "producto") + ". El envío fue cancelado."
@@ -1100,7 +1073,7 @@ export default function App() {
         nota: "Envío cancelado — stock restituido"
       });
 
-      // 4. Reload en background para sincronizar inventario
+      // Reload en background para sincronizar inventario
       loadData(me.id, me.role);
     } catch(e) {
       setCancelConfirm(null);
@@ -1149,14 +1122,9 @@ export default function App() {
   async function doQuickLoadInline(item, qty) {
     if (qty < 1) return;
     try {
-      var newQtyAvail = item.qty_available + qty;
-      var newStockPropio = (item.stock_propio || 0) + qty;
-      var upd = await sb.from("inventory").update({
-        qty_available: newQtyAvail,
-        stock_propio:  newStockPropio
-      }).eq("id", item.id).select("*, products(*)").single();
-      if (upd.error) throw upd.error;
-      setInventory(function(prev){ return prev.map(function(i){ return i.id===item.id ? upd.data : i; }); });
+      var r = await sb.rpc("rpc_cargar_stock", { p_inv_id: item.id, p_qty: qty });
+      if (r.error) throw r.error;
+      if (r.data) setInventory(function(prev){ return prev.map(function(i){ return i.id===item.id ? r.data : i; }); });
       // Ledger
       await logMovimiento({
         product_id: item.product_id, qty: qty,
