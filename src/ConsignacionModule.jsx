@@ -230,7 +230,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
       const aPagar  = Math.round((precio - comis) * 100) / 100;   // deuda al propietario
       await sb.from("consignacion_items").update({ qty_vendida:item.qty_vendida+1 }).eq("id",item.id);
       const { data:vInv } = await sb.from("inventory").select("*").eq("user_id",consig.vendedora_id).eq("product_id",item.product_id).maybeSingle();
-      if (vInv) await sb.from("inventory").update({ qty_available:Math.max(0,vInv.qty_available-1), qty_sold:(vInv.qty_sold||0)+1 }).eq("id",vInv.id);
+      if (vInv) await sb.from("inventory").update({ qty_available:Math.max(0,vInv.qty_available-1), qty_sold:(vInv.qty_sold||0)+1, stock_recibido:Math.max(0,(vInv.stock_recibido||0)-1) }).eq("id",vInv.id);
       var ahora = new Date().toISOString();
       await sb.from("consignacion_deudas").insert({
         consignacion_id: consig.id,
@@ -267,12 +267,14 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     setSaving(true);
     try {
       const p=item.product||products.find(x=>x.id===item.product_id);
-      await sb.from("consignacion_items").update({ qty_devuelta:item.qty_devuelta+1 }).eq("id",item.id);
-      const { data:vInv } = await sb.from("inventory").select("*").eq("user_id",consig.vendedora_id).eq("product_id",item.product_id).maybeSingle();
-      if (vInv) await sb.from("inventory").update({ qty_available:Math.max(0,vInv.qty_available-1) }).eq("id",vInv.id);
-      const { data:oInv } = await sb.from("inventory").select("*").eq("user_id",consig.owner_id).eq("product_id",item.product_id).maybeSingle();
-      if (oInv) { await sb.from("inventory").update({ qty_available:oInv.qty_available+1 }).eq("id",oInv.id); }
-      else { await sb.from("inventory").insert({ user_id:consig.owner_id, product_id:item.product_id, qty_available:1, qty_sold:0, source:"own" }); }
+      // Devolución atómica en el servidor (suma al propietario + descuenta a la vendedora)
+      const r = await sb.rpc("rpc_devolver_unidad", {
+        p_item_id:      item.id,
+        p_product_id:   item.product_id,
+        p_owner_id:     consig.owner_id,
+        p_vendedora_id: consig.vendedora_id
+      });
+      if (r.error) throw r.error;
       await sb.from("notifications").insert({ to_user_id:consig.owner_id, from_name:me.name, type:"confirm", message:`↩️ ${me.name} devolvió 1× "${p?.name}". El stock volvió a vos.` });
       await logMov(sb, me, {
         product_id: item.product_id, qty: 1,
