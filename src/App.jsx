@@ -67,52 +67,52 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  /* ── Fondos premium: zinc/slate muy suave ── */
-  --bg:#f2f2f5;--bg2:#e8e8ec;--card:#ffffff;
-  --brd:#e4e4e8;--brd2:#d0d0d5;
+  /* ── Fondos: blanco limpio con gris muy claro para cards ── */
+  --bg:#ffffff;--bg2:#f3f3f6;--card:#ffffff;
+  --brd:#ececf0;--brd2:#dcdce2;
 
-  /* ── Tipografía refinada ── */
-  --t1:#18181b;--t2:#3f3f46;--t3:#71717a;--t4:#a1a1aa;
+  /* ── Tipografía ── */
+  --t1:#1a1a2e;--t2:#44444f;--t3:#8a8a96;--t4:#b4b4be;
 
-  /* ── Carmesí borgoña como color de marca ── */
-  --in:#9b1c1c;--in-d:#7f1d1d;--in-l:#fef2f2;--in-t:rgba(155,28,28,.10);
-  --in-m:#dc2626;
+  /* ── Rosa magenta vibrante como color de marca (estilo delivery) ── */
+  --in:#e0224e;--in-d:#c11743;--in-l:#fff0f3;--in-t:rgba(224,34,78,.10);
+  --in-m:#fa1e5a;
 
-  /* ── Esmeralda suave para éxito ── */
-  --em:#059669;--em-d:#047857;--em-l:#ecfdf5;--em-t:rgba(5,150,105,.09);
+  /* ── Esmeralda para éxito ── */
+  --em:#10b981;--em-d:#059669;--em-l:#ecfdf5;--em-t:rgba(16,185,129,.09);
 
-  /* ── Ámbar cálido para alertas ── */
-  --am:#d97706;--am-d:#b45309;--am-l:#fffbeb;--am-t:rgba(217,119,6,.09);
+  /* ── Ámbar para alertas ── */
+  --am:#f59e0b;--am-d:#d97706;--am-l:#fffbeb;--am-t:rgba(245,158,11,.09);
 
-  /* ── Rojo suave para errores ── */
-  --cr:#dc2626;--cr-d:#b91c1c;--cr-l:#fef2f2;--cr-t:rgba(220,38,38,.08);
+  /* ── Rojo para errores ── */
+  --cr:#ef4444;--cr-d:#dc2626;--cr-l:#fef2f2;--cr-t:rgba(239,68,68,.08);
 
   /* ── Azul cielo para info ── */
-  --bl:#0284c7;--bl-d:#0369a1;--bl-l:#f0f9ff;--bl-t:rgba(2,132,199,.09);
+  --bl:#0ea5e9;--bl-d:#0284c7;--bl-l:#f0f9ff;--bl-t:rgba(14,165,233,.09);
 
   /* ── WhatsApp ── */
   --wa:#16a34a;--wa-d:#15803d;--wa-l:#f0fdf4;
 
   /* ── Violeta ── */
-  --pu:#7c3aed;--pu-d:#6d28d9;
+  --pu:#8b5cf6;--pu-d:#7c3aed;
 
-  /* ── Primario = carmesí/borgoña ── */
-  --pri:#9b1c1c;--pri-d:#7f1d1d;--pri-l:#fef2f2;
+  /* ── Primario = rosa magenta ── */
+  --pri:#e0224e;--pri-d:#c11743;--pri-l:#fff0f3;
 
-  /* ── Gradiente premium oscuro→claro ── */
-  --grad:linear-gradient(140deg,#7f1d1d 0%,#9b1c1c 45%,#dc2626 100%);
+  /* ── Gradiente magenta vibrante ── */
+  --grad:linear-gradient(145deg,#e0224e 0%,#e0224e 50%,#fa1e5a 100%);
 
   /* ── Tipografías ── */
   --hf:'Nunito',sans-serif;--mf:'JetBrains Mono',monospace;
 
-  /* ── Radio de bordes: más suaves ── */
-  --r:14px;--r2:20px;--r3:28px;
+  /* ── Radio de bordes: muy redondeados (estilo delivery) ── */
+  --r:16px;--r2:22px;--r3:30px;
 
-  /* ── Sombras difusas y sutiles ── */
-  --sh:0 1px 6px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.05);
-  --sh2:0 4px 20px rgba(0,0,0,.10),0 1px 4px rgba(0,0,0,.05);
-  --sh3:0 20px 60px rgba(0,0,0,.14),0 4px 16px rgba(0,0,0,.06);
-  --tab:64px;
+  /* ── Sombras muy suaves y difusas ── */
+  --sh:0 1px 4px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04);
+  --sh2:0 4px 20px rgba(0,0,0,.08),0 1px 4px rgba(0,0,0,.04);
+  --sh3:0 20px 60px rgba(0,0,0,.12),0 4px 16px rgba(0,0,0,.05);
+  --tab:66px;
 }
 html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf);font-size:14px;-webkit-font-smoothing:antialiased}
 @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
@@ -131,9 +131,9 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .hdr-btn:active{background:rgba(255,255,255,.32);transform:scale(.94)}
 
 .hdr-top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
-.hdr-search{margin:0 16px 12px;position:relative}
-.hdr-search input{width:100%;padding:11px 14px 11px 40px;border-radius:14px;border:none;background:rgba(255,255,255,.95);color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.12)}
-.hdr-search-ico{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
+.hdr-search{margin:0 16px 14px;position:relative}
+.hdr-search input{width:100%;padding:14px 54px 14px 46px;border-radius:30px;border:none;background:#fff;color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.10)}
+.hdr-search-ico{position:absolute;left:18px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
 /* TABBAR */
 .tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tab);background:rgba(255,255,255,.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;z-index:50;box-shadow:0 -1px 0 var(--brd),0 -10px 30px rgba(0,0,0,.08);border-radius:24px 24px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--t4);transition:all .22s cubic-bezier(.34,1.56,.64,1);position:relative;padding:8px 2px 5px;min-width:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
@@ -269,12 +269,12 @@ tr:last-child td{border-bottom:none}
 .carousel-dot{width:5px;height:5px;border-radius:3px;background:var(--brd2);transition:all .28s cubic-bezier(.34,1.56,.64,1);cursor:pointer}
 .carousel-dot.on{width:20px;background:var(--in-m)}
 /* SECCIONES FAVORITAS */
-.fav-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px;margin-bottom:16px}
-.fav-card{background:var(--card);border-radius:14px;border:1px solid var(--brd);padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;box-shadow:var(--sh);transition:transform .12s}
-.fav-card:active{transform:scale(.97)}
-.fav-card-ico{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
-.fav-card-lbl{font-size:12px;font-weight:800;color:var(--t1);line-height:1.3}
-.fav-card-sub{font-size:10px;color:var(--t3);font-weight:600;margin-top:1px}
+.fav-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 14px;margin-bottom:18px}
+.fav-card{background:var(--bg2);border-radius:22px;border:none;padding:18px;display:flex;align-items:center;gap:13px;cursor:pointer;box-shadow:none;transition:transform .14s cubic-bezier(.34,1.56,.64,1)}
+.fav-card:active{transform:scale(.96)}
+.fav-card-ico{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:25px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.fav-card-lbl{font-size:13px;font-weight:800;color:var(--t1);line-height:1.3}
+.fav-card-sub{font-size:10.5px;color:var(--t3);font-weight:600;margin-top:1px}
 /* CATEGORÍAS */
 .cats-wrap{overflow-x:auto;display:flex;gap:10px;padding:0 14px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .cats-wrap::-webkit-scrollbar{display:none}
@@ -1669,8 +1669,9 @@ export default function App() {
             </div>
           </div>
           <div className="hdr-search">
-            <span className="hdr-search-ico"><Ic n="search" s={16}/></span>
+            <span className="hdr-search-ico"><Ic n="search" s={18}/></span>
             <input placeholder="Buscar productos..." value={srchStock} onChange={function(e){setSrchStock(e.target.value);if(e.target.value)setTab("stock");}} onFocus={function(){setTab("stock");}}/>
+            <button onClick={function(){setTab("stock");}} style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",width:38,height:38,borderRadius:"50%",border:"none",background:"var(--grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(224,34,78,.35)"}}><Ic n="search" s={17}/></button>
           </div>
         </div>
 
