@@ -520,8 +520,28 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                       <span>✅ {vend} vendidos</span><span>⏳ {pend} por vender</span><span>↩️ {dev} devueltos</span>
                     </div>
                   </div>
+                  {/* Lista de productos de esta entrega */}
+                  <div style={{ padding:"6px 14px 2px" }}>
+                    {(consig.items||[]).map(it=>{
+                      const pr=it.product||products.find(x=>x.id===it.product_id);
+                      const restan=it.qty_enviada-it.qty_vendida-it.qty_devuelta;
+                      return (
+                        <div key={it.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f4f4f6" }}>
+                          <ProdThumb prod={pr} size={38}/>
+                          <div style={{ flex:1,minWidth:0 }}>
+                            <div style={{ fontSize:12.5,fontWeight:800,color:"#222",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{pr?.name||"Producto"}</div>
+                            <div style={{ fontSize:10.5,color:"#999",marginTop:1 }}>{fmt(it.precio_venta)} c/u</div>
+                          </div>
+                          <div style={{ flexShrink:0,textAlign:"right" }}>
+                            <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:15,color:restan>0?"#d97706":"#bbb" }}>{restan}</div>
+                            <div style={{ fontSize:9,color:"#bbb",fontWeight:700,textTransform:"uppercase" }}>quedan</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                   {ganEst>0&&(
-                    <div style={{ margin:"4px 14px 8px",background:"#ecfdf5",borderRadius:12,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                    <div style={{ margin:"8px 14px 8px",background:"#ecfdf5",borderRadius:12,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
                       <span style={{ fontSize:11.5,color:"#10b981",fontWeight:700 }}>💵 Ya ganaste</span>
                       <span style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:15,color:"#059669" }}>{fmt(ganEst)}</span>
                     </div>
