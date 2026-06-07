@@ -1632,6 +1632,7 @@ export default function App() {
   var pedPendCount = pedidos.filter(function(p){return p.estado==="pendiente";}).length;
   var TABS = [
     {id:"stock",     lbl:"Stock",     ico:"box"},
+    {id:"cargar",    lbl:"Cargar",    ico:"plus"},
     {id:"pedidos",   lbl:"Pedidos",   ico:"list"},
     {id:"enviados",  lbl:"Enviados",  ico:"send"},
     {id:"recibidos", lbl:"Recibidos", ico:"users"},
@@ -1639,7 +1640,6 @@ export default function App() {
     {id:"contacts",  lbl:"Red",       ico:"clock"},
   ];
   if (isAdmin) {
-    TABS.splice(2, 0, {id:"cargar",   lbl:"Cargar",   ico:"plus"});
     TABS.splice(4, 0, {id:"catalog",  lbl:"Catálogo", ico:"list"});
     TABS.splice(5, 0, {id:"importar", lbl:"Importar", ico:"upload"});
     TABS.push({id:"admin", lbl:"Admin", ico:"shield"});
