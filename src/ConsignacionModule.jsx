@@ -20,7 +20,7 @@ const Spin = () => <div style={{ display:"inline-block",width:16,height:16,borde
 
 function Avatar({ name, color, size=38 }) {
   const ini = (name||"?").trim().split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
-  return <div style={{ width:size,height:size,borderRadius:"50%",background:color||"#cc0000",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:Math.round(size*.38),color:"#fff",flexShrink:0 }}>{ini}</div>;
+  return <div style={{ width:size,height:size,borderRadius:"50%",background:color||"#e0224e",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:Math.round(size*.38),color:"#fff",flexShrink:0 }}>{ini}</div>;
 }
 
 function fmt(n) { return "$ " + Number(n||0).toLocaleString("es-AR",{minimumFractionDigits:2}); }
@@ -46,7 +46,7 @@ function ProgBar({ vendidas, devueltas, total }) {
   const pD = total>0?(devueltas/total)*100:0;
   return (
     <div style={{ height:7,borderRadius:4,background:"#eee",overflow:"hidden",display:"flex" }}>
-      <div style={{ width:`${pV}%`,background:"#00b87a",transition:"width .3s" }}/>
+      <div style={{ width:`${pV}%`,background:"#10b981",transition:"width .3s" }}/>
       <div style={{ width:`${pD}%`,background:"#bbb",transition:"width .3s" }}/>
     </div>
   );
@@ -382,7 +382,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
 
   if (loading) return (
     <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 20px",gap:12 }}>
-      <div style={{ width:32,height:32,border:"3px solid #eee",borderTopColor:"#cc0000",borderRadius:"50%",animation:"spin .7s linear infinite" }}/>
+      <div style={{ width:32,height:32,border:"3px solid #eee",borderTopColor:"#e0224e",borderRadius:"50%",animation:"spin .7s linear infinite" }}/>
       <div style={{ fontSize:13,color:"#999" }}>Cargando...</div>
     </div>
   );
@@ -390,7 +390,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
   if (dbError==="falta_tabla") return (
     <div style={{ padding:"30px 20px",maxWidth:480,margin:"0 auto" }}>
       <div style={{ background:"#fff",borderRadius:20,border:"2px solid #ffcc00",overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,.1)" }}>
-        <div style={{ background:"linear-gradient(135deg,#cc0000,#ff3333)",padding:"24px 24px 20px",textAlign:"center" }}>
+        <div style={{ background:"linear-gradient(135deg,#e0224e,#fa1e5a)",padding:"24px 24px 20px",textAlign:"center" }}>
           <div style={{ fontSize:44,marginBottom:8 }}>🗄️</div>
           <div style={{ fontSize:18,fontWeight:900,color:"#fff" }}>Falta configurar Supabase</div>
           <div style={{ fontSize:12,color:"rgba(255,255,255,.8)",marginTop:4 }}>Las tablas de consignación no existen todavía</div>
@@ -404,12 +404,12 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
             {n:4, txt:"Volvé acá y recargá la página"},
           ].map(s=>(
             <div key={s.n} style={{ display:"flex",alignItems:"flex-start",gap:12,marginBottom:12 }}>
-              <div style={{ width:28,height:28,borderRadius:"50%",background:"#cc0000",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,flexShrink:0,marginTop:1 }}>{s.n}</div>
+              <div style={{ width:28,height:28,borderRadius:"50%",background:"#e0224e",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,flexShrink:0,marginTop:1 }}>{s.n}</div>
               <div style={{ fontSize:13,color:"#444",fontWeight:600,lineHeight:1.5,paddingTop:4 }}>{s.txt}</div>
             </div>
           ))}
           <button onClick={loadAll}
-            style={{ width:"100%",marginTop:8,padding:"14px",borderRadius:14,border:"none",background:"#cc0000",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:14,cursor:"pointer" }}>
+            style={{ width:"100%",marginTop:8,padding:"14px",borderRadius:14,border:"none",background:"#e0224e",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:14,cursor:"pointer" }}>
             🔄 Reintentar conexión
           </button>
         </div>
@@ -421,7 +421,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
   if (view==="main_env" || view==="main" || view==="main_rec") return (
     <div style={{ paddingBottom:32 }}>
       {/* Header */}
-      <div style={{ background: view==="main_rec" ? "linear-gradient(135deg,#0096c7,#005f8a)" : "linear-gradient(135deg,#cc0000,#ff3333)", padding:"20px 16px 24px" }}>
+      <div style={{ background: view==="main_rec" ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "linear-gradient(135deg,#e0224e,#fa1e5a)", padding:"20px 16px 24px" }}>
         <div style={{ fontSize:22,fontWeight:900,color:"#fff",marginBottom:4 }}>
           {view==="main_rec" ? "📥 Recibidos" : "📤 Enviados"}
         </div>
@@ -452,7 +452,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
       <div style={{ padding:"14px 14px 0" }}>
         {/* CTA nueva entrega — solo en vista enviados */}
         {view!=="main_rec"&&<button onClick={()=>{ setView("nueva"); setCarrito({}); setVendedoraId(""); setNotas(""); setPaso(1); }}
-          style={{ width:"100%",display:"flex",alignItems:"center",gap:14,padding:"16px",borderRadius:16,background:"linear-gradient(135deg,#ff7a00,#e06a00)",border:"none",cursor:"pointer",boxShadow:"0 4px 16px rgba(255,122,0,.3)",marginBottom:20 }}>
+          style={{ width:"100%",display:"flex",alignItems:"center",gap:14,padding:"16px",borderRadius:16,background:"linear-gradient(135deg,#ff7a00,#d97706)",border:"none",cursor:"pointer",boxShadow:"0 4px 16px rgba(255,122,0,.3)",marginBottom:20 }}>
           <div style={{ width:46,height:46,borderRadius:14,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0 }}>📦</div>
           <div style={{ textAlign:"left",flex:1 }}>
             <div style={{ fontSize:15,fontWeight:900,color:"#fff" }}>Nueva entrega en consignación</div>
@@ -474,9 +474,9 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                     <div style={{ fontSize:11,color:"#999",marginTop:2 }}>{g.items.length} venta{g.items.length!==1?"s":""} sin cobrar</div>
                   </div>
                   <div style={{ textAlign:"right",flexShrink:0 }}>
-                    <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:18,color:"#e06a00" }}>{fmt(g.total)}</div>
+                    <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:18,color:"#d97706" }}>{fmt(g.total)}</div>
                     <button onClick={()=>abrirLiquidar(g.vendedora)}
-                      style={{ marginTop:6,background:"#cc0000",border:"none",borderRadius:10,padding:"7px 14px",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer" }}>
+                      style={{ marginTop:6,background:"#e0224e",border:"none",borderRadius:10,padding:"7px 14px",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer" }}>
                       Cobrar
                     </button>
                   </div>
@@ -497,7 +497,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
         {/* Recibidas — solo en vista recibidos */}
         {(view==="main_rec"||view==="main")&&recibActivas.length>0&&(
           <div style={{ marginBottom:22 }}>
-            <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:10,textTransform:"uppercase",letterSpacing:".07em" }}>📥 Lo que me entregaron — tengo que rendir</div>
+            <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:10,textTransform:"uppercase",letterSpacing:".07em" }}>📥 Productos que tengo para vender</div>
             {recibActivas.map(consig=>{
               const tot=( consig.items||[]).reduce((s,i)=>s+i.qty_enviada,0);
               const vend=(consig.items||[]).reduce((s,i)=>s+i.qty_vendida,0);
@@ -505,31 +505,31 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               const pend=tot-vend-dev;
               const ganEst=(consig.items||[]).reduce((s,i)=>s+(i.qty_vendida*i.precio_venta*consig.comision_pct/100),0);
               return (
-                <div key={consig.id} style={{ background:"#fff",borderRadius:16,border:"1.5px solid #e0e0e0",marginBottom:10,overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,.07)" }}>
-                  <div style={{ display:"flex",alignItems:"center",gap:12,padding:"13px 16px",background:"#f8f8f8",borderBottom:"1px solid #eee" }}>
-                    <Avatar name={consig.owner?.name} color={consig.owner?.color} size={40}/>
+                <div key={consig.id} style={{ background:"#fff",borderRadius:18,border:"1.5px solid #ececf0",marginBottom:12,overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,.05)" }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"#fafafb",borderBottom:"1px solid #f0f0f3" }}>
+                    <Avatar name={consig.owner?.name} color={consig.owner?.color} size={42}/>
                     <div style={{ flex:1,minWidth:0 }}>
-                      <div style={{ fontWeight:800,fontSize:13 }}>De: {consig.owner?.name}</div>
-                      <div style={{ fontSize:10,color:"#999",marginTop:1 }}>Tu comisión: <strong style={{color:"#00b87a"}}>{consig.comision_pct}%</strong> · {new Date(consig.created_at).toLocaleDateString("es-AR")}</div>
+                      <div style={{ fontWeight:800,fontSize:14 }}>{consig.owner?.name}</div>
+                      <div style={{ fontSize:11,color:"#999",marginTop:1 }}>Te dejó <strong>{tot} u.</strong> · Ganás el <strong style={{color:"#10b981"}}>{consig.comision_pct}%</strong> de cada venta</div>
                     </div>
-                    {pend>0&&<div style={{ background:"#fff3e0",color:"#e06a00",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:800,flexShrink:0 }}>{pend} pend.</div>}
+                    {pend>0&&<div style={{ background:"#fff7ed",color:"#d97706",borderRadius:20,padding:"4px 11px",fontSize:11,fontWeight:800,flexShrink:0 }}>Quedan {pend}</div>}
                   </div>
-                  <div style={{ padding:"10px 16px 6px" }}>
+                  <div style={{ padding:"12px 16px 6px" }}>
                     <ProgBar vendidas={vend} devueltas={dev} total={tot}/>
-                    <div style={{ display:"flex",justifyContent:"space-between",marginTop:5,fontSize:10,color:"#999",fontWeight:600 }}>
-                      <span>✅ {vend} vendidos</span><span>⏳ {pend} pendientes</span><span>↩️ {dev} devueltos</span>
+                    <div style={{ display:"flex",justifyContent:"space-between",marginTop:6,fontSize:10.5,color:"#999",fontWeight:600 }}>
+                      <span>✅ {vend} vendidos</span><span>⏳ {pend} por vender</span><span>↩️ {dev} devueltos</span>
                     </div>
                   </div>
                   {ganEst>0&&(
-                    <div style={{ margin:"0 14px 8px",background:"#e8faf4",borderRadius:10,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-                      <span style={{ fontSize:11,color:"#00b87a",fontWeight:700 }}>💵 Tu ganancia hasta ahora</span>
-                      <span style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:14,color:"#009a66" }}>{fmt(ganEst)}</span>
+                    <div style={{ margin:"4px 14px 8px",background:"#ecfdf5",borderRadius:12,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                      <span style={{ fontSize:11.5,color:"#10b981",fontWeight:700 }}>💵 Ya ganaste</span>
+                      <span style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:15,color:"#059669" }}>{fmt(ganEst)}</span>
                     </div>
                   )}
                   <div style={{ padding:"0 14px 14px" }}>
                     <button onClick={()=>abrirDetRec(consig)}
-                      style={{ width:"100%",padding:"13px",borderRadius:12,background:"#cc0000",border:"none",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer" }}>
-                      Registrar ventas / devoluciones
+                      style={{ width:"100%",padding:"14px",borderRadius:14,background:pend>0?"linear-gradient(145deg,#e0224e,#fa1e5a)":"#f3f3f6",border:"none",color:pend>0?"#fff":"#888",fontFamily:"var(--hf)",fontWeight:800,fontSize:14,cursor:"pointer",boxShadow:pend>0?"0 4px 14px rgba(224,34,78,.28)":"none" }}>
+                      {pend>0 ? "💵 Marcar lo que vendí" : "Ver detalle"}
                     </button>
                   </div>
                 </div>
@@ -569,7 +569,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                     </div>
                     <div style={{ textAlign:"right",flexShrink:0 }}>
                       <div style={{ fontSize:10,color:"#999" }}>Pend.</div>
-                      <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:22,color:pend>0?"#e06a00":"#00b87a" }}>{pend}</div>
+                      <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:22,color:pend>0?"#d97706":"#10b981" }}>{pend}</div>
                     </div>
                     <div style={{ color:"#ccc",fontSize:20 }}>›</div>
                   </div>
@@ -590,24 +590,24 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                       {/* Comisión vendedora */}
                       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 14px",background:"#fff8e1",borderBottom:"1px solid #eee" }}>
                         <div>
-                          <div style={{ fontSize:12,color:"#e06a00",fontWeight:700 }}>🤝 Comisión vendedora ({comision_pct}%)</div>
+                          <div style={{ fontSize:12,color:"#d97706",fontWeight:700 }}>🤝 Comisión vendedora ({comision_pct}%)</div>
                           <div style={{ fontSize:10,color:"#bbb",marginTop:1 }}>Se descuenta de lo que te debe</div>
                         </div>
-                        <span style={{ fontFamily:"var(--mf)",fontWeight:800,fontSize:13,color:"#e06a00" }}>− {fmt(total_comision)}</span>
+                        <span style={{ fontFamily:"var(--mf)",fontWeight:800,fontSize:13,color:"#d97706" }}>− {fmt(total_comision)}</span>
                       </div>
                       {/* Deuda */}
                       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:total_a_cobrar>0?"#fde8ea":"#e8faf4" }}>
                         <div>
-                          <div style={{ fontSize:12,fontWeight:800,color:total_a_cobrar>0?"#c1121f":"#009a66" }}>
+                          <div style={{ fontSize:12,fontWeight:800,color:total_a_cobrar>0?"#dc2626":"#059669" }}>
                             {total_a_cobrar>0?"🔴 Deuda pendiente":"✅ Todo cobrado"}
                           </div>
                           {total_cobrado>0&&<div style={{ fontSize:10,color:"#888",marginTop:1 }}>Ya cobrado: {fmt(total_cobrado)}</div>}
                         </div>
                         {total_a_cobrar>0&&(
                           <div style={{ textAlign:"right" }}>
-                            <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:"#c1121f" }}>{fmt(total_a_cobrar)}</div>
+                            <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:"#dc2626" }}>{fmt(total_a_cobrar)}</div>
                             <button onClick={e=>{ e.stopPropagation(); abrirLiquidar(consig.vendedora); }}
-                              style={{ marginTop:6,background:"#cc0000",border:"none",borderRadius:10,padding:"6px 14px",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer" }}>
+                              style={{ marginTop:6,background:"#e0224e",border:"none",borderRadius:10,padding:"6px 14px",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer" }}>
                               Cobrar
                             </button>
                           </div>
@@ -645,9 +645,10 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
         )}
 
         {view==="main_rec" && recibActivas.length===0 && (
-          <div style={{ textAlign:"center",padding:"40px 20px",color:"#bbb",fontSize:13 }}>
-            <div style={{ fontSize:44,marginBottom:8 }}>📭</div>
-            No recibiste ningún producto en consignación todavía.
+          <div style={{ textAlign:"center",padding:"48px 28px",color:"#999" }}>
+            <div style={{ fontSize:52,marginBottom:12 }}>📭</div>
+            <div style={{ fontSize:15,fontWeight:800,color:"#444",marginBottom:6 }}>Todavía no tenés productos para vender</div>
+            <div style={{ fontSize:13,lineHeight:1.5 }}>Cuando alguien te deje productos en consignación, te van a aparecer acá y te avisamos con una notificación 🔔</div>
           </div>
         )}
         {view!=="main_rec" && enviActivas.length===0 && (
@@ -682,12 +683,12 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 <div style={{ display:"flex",alignItems:"center",border:"1.5px solid #e0e0e0",borderRadius:10,overflow:"hidden",flexShrink:0 }}>
                   <button onClick={()=>setCargaQty(q=>Math.max(1,q-1))}
                     style={{ width:36,height:36,border:"none",background:"#f5f5f5",cursor:"pointer",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",color:"#444" }}>−</button>
-                  <div style={{ minWidth:40,textAlign:"center",fontFamily:"var(--mf)",fontWeight:700,fontSize:16,color:"#cc0000" }}>{cargaQty}</div>
+                  <div style={{ minWidth:40,textAlign:"center",fontFamily:"var(--mf)",fontWeight:700,fontSize:16,color:"#e0224e" }}>{cargaQty}</div>
                   <button onClick={()=>setCargaQty(q=>q+1)}
-                    style={{ width:36,height:36,border:"none",background:"#ffeaea",cursor:"pointer",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",color:"#cc0000" }}>+</button>
+                    style={{ width:36,height:36,border:"none",background:"#ffeaea",cursor:"pointer",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",color:"#e0224e" }}>+</button>
                 </div>
                 <button onClick={cargarStockPropio} disabled={!cargaPid||cargaSaving}
-                  style={{ flex:1,padding:"11px",borderRadius:10,border:"none",background:"#00b87a",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:14,cursor:"pointer",opacity:(!cargaPid||cargaSaving)?.5:1 }}>
+                  style={{ flex:1,padding:"11px",borderRadius:10,border:"none",background:"#10b981",color:"#fff",fontFamily:"var(--hf)",fontWeight:800,fontSize:14,cursor:"pointer",opacity:(!cargaPid||cargaSaving)?.5:1 }}>
                   {cargaSaving?"Guardando...":"✅ Confirmar carga"}
                 </button>
               </div>
@@ -703,12 +704,12 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           if (txFilt.length===0) return null;
           const visible = txExpanded ? txFilt : txFilt.slice(0,5);
           const badgeCfg = {
-            pending:    {bg:"#fff8e1",col:"#e06a00",txt:"⏳ Pendiente"},
-            pendiente:  {bg:"#fff8e1",col:"#e06a00",txt:"⏳ Pendiente"},
-            confirmed:  {bg:"#e8faf4",col:"#009a66",txt:"✅ Confirmado"},
-            aceptado:   {bg:"#e8faf4",col:"#009a66",txt:"✅ Aceptado"},
-            cancelled:  {bg:"#fde8ea",col:"#c1121f",txt:"❌ Cancelado"},
-            rechazado:  {bg:"#fde8ea",col:"#c1121f",txt:"❌ Rechazado"},
+            pending:    {bg:"#fff8e1",col:"#d97706",txt:"⏳ Pendiente"},
+            pendiente:  {bg:"#fff8e1",col:"#d97706",txt:"⏳ Pendiente"},
+            confirmed:  {bg:"#e8faf4",col:"#059669",txt:"✅ Confirmado"},
+            aceptado:   {bg:"#e8faf4",col:"#059669",txt:"✅ Aceptado"},
+            cancelled:  {bg:"#fde8ea",col:"#dc2626",txt:"❌ Cancelado"},
+            rechazado:  {bg:"#fde8ea",col:"#dc2626",txt:"❌ Rechazado"},
           };
           return (
             <div style={{ marginBottom:20 }}>
@@ -749,7 +750,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 })}
                 {txFilt.length>5&&(
                   <div onClick={()=>setTxExpanded(v=>!v)}
-                    style={{ padding:"12px",textAlign:"center",fontSize:12,color:"#cc0000",fontWeight:700,cursor:"pointer",borderTop:"1px solid #f5f5f5" }}>
+                    style={{ padding:"12px",textAlign:"center",fontSize:12,color:"#e0224e",fontWeight:700,cursor:"pointer",borderTop:"1px solid #f5f5f5" }}>
                     {txExpanded?"▲ Ver menos":"▼ Ver todos ("+txFilt.length+")"}
                   </div>
                 )}
@@ -768,13 +769,13 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     const pasos=["Persona","Productos","Confirmar"];
     return (
       <div style={{ paddingBottom:32 }}>
-        <div style={{ background:"linear-gradient(135deg,#cc0000,#ff3333)",padding:"16px 16px 20px" }}>
+        <div style={{ background:"linear-gradient(135deg,#e0224e,#fa1e5a)",padding:"16px 16px 20px" }}>
           <BtnBack/>
           <div style={{ fontSize:18,fontWeight:900,color:"#fff",marginBottom:12 }}>📦 Nueva entrega</div>
           <div style={{ display:"flex",gap:6 }}>
             {pasos.map((p,i)=>(
               <div key={i} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4 }}>
-                <div style={{ width:28,height:28,borderRadius:"50%",background:paso>i+1?"rgba(255,255,255,.9)":paso===i+1?"#fff":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:paso===i+1?"#cc0000":"rgba(255,255,255,.7)",transition:"all .2s" }}>
+                <div style={{ width:28,height:28,borderRadius:"50%",background:paso>i+1?"rgba(255,255,255,.9)":paso===i+1?"#fff":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:paso===i+1?"#e0224e":"rgba(255,255,255,.7)",transition:"all .2s" }}>
                   {paso>i+1?"✓":(i+1)}
                 </div>
                 <div style={{ fontSize:9,color:paso===i+1?"#fff":"rgba(255,255,255,.5)",fontWeight:700,textTransform:"uppercase",letterSpacing:".04em" }}>{p}</div>
@@ -791,34 +792,34 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               {contacts.length===0&&<div style={{ textAlign:"center",padding:"30px",color:"#bbb",fontSize:13 }}>Sin contactos en tu Red.</div>}
               {contacts.map(c=>(
                 <div key={c.id} onClick={()=>setVendedoraId(c.id)}
-                  style={{ display:"flex",alignItems:"center",gap:12,padding:"14px",borderRadius:14,border:`2px solid ${vendedoraId===c.id?"#cc0000":"#e0e0e0"}`,background:vendedoraId===c.id?"#ffeaea":"#fff",marginBottom:10,cursor:"pointer",transition:"all .15s" }}>
+                  style={{ display:"flex",alignItems:"center",gap:12,padding:"14px",borderRadius:14,border:`2px solid ${vendedoraId===c.id?"#e0224e":"#e0e0e0"}`,background:vendedoraId===c.id?"#ffeaea":"#fff",marginBottom:10,cursor:"pointer",transition:"all .15s" }}>
                   <Avatar name={c.name} color={c.color} size={46}/>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:800,fontSize:14 }}>{c.name}</div>
                     <div style={{ fontSize:11,color:"#999",marginTop:1 }}>{c.email}</div>
                   </div>
-                  {vendedoraId===c.id&&<div style={{ width:24,height:24,borderRadius:"50%",background:"#cc0000",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14,flexShrink:0 }}>✓</div>}
+                  {vendedoraId===c.id&&<div style={{ width:24,height:24,borderRadius:"50%",background:"#e0224e",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14,flexShrink:0 }}>✓</div>}
                 </div>
               ))}
               <div style={{ background:"#fff3e0",borderRadius:14,padding:"14px",marginTop:4,marginBottom:16 }}>
-                <div style={{ fontSize:12,fontWeight:800,color:"#e06a00",marginBottom:10 }}>💰 Comisión de la vendedora</div>
+                <div style={{ fontSize:12,fontWeight:800,color:"#d97706",marginBottom:10 }}>💰 Comisión de la vendedora</div>
                 <div style={{ display:"flex",alignItems:"center",gap:12 }}>
-                  <input type="range" min="0" max="50" step="5" value={comision} onChange={e=>setComision(Number(e.target.value))} style={{ flex:1,accentColor:"#cc0000" }}/>
-                  <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:26,color:"#cc0000",minWidth:52,textAlign:"right" }}>{comision}%</div>
+                  <input type="range" min="0" max="50" step="5" value={comision} onChange={e=>setComision(Number(e.target.value))} style={{ flex:1,accentColor:"#e0224e" }}/>
+                  <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:26,color:"#e0224e",minWidth:52,textAlign:"right" }}>{comision}%</div>
                 </div>
                 <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10 }}>
                   <div style={{ background:"#fff",borderRadius:10,padding:"10px",textAlign:"center" }}>
                     <div style={{ fontSize:10,color:"#999",fontWeight:700 }}>Ella cobra</div>
-                    <div style={{ fontWeight:900,fontSize:15,color:"#e06a00",marginTop:2 }}>{comision}%</div>
+                    <div style={{ fontWeight:900,fontSize:15,color:"#d97706",marginTop:2 }}>{comision}%</div>
                   </div>
                   <div style={{ background:"#fff",borderRadius:10,padding:"10px",textAlign:"center" }}>
                     <div style={{ fontSize:10,color:"#999",fontWeight:700 }}>Vos cobrás</div>
-                    <div style={{ fontWeight:900,fontSize:15,color:"#00b87a",marginTop:2 }}>{100-comision}%</div>
+                    <div style={{ fontWeight:900,fontSize:15,color:"#10b981",marginTop:2 }}>{100-comision}%</div>
                   </div>
                 </div>
               </div>
               <button onClick={()=>vendedoraId&&setPaso(2)} disabled={!vendedoraId}
-                style={{ width:"100%",padding:"16px",borderRadius:14,border:"none",background:"#cc0000",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:15,cursor:vendedoraId?"pointer":"not-allowed",opacity:vendedoraId?1:.4 }}>
+                style={{ width:"100%",padding:"16px",borderRadius:14,border:"none",background:"#e0224e",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:15,cursor:vendedoraId?"pointer":"not-allowed",opacity:vendedoraId?1:.4 }}>
                 Siguiente → Elegir productos
               </button>
             </div>
@@ -830,7 +831,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:"#ffeaea",borderRadius:12,border:"1px solid rgba(204,0,0,.2)" }}>
                 <Avatar name={vendedora?.name} color={vendedora?.color} size={32}/>
                 <div style={{ fontSize:13,fontWeight:700 }}>Entregando a <strong>{vendedora?.name}</strong></div>
-                <button onClick={()=>setPaso(1)} style={{ marginLeft:"auto",background:"none",border:"none",color:"#cc0000",fontWeight:700,fontSize:12,cursor:"pointer" }}>Cambiar</button>
+                <button onClick={()=>setPaso(1)} style={{ marginLeft:"auto",background:"none",border:"none",color:"#e0224e",fontWeight:700,fontSize:12,cursor:"pointer" }}>Cambiar</button>
               </div>
               <div style={{ position:"relative",marginBottom:12 }}>
                 <span style={{ position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:16,color:"#999" }}>🔍</span>
@@ -845,7 +846,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                   // No mostrar si no hay stock (ya filtrado en prodsFilt, pero por si acaso)
                   if (avail===0&&inC===0) return null;
                   return (
-                    <div key={p.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"11px 13px",borderRadius:14,border:`1.5px solid ${inC>0?"#cc0000":"#e0e0e0"}`,background:inC>0?"#ffeaea":"#fff",marginBottom:8,boxShadow:"0 1px 6px rgba(0,0,0,.05)" }}>
+                    <div key={p.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"11px 13px",borderRadius:14,border:`1.5px solid ${inC>0?"#e0224e":"#e0e0e0"}`,background:inC>0?"#ffeaea":"#fff",marginBottom:8,boxShadow:"0 1px 6px rgba(0,0,0,.05)" }}>
                       <ProdThumb prod={p} size={40}/>
                       <div style={{ flex:1,minWidth:0 }}>
                         <div style={{ fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.name}</div>
@@ -854,9 +855,9 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                       <div style={{ display:"flex",alignItems:"center",border:"1.5px solid #e0e0e0",borderRadius:10,overflow:"hidden",flexShrink:0 }}>
                         <button onClick={()=>setCarrito(c=>{ const n={...c}; if((n[p.id]??0)<=1){delete n[p.id];}else{n[p.id]--;} return n; })}
                           style={{ width:32,height:32,border:"none",background:"#f5f5f5",cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#444" }}>−</button>
-                        <div style={{ minWidth:30,textAlign:"center",fontFamily:"var(--mf)",fontWeight:700,fontSize:14,color:"#cc0000" }}>{inC||0}</div>
+                        <div style={{ minWidth:30,textAlign:"center",fontFamily:"var(--mf)",fontWeight:700,fontSize:14,color:"#e0224e" }}>{inC||0}</div>
                         <button onClick={()=>{ if(inC>=avail)return; setCarrito(c=>({...c,[p.id]:(c[p.id]??0)+1})); }} disabled={inC>=avail}
-                          style={{ width:32,height:32,border:"none",background:inC>=avail?"#f5f5f5":"#ffeaea",cursor:inC>=avail?"not-allowed":"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#cc0000",opacity:inC>=avail?.3:1 }}>+</button>
+                          style={{ width:32,height:32,border:"none",background:inC>=avail?"#f5f5f5":"#ffeaea",cursor:inC>=avail?"not-allowed":"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#e0224e",opacity:inC>=avail?.3:1 }}>+</button>
                       </div>
                     </div>
                   );
@@ -864,7 +865,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               </div>
               {cartUnits>0&&(
                 <div style={{ background:"#e8faf4",border:"1.5px solid rgba(0,184,122,.2)",borderRadius:14,padding:"12px 14px",marginBottom:14 }}>
-                  <div style={{ fontWeight:800,fontSize:12,color:"#009a66",marginBottom:8 }}>✅ {cartUnits} unidades seleccionadas</div>
+                  <div style={{ fontWeight:800,fontSize:12,color:"#059669",marginBottom:8 }}>✅ {cartUnits} unidades seleccionadas</div>
                   {cartItems.map(([pid,qty])=>{ const p=products.find(x=>x.id===pid); return (
                     <div key={pid} style={{ display:"flex",justifyContent:"space-between",fontSize:12,color:"#555",marginBottom:3 }}>
                       <span>{p?.emoji} {p?.name}</span><span style={{fontWeight:700}}>{qty} u.</span>
@@ -875,7 +876,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               <div style={{ display:"flex",gap:10 }}>
                 <button onClick={()=>setPaso(1)} style={{ flex:1,padding:"14px",borderRadius:14,border:"1.5px solid #e0e0e0",background:"#fff",fontFamily:"var(--hf)",fontWeight:700,fontSize:14,cursor:"pointer",color:"#666" }}>← Atrás</button>
                 <button onClick={()=>cartUnits>0&&setPaso(3)} disabled={cartUnits===0}
-                  style={{ flex:2,padding:"14px",borderRadius:14,border:"none",background:"#cc0000",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:14,cursor:cartUnits>0?"pointer":"not-allowed",opacity:cartUnits>0?1:.4 }}>
+                  style={{ flex:2,padding:"14px",borderRadius:14,border:"none",background:"#e0224e",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:14,cursor:cartUnits>0?"pointer":"not-allowed",opacity:cartUnits>0?1:.4 }}>
                   Ver resumen →
                 </button>
               </div>
@@ -891,7 +892,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 <div>
                   <div style={{ fontSize:11,color:"#999",fontWeight:600 }}>Le entregás a</div>
                   <div style={{ fontWeight:900,fontSize:16 }}>{vendedora?.name}</div>
-                  <div style={{ fontSize:11,color:"#00b87a",fontWeight:700,marginTop:1 }}>Su comisión: {comision}% · La tuya: {100-comision}%</div>
+                  <div style={{ fontSize:11,color:"#10b981",fontWeight:700,marginTop:1 }}>Su comisión: {comision}% · La tuya: {100-comision}%</div>
                 </div>
               </div>
               <div style={{ background:"#fff",borderRadius:14,border:"1.5px solid #e0e0e0",marginBottom:12,overflow:"hidden" }}>
@@ -903,7 +904,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                       <div style={{ fontSize:11,color:"#999" }}>{fmt(p?.price??0)} c/u</div>
                     </div>
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:"#cc0000" }}>{qty}u</div>
+                      <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:"#e0224e" }}>{qty}u</div>
                       <div style={{ fontSize:10,color:"#999" }}>{fmt((p?.price??0)*qty)}</div>
                     </div>
                   </div>
@@ -915,7 +916,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                   </div>
                   <div style={{ textAlign:"center" }}>
                     <div style={{ fontSize:10,color:"#999",fontWeight:700 }}>Vos cobrás ({100-comision}%)</div>
-                    <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:15,color:"#00b87a",marginTop:2 }}>{fmt(cartTotal*(100-comision)/100)}</div>
+                    <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:15,color:"#10b981",marginTop:2 }}>{fmt(cartTotal*(100-comision)/100)}</div>
                   </div>
                 </div>
               </div>
@@ -924,7 +925,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               <div style={{ display:"flex",gap:10 }}>
                 <button onClick={()=>setPaso(2)} style={{ flex:1,padding:"14px",borderRadius:14,border:"1.5px solid #e0e0e0",background:"#fff",fontFamily:"var(--hf)",fontWeight:700,fontSize:14,cursor:"pointer",color:"#666" }}>← Atrás</button>
                 <button onClick={crearConsignacion} disabled={saving}
-                  style={{ flex:2,padding:"14px",borderRadius:14,border:"none",background:"#00b87a",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:14,cursor:saving?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 14px rgba(0,184,122,.3)" }}>
+                  style={{ flex:2,padding:"14px",borderRadius:14,border:"none",background:"#10b981",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:14,cursor:saving?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 14px rgba(0,184,122,.3)" }}>
                   {saving?<Spin/>:"✅"} {saving?"Creando...":"Confirmar entrega"}
                 </button>
               </div>
@@ -944,13 +945,13 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     const gan=detRecItems.reduce((s,i)=>s+(i.qty_vendida*i.precio_venta*detRec.comision_pct/100),0);
     return (
       <div style={{ paddingBottom:32 }}>
-        <div style={{ background:"linear-gradient(135deg,#0096c7,#005f8a)",padding:"16px 16px 20px" }}>
+        <div style={{ background:"linear-gradient(135deg,#0ea5e9,#0284c7)",padding:"16px 16px 20px" }}>
           <BtnBack/>
           <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:12 }}>
             <Avatar name={detRec.owner?.name} color={detRec.owner?.color} size={46}/>
             <div>
-              <div style={{ fontSize:17,fontWeight:900,color:"#fff" }}>De: {detRec.owner?.name}</div>
-              <div style={{ fontSize:11,color:"rgba(255,255,255,.75)",marginTop:1 }}>Tu comisión: <strong style={{color:"#7df3c0"}}>{detRec.comision_pct}%</strong> · {new Date(detRec.created_at).toLocaleDateString("es-AR")}</div>
+              <div style={{ fontSize:17,fontWeight:900,color:"#fff" }}>{detRec.owner?.name}</div>
+              <div style={{ fontSize:11,color:"rgba(255,255,255,.85)",marginTop:1 }}>Te dejó estos productos · Ganás el <strong style={{color:"#7df3c0"}}>{detRec.comision_pct}%</strong></div>
             </div>
           </div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8 }}>
@@ -969,7 +970,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           )}
         </div>
         <div style={{ padding:"14px 14px 0" }}>
-          <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:12,textTransform:"uppercase",letterSpacing:".06em" }}>Tocá para registrar cada unidad vendida</div>
+          <div style={{ fontSize:12,fontWeight:800,color:"#888",marginBottom:12,textTransform:"uppercase",letterSpacing:".06em" }}>Cada vez que vendas, tocá "¡Vendí 1!"</div>
           {detRecItems.map(item=>{
             const p=item.product||products.find(x=>x.id===item.product_id);
             const disp=item.qty_enviada-item.qty_vendida-item.qty_devuelta;
@@ -981,10 +982,10 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                   <ProdThumb prod={p} size={46}/>
                   <div style={{ flex:1,minWidth:0 }}>
                     <div style={{ fontWeight:800,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p?.name}</div>
-                    <div style={{ fontSize:11,color:"#999",marginTop:2 }}>Precio: <strong>{fmt(item.precio_venta)}</strong> · Tu comisión: <strong style={{color:"#00b87a"}}>{fmt(miComis)}</strong></div>
+                    <div style={{ fontSize:11,color:"#999",marginTop:2 }}>Precio: <strong>{fmt(item.precio_venta)}</strong> · Tu comisión: <strong style={{color:"#10b981"}}>{fmt(miComis)}</strong></div>
                   </div>
                   <div style={{ textAlign:"center",background:disp>0?"#fff8e1":"#f5f5f5",borderRadius:12,padding:"8px 12px",flexShrink:0 }}>
-                    <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:24,color:disp>0?"#e06a00":"#bbb",lineHeight:1 }}>{disp}</div>
+                    <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:24,color:disp>0?"#d97706":"#bbb",lineHeight:1 }}>{disp}</div>
                     <div style={{ fontSize:9,color:"#999",fontWeight:700,textTransform:"uppercase",marginTop:2 }}>disp.</div>
                   </div>
                 </div>
@@ -997,9 +998,9 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 {disp>0?(
                   <div style={{ display:"grid",gridTemplateColumns:"2fr 1fr",gap:0,borderTop:"1px solid #f5f5f5",marginTop:8 }}>
                     <button disabled={saving} onClick={()=>vender(item,detRec)}
-                      style={{ padding:"18px 12px",border:"none",borderRight:"1px solid #f5f5f5",background:isAnim?"#00b87a":"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:5,transition:"background .2s" }}>
+                      style={{ padding:"18px 12px",border:"none",borderRight:"1px solid #f5f5f5",background:isAnim?"#10b981":"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:5,transition:"background .2s" }}>
                       <span style={{ fontSize:30 }}>{isAnim?"🎉":"💵"}</span>
-                      <div style={{ fontWeight:900,fontSize:14,color:isAnim?"#fff":"#00b87a" }}>¡Vendí 1!</div>
+                      <div style={{ fontWeight:900,fontSize:14,color:isAnim?"#fff":"#10b981" }}>¡Vendí 1!</div>
                       <div style={{ fontSize:10,color:isAnim?"rgba(255,255,255,.8)":"#999" }}>+{fmt(miComis)} para vos</div>
                     </button>
                     <button disabled={saving} onClick={()=>devolver(item,detRec)}
@@ -1012,8 +1013,8 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 ):(
                   <div style={{ padding:"12px 14px",background:item.qty_vendida===item.qty_enviada?"#e8faf4":"#f5f5f5",display:"flex",alignItems:"center",gap:8,borderTop:"1px solid #f0f0f0" }}>
                     <span style={{ fontSize:18 }}>{item.qty_vendida===item.qty_enviada?"🎉":"✓"}</span>
-                    <div style={{ fontSize:12,color:item.qty_vendida===item.qty_enviada?"#009a66":"#888",fontWeight:700 }}>{item.qty_vendida===item.qty_enviada?"¡Todo vendido!":"Todo devuelto"}</div>
-                    {item.qty_vendida>0&&<div style={{ marginLeft:"auto",fontFamily:"var(--mf)",fontWeight:900,fontSize:13,color:"#00b87a" }}>{fmt(item.qty_vendida*miComis)}</div>}
+                    <div style={{ fontSize:12,color:item.qty_vendida===item.qty_enviada?"#059669":"#888",fontWeight:700 }}>{item.qty_vendida===item.qty_enviada?"¡Todo vendido!":"Todo devuelto"}</div>
+                    {item.qty_vendida>0&&<div style={{ marginLeft:"auto",fontFamily:"var(--mf)",fontWeight:900,fontSize:13,color:"#10b981" }}>{fmt(item.qty_vendida*miComis)}</div>}
                   </div>
                 )}
               </div>
@@ -1033,7 +1034,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     const deudaC=deudas.filter(d=>d.item?.consignacion_id===detEnv.id&&!d.pagada).reduce((s,d)=>s+d.monto_a_pagar,0);
     return (
       <div style={{ paddingBottom:32 }}>
-        <div style={{ background:"linear-gradient(135deg,#ff7a00,#e06a00)",padding:"16px 16px 20px" }}>
+        <div style={{ background:"linear-gradient(135deg,#ff7a00,#d97706)",padding:"16px 16px 20px" }}>
           <BtnBack/>
           <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:12 }}>
             <Avatar name={detEnv.vendedora?.name} color={detEnv.vendedora?.color} size={46}/>
@@ -1047,14 +1048,14 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               <div style={{ fontSize:10,color:"rgba(255,255,255,.8)",fontWeight:700,textTransform:"uppercase" }}>💰 Pendiente de cobro</div>
               <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:26,color:"#fff",marginTop:2 }}>{fmt(deudaC)}</div>
               <button onClick={()=>{ abrirLiquidar(detEnv.vendedora); }}
-                style={{ marginTop:8,background:"#fff",border:"none",borderRadius:10,padding:"8px 16px",color:"#cc0000",fontFamily:"var(--hf)",fontWeight:900,fontSize:12,cursor:"pointer" }}>
+                style={{ marginTop:8,background:"#fff",border:"none",borderRadius:10,padding:"8px 16px",color:"#e0224e",fontFamily:"var(--hf)",fontWeight:900,fontSize:12,cursor:"pointer" }}>
                 💰 Cobrar ahora
               </button>
             </div>
           )}
         </div>
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",background:"#fff",borderBottom:"1px solid #eee" }}>
-          {[{lbl:"Enviadas",val:env,col:"#555",bg:"#f8f8f8"},{lbl:"Vendidas",val:vend,col:"#009a66",bg:"#e8faf4"},{lbl:"Pendientes",val:pend,col:"#e06a00",bg:"#fff8e1"}].map((m,i)=>(
+          {[{lbl:"Enviadas",val:env,col:"#555",bg:"#f8f8f8"},{lbl:"Vendidas",val:vend,col:"#059669",bg:"#e8faf4"},{lbl:"Pendientes",val:pend,col:"#d97706",bg:"#fff8e1"}].map((m,i)=>(
             <div key={i} style={{ padding:"12px 8px",background:m.bg,textAlign:"center",borderRight:i<2?"1px solid #eee":"none" }}>
               <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:22,color:m.col }}>{m.val}</div>
               <div style={{ fontSize:9,fontWeight:700,color:m.col,textTransform:"uppercase",letterSpacing:".06em",marginTop:2,opacity:.8 }}>{m.lbl}</div>
@@ -1082,7 +1083,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 <div style={{ padding:"8px 14px 6px" }}>
                   <ProgBar vendidas={item.qty_vendida} devueltas={item.qty_devuelta} total={item.qty_enviada}/>
                   <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginTop:8,textAlign:"center" }}>
-                    {[{val:item.qty_vendida,lbl:"Vendidas",col:"#009a66",bg:"#e8faf4"},{val:disp,lbl:"Disponibles",col:"#e06a00",bg:"#fff8e1"},{val:item.qty_devuelta,lbl:"Devueltas",col:"#888",bg:"#f5f5f5"}].map((m,i)=>(
+                    {[{val:item.qty_vendida,lbl:"Vendidas",col:"#059669",bg:"#e8faf4"},{val:disp,lbl:"Disponibles",col:"#d97706",bg:"#fff8e1"},{val:item.qty_devuelta,lbl:"Devueltas",col:"#888",bg:"#f5f5f5"}].map((m,i)=>(
                       <div key={i} style={{ background:m.bg,borderRadius:8,padding:"7px 4px" }}>
                         <div style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:16,color:m.col }}>{m.val}</div>
                         <div style={{ fontSize:8,fontWeight:700,color:m.col,textTransform:"uppercase",opacity:.8,marginTop:1 }}>{m.lbl}</div>
@@ -1092,8 +1093,8 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 </div>
                 {dItem>0&&(
                   <div style={{ padding:"8px 14px 10px",background:"#fff8e1",borderTop:"1px solid #f0e0b0",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-                    <span style={{ fontSize:11,color:"#e06a00",fontWeight:700 }}>💰 Pendiente este producto</span>
-                    <span style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:14,color:"#e06a00" }}>{fmt(dItem)}</span>
+                    <span style={{ fontSize:11,color:"#d97706",fontWeight:700 }}>💰 Pendiente este producto</span>
+                    <span style={{ fontFamily:"var(--mf)",fontWeight:900,fontSize:14,color:"#d97706" }}>{fmt(dItem)}</span>
                   </div>
                 )}
               </div>
@@ -1111,7 +1112,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     const esValido=montoNum>0&&montoNum<=liqTarget.total+0.01;
     return (
       <div style={{ paddingBottom:32 }}>
-        <div style={{ background:"linear-gradient(135deg,#cc0000,#ff3333)",padding:"16px 16px 24px" }}>
+        <div style={{ background:"linear-gradient(135deg,#e0224e,#fa1e5a)",padding:"16px 16px 24px" }}>
           <BtnBack/>
           <div style={{ display:"flex",alignItems:"center",gap:12 }}>
             <Avatar name={liqTarget.vendedora?.name} color={liqTarget.vendedora?.color} size={48}/>
@@ -1136,7 +1137,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                   <div style={{ fontSize:10,color:"#bbb",marginTop:1 }}>{new Date(d.created_at).toLocaleDateString("es-AR")}</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ fontFamily:"var(--mf)",fontWeight:700,color:"#e06a00" }}>{fmt(d.monto_a_pagar)}</div>
+                  <div style={{ fontFamily:"var(--mf)",fontWeight:700,color:"#d97706" }}>{fmt(d.monto_a_pagar)}</div>
                   <div style={{ fontSize:9,color:"#bbb" }}>de {fmt(d.monto_total)}</div>
                 </div>
               </div>
@@ -1148,17 +1149,17 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           <div style={{ marginBottom:16 }}>
             <div style={{ fontSize:12,fontWeight:800,color:"#555",marginBottom:8 }}>¿Cuánto te pagó?</div>
             <div style={{ position:"relative" }}>
-              <span style={{ position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:20,fontWeight:900,color:"#cc0000",fontFamily:"var(--mf)" }}>$</span>
+              <span style={{ position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:20,fontWeight:900,color:"#e0224e",fontFamily:"var(--mf)" }}>$</span>
               <input type="number" inputMode="decimal" value={liqMonto} onChange={e=>setLiqMonto(e.target.value)}
-                style={{ width:"100%",padding:"16px 14px 16px 36px",borderRadius:14,border:`2px solid ${esValido?"#00b87a":"#e0e0e0"}`,fontFamily:"var(--mf)",fontSize:22,fontWeight:900,outline:"none",color:"#222" }}/>
+                style={{ width:"100%",padding:"16px 14px 16px 36px",borderRadius:14,border:`2px solid ${esValido?"#10b981":"#e0e0e0"}`,fontFamily:"var(--mf)",fontSize:22,fontWeight:900,outline:"none",color:"#222" }}/>
             </div>
             {esParcial&&montoNum>0&&(
-              <div style={{ marginTop:8,padding:"8px 12px",background:"#fff8e1",borderRadius:10,fontSize:11,color:"#e06a00",fontWeight:700 }}>
+              <div style={{ marginTop:8,padding:"8px 12px",background:"#fff8e1",borderRadius:10,fontSize:11,color:"#d97706",fontWeight:700 }}>
                 ⚠️ Pago parcial · quedan {fmt(liqTarget.total-montoNum)} pendientes
               </div>
             )}
             <button onClick={()=>setLiqMonto(liqTarget.total.toFixed(2))}
-              style={{ marginTop:8,background:"#e8faf4",border:"1.5px solid rgba(0,184,122,.3)",borderRadius:10,padding:"8px 16px",color:"#009a66",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer" }}>
+              style={{ marginTop:8,background:"#e8faf4",border:"1.5px solid rgba(0,184,122,.3)",borderRadius:10,padding:"8px 16px",color:"#059669",fontFamily:"var(--hf)",fontWeight:800,fontSize:12,cursor:"pointer" }}>
               ✅ Pago total ({fmt(liqTarget.total)})
             </button>
           </div>
@@ -1169,10 +1170,10 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
             <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
               {[{id:"efectivo",ico:"💵",lbl:"Efectivo"},{id:"transferencia",ico:"📲",lbl:"Transferencia"}].map(m=>(
                 <div key={m.id} onClick={()=>setLiqModo(m.id)}
-                  style={{ display:"flex",alignItems:"center",gap:10,padding:"14px",borderRadius:14,border:`2px solid ${liqModo===m.id?"#cc0000":"#e0e0e0"}`,background:liqModo===m.id?"#ffeaea":"#fff",cursor:"pointer",transition:"all .15s" }}>
+                  style={{ display:"flex",alignItems:"center",gap:10,padding:"14px",borderRadius:14,border:`2px solid ${liqModo===m.id?"#e0224e":"#e0e0e0"}`,background:liqModo===m.id?"#ffeaea":"#fff",cursor:"pointer",transition:"all .15s" }}>
                   <span style={{ fontSize:22 }}>{m.ico}</span>
-                  <span style={{ fontWeight:800,fontSize:13,color:liqModo===m.id?"#cc0000":"#333" }}>{m.lbl}</span>
-                  {liqModo===m.id&&<div style={{ marginLeft:"auto",width:20,height:20,borderRadius:"50%",background:"#cc0000",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12 }}>✓</div>}
+                  <span style={{ fontWeight:800,fontSize:13,color:liqModo===m.id?"#e0224e":"#333" }}>{m.lbl}</span>
+                  {liqModo===m.id&&<div style={{ marginLeft:"auto",width:20,height:20,borderRadius:"50%",background:"#e0224e",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12 }}>✓</div>}
                 </div>
               ))}
             </div>
@@ -1187,7 +1188,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
                 {liqFoto?(
                   <div>
                     <img src={liqFoto} alt="" style={{ maxWidth:"100%",borderRadius:10,maxHeight:180,objectFit:"cover" }}/>
-                    <div style={{ fontSize:11,color:"#00b87a",fontWeight:700,marginTop:8 }}>✅ Comprobante cargado</div>
+                    <div style={{ fontSize:11,color:"#10b981",fontWeight:700,marginTop:8 }}>✅ Comprobante cargado</div>
                   </div>
                 ):(
                   <div>
@@ -1206,7 +1207,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
             placeholder="Nota opcional (ej: pagó el martes en efectivo)" value={liqNota} onChange={e=>setLiqNota(e.target.value)}/>
 
           <button onClick={confirmarLiquidacion} disabled={saving||!esValido}
-            style={{ width:"100%",padding:"18px",borderRadius:16,border:"none",background:esValido?"linear-gradient(135deg,#00b87a,#009a66)":"#e0e0e0",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:16,cursor:!esValido||saving?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:esValido?"0 6px 20px rgba(0,184,122,.3)":"none",transition:"all .2s" }}>
+            style={{ width:"100%",padding:"18px",borderRadius:16,border:"none",background:esValido?"linear-gradient(135deg,#10b981,#059669)":"#e0e0e0",color:"#fff",fontFamily:"var(--hf)",fontWeight:900,fontSize:16,cursor:!esValido||saving?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:esValido?"0 6px 20px rgba(0,184,122,.3)":"none",transition:"all .2s" }}>
             {saving?<Spin/>:<span style={{fontSize:20}}>✅</span>}
             {saving?"Registrando...":(esParcial?`Registrar pago parcial (${fmt(montoNum)})`:"Confirmar cobro completo")}
           </button>
