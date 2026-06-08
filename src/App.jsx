@@ -396,6 +396,9 @@ export default function App() {
   const [srchCat,   setSrchCat]   = useState("");
   const [srchCon,   setSrchCon]   = useState("");
   const [srchLog,   setSrchLog]   = useState("");
+  // Filtro de mes en la pestaña Ventas (offset: 0 = mes actual, -1 = mes anterior, etc.)
+  const [ventasMesOffset, setVentasMesOffset] = useState(0);
+  const [ventasVerTodo,   setVentasVerTodo]   = useState(false);
   // ── PEDIDOS ──────────────────────────────────────────────────────────────
   const [pedidos,    setPedidos]   = useState([]);
   const [pedNombre,  setPedNombre] = useState("");
@@ -2377,12 +2380,16 @@ export default function App() {
 
           {/* ══ VENTAS ══ */}
           {tab==="ventas"&&(function(){
+            var meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
             var now = new Date();
-            var mesActual = now.getMonth();
-            var anioActual = now.getFullYear();
+            // Mes objetivo según el offset elegido
+            var target = new Date(now.getFullYear(), now.getMonth() + ventasMesOffset, 1);
+            var mesActual  = target.getMonth();
+            var anioActual = target.getFullYear();
 
-            // Filter logs for current month — logs is already loaded
+            // Filtrar logs por el mes elegido (o todos si ventasVerTodo)
             var logsDelMes = logs.filter(function(l){
+              if (ventasVerTodo) return true;
               var d = new Date(l.created_at);
               return d.getMonth()===mesActual && d.getFullYear()===anioActual;
             });
@@ -2402,8 +2409,6 @@ export default function App() {
             var totalUnidades = ventaItems.reduce(function(s,v){ return s+v.qty;   }, 0);
             var gananciaTotal = totalVentas * (ganancia/100);
 
-            var meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-
             // Reload logs on demand
             async function recargarVentas() {
               var lg = await sb.from("sale_logs")
@@ -2418,10 +2423,25 @@ export default function App() {
             return (
               <div>
                 <div className="ph">
-                  <div><div className="ph-h">Mis Ventas</div><div className="ph-s">{meses[mesActual]} {anioActual}</div></div>
+                  <div><div className="ph-h">Mis Ventas</div><div className="ph-s">{ventasVerTodo?"Historial completo":(meses[mesActual]+" "+anioActual)}</div></div>
                   <button className="btn btn-xs b-ghost" onClick={recargarVentas}><Ic n="undo" s={13}/>Actualizar</button>
                 </div>
                 <div className="pc">
+
+                  {/* Selector de mes */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                    <button onClick={function(){ setVentasVerTodo(false); setVentasMesOffset(function(o){return o-1;}); }}
+                      style={{width:40,height:40,borderRadius:12,border:"1.5px solid var(--brd)",background:"var(--card)",color:"var(--t2)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,fontWeight:800}}>‹</button>
+                    <div onClick={function(){ setVentasVerTodo(function(v){return !v;}); }}
+                      style={{flex:1,textAlign:"center",padding:"11px",borderRadius:12,border:"1.5px solid "+(ventasVerTodo?"var(--in-m)":"var(--brd)"),background:ventasVerTodo?"var(--in-l)":"var(--card)",cursor:"pointer"}}>
+                      <div style={{fontWeight:800,fontSize:14,color:ventasVerTodo?"var(--in-d)":"var(--t1)"}}>
+                        {ventasVerTodo?"📅 Ver todo el historial":(meses[mesActual]+" "+anioActual)}
+                      </div>
+                      <div style={{fontSize:10,color:"var(--t3)",marginTop:1}}>{ventasVerTodo?"Tocá para volver al mes":"Tocá para ver todo"}</div>
+                    </div>
+                    <button onClick={function(){ setVentasVerTodo(false); setVentasMesOffset(function(o){return Math.min(0,o+1);}); }} disabled={ventasMesOffset>=0&&!ventasVerTodo}
+                      style={{width:40,height:40,borderRadius:12,border:"1.5px solid var(--brd)",background:"var(--card)",color:(ventasMesOffset>=0&&!ventasVerTodo)?"var(--t4)":"var(--t2)",cursor:(ventasMesOffset>=0&&!ventasVerTodo)?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,fontWeight:800,opacity:(ventasMesOffset>=0&&!ventasVerTodo)?.4:1}}>›</button>
+                  </div>
 
                   {/* Summary cards */}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
@@ -2501,7 +2521,7 @@ export default function App() {
                   {/* Detalle por producto */}
                   <div className="card">
                     <div className="card-h">
-                      <div className="card-title"><div className="card-ico" style={{background:"var(--em-l)",color:"var(--em-d)"}}><Ic n="clock" s={14}/></div>Detalle del mes</div>
+                      <div className="card-title"><div className="card-ico" style={{background:"var(--em-l)",color:"var(--em-d)"}}><Ic n="clock" s={14}/></div>{ventasVerTodo?"Detalle (todo)":"Detalle de "+meses[mesActual]}</div>
                       <span className="badge b-em">{ventaItems.length} productos</span>
                     </div>
                     {ventaItems.length===0
