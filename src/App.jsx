@@ -739,21 +739,64 @@ export default function App() {
 
   // ── AUTH INIT ────────────────────────────────────────────────────────────────
   useEffect(function(){
+    // Carga (o espera) el perfil del usuario tras autenticarse.
+    // El trigger de Supabase crea la fila en `users`; reintentamos por si tarda.
+    async function ensureProfile(session, intentos){
+      intentos = intentos || 0;
+      var pr = await sb.from("users").select("*").eq("id", session.user.id).maybeSingle();
+      if (pr.data) {
+        // Completar nombre/foto desde Google si vinieron y faltan
+        var meta = session.user.user_metadata || {};
+        var nombreGoogle = meta.full_name || meta.name || "";
+        var fotoGoogle   = meta.avatar_url || meta.picture || "";
+        var patch = {};
+        if (nombreGoogle && (!pr.data.name || pr.data.name===session.user.email)) patch.name = nombreGoogle;
+        if (fotoGoogle && !pr.data.avatar_url) patch.avatar_url = fotoGoogle;
+        if (Object.keys(patch).length) {
+          var upd = await sb.from("users").update(patch).eq("id", session.user.id).select("*").maybeSingle();
+          if (upd.data) pr.data = upd.data;
+        }
+        setMe(pr.data);
+        await loadData(pr.data.id, pr.data.role);
+        loadCarousels();
+        return true;
+      }
+      // No existe la fila todavía. Reintentar por si un trigger la está creando.
+      if (intentos < 3) {
+        await new Promise(function(r){ setTimeout(r, 400); });
+        return ensureProfile(session, intentos + 1);
+      }
+      // Sigue sin existir → crearla nosotros como revendedora (entra directo)
+      var meta2 = session.user.user_metadata || {};
+      var nuevoNombre = meta2.full_name || meta2.name || (session.user.email||"").split("@")[0];
+      var nuevoColor  = ["#e0224e","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ec4899"][Math.floor(Math.random()*6)];
+      var ins = await sb.from("users").insert({
+        id:         session.user.id,
+        email:      session.user.email,
+        name:       nuevoNombre,
+        role:       "reseller",
+        color:      nuevoColor,
+        avatar_url: meta2.avatar_url || meta2.picture || null
+      }).select("*").maybeSingle();
+      if (ins.data) {
+        setMe(ins.data);
+        await loadData(ins.data.id, ins.data.role);
+        loadCarousels();
+        return true;
+      }
+      return false;
+    }
+
     sb.auth.getSession().then(async function(res){
       var session = res.data.session;
-      if (session) {
-        var pr = await sb.from("users").select("*").eq("id",session.user.id).single();
-        if (pr.data) {
-          setMe(pr.data);
-          await loadData(pr.data.id, pr.data.role);
-          loadCarousels();
-        }
-      }
+      if (session) { await ensureProfile(session); }
       setLoading(false);
     });
 
     var sub = sb.auth.onAuthStateChange(async function(event, session){
       if (event === "SIGNED_OUT") { setMe(null); setProducts([]); setInventory([]); setContacts([]); setLogs([]); }
+      // Al volver de Google (o cualquier login nuevo), asegurar perfil
+      if (event === "SIGNED_IN" && session) { await ensureProfile(session); }
     });
     return function(){ sub.data.subscription.unsubscribe(); };
   }, [loadData]);
@@ -773,6 +816,16 @@ export default function App() {
   }, [me]);
 
   // ── LOGIN ────────────────────────────────────────────────────────────────────
+  async function doLoginGoogle() {
+    setAuthErr("");
+    var res = await sb.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin }
+    });
+    if (res.error) { setAuthErr("No se pudo iniciar con Google: " + res.error.message); shake(); }
+    // El redirect a Google ocurre solo; al volver, onAuthStateChange → ensureProfile
+  }
+
   async function doLogin() {
     setAuthErr("");
     var res = await sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass});
@@ -1654,6 +1707,17 @@ export default function App() {
               <button className="cta cta-em" onClick={doRegister}><Ic n="plus" s={18}/>Crear cuenta gratis</button>
             </div>
           )}
+          {/* ── Login con Google ── */}
+          <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 14px"}}>
+            <div style={{flex:1,height:1,background:"var(--brd)"}}/>
+            <span style={{fontSize:11,color:"var(--t3)",fontWeight:700}}>o</span>
+            <div style={{flex:1,height:1,background:"var(--brd)"}}/>
+          </div>
+          <button onClick={doLoginGoogle}
+            style={{width:"100%",padding:"14px",borderRadius:"var(--r2)",border:"1.5px solid var(--brd)",background:"#fff",color:"var(--t1)",fontFamily:"var(--hf)",fontWeight:800,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5h-1.9V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.6l-6.6-5.6C29.7 34.6 27 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.6 5.1C9.6 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H24v8h11.3c-.8 2.2-2.2 4.1-4 5.4l6.6 5.6C41.4 36.9 44 31 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>
+            Continuar con Google
+          </button>
         </div>
       </div>
       <div className="toast-wrap">{toasts.map(function(t){ return <Toast key={t.id} t={t} remove={rmToast}/>; })}</div>
