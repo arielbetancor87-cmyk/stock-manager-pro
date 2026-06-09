@@ -1796,10 +1796,12 @@ export default function App() {
               <button className="hdr-btn" onClick={doLogout}><Ic n="logout" s={18}/></button>
             </div>
           </div>
+          {tab==="stock"&&(
           <div className="hdr-search">
             <span className="hdr-search-ico"><Ic n="search" s={18}/></span>
-            <input placeholder="Buscar productos, marcas o categorías..." value={srchStock} onChange={function(e){setSrchStock(e.target.value);if(e.target.value)setTab("stock");}} onFocus={function(){setTab("stock");}}/>
+            <input placeholder="Buscar productos, marcas o categorías..." value={srchStock} onChange={function(e){setSrchStock(e.target.value);}}/>
           </div>
+          )}
         </div>
 
         <div className="main">
