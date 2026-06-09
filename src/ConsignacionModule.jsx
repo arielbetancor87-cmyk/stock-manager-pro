@@ -83,6 +83,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
   const [notas,       setNotas]       = useState("");
   const [carrito,     setCarrito]     = useState({});
   const [prodSrch,    setProdSrch]    = useState("");
+  const [recFiltro,   setRecFiltro]   = useState("todos");  // todos | activos | vendidos | devueltos
 
   // detalle
   const [detEnv,      setDetEnv]      = useState(null);
@@ -497,10 +498,46 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
         )}
 
         {/* Recibidas — solo en vista recibidos */}
-        {(view==="main_rec"||view==="main")&&recibActivas.length>0&&(
+        {(view==="main_rec"||view==="main")&&recibActivas.length>0&&(function(){
+          // Clasificar cada consignación para los filtros
+          function estadoDe(c){
+            var t=(c.items||[]).reduce((s,i)=>s+i.qty_enviada,0);
+            var v=(c.items||[]).reduce((s,i)=>s+i.qty_vendida,0);
+            var d=(c.items||[]).reduce((s,i)=>s+i.qty_devuelta,0);
+            var p=t-v-d;
+            return { tieneActivos:p>0, tieneVendidos:v>0, tieneDevueltos:d>0 };
+          }
+          var cntActivos   = recibActivas.filter(c=>estadoDe(c).tieneActivos).length;
+          var cntVendidos  = recibActivas.filter(c=>estadoDe(c).tieneVendidos).length;
+          var cntDevueltos = recibActivas.filter(c=>estadoDe(c).tieneDevueltos).length;
+          var lista = recibActivas.filter(function(c){
+            var e=estadoDe(c);
+            if (recFiltro==="activos")   return e.tieneActivos;
+            if (recFiltro==="vendidos")  return e.tieneVendidos;
+            if (recFiltro==="devueltos") return e.tieneDevueltos;
+            return true;
+          });
+          var filtros=[
+            {id:"todos",     lbl:"Todos",     n:recibActivas.length},
+            {id:"activos",   lbl:"Activos",   n:cntActivos},
+            {id:"vendidos",  lbl:"Vendidos",  n:cntVendidos},
+            {id:"devueltos", lbl:"Devueltos", n:cntDevueltos},
+          ];
+          return (
           <div style={{ marginBottom:22 }}>
-            <div style={{ fontSize:11,fontWeight:800,color:"#888",marginBottom:10,textTransform:"uppercase",letterSpacing:".07em" }}>📥 Productos que tengo para vender</div>
-            {recibActivas.map(consig=>{
+            {/* Tabs de filtro */}
+            <div style={{ display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2 }}>
+              {filtros.map(function(f){
+                var on=recFiltro===f.id;
+                return (
+                  <button key={f.id} onClick={function(){setRecFiltro(f.id);}}
+                    style={{ flexShrink:0,padding:"8px 14px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"var(--hf)",fontWeight:800,fontSize:12.5,background:on?"#e0224e":"#f3f3f6",color:on?"#fff":"#666",transition:"all .15s" }}>
+                    {f.lbl} ({f.n})
+                  </button>
+                );
+              })}
+            </div>
+            {lista.map(consig=>{
               const tot=( consig.items||[]).reduce((s,i)=>s+i.qty_enviada,0);
               const vend=(consig.items||[]).reduce((s,i)=>s+i.qty_vendida,0);
               const dev= (consig.items||[]).reduce((s,i)=>s+i.qty_devuelta,0);
@@ -558,7 +595,8 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
               );
             })}
           </div>
-        )}
+          );
+        })()}
 
         {/* Entregas enviadas — solo en vista enviados */}
         {view!=="main_rec"&&enviActivas.length>0&&(
