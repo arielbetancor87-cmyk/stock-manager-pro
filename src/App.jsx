@@ -126,14 +126,18 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .spin{animation:spin 1s linear infinite}
 
 /* HEADER */
-.hdr{background:var(--grad);padding:0;flex-shrink:0;position:sticky;top:0;z-index:60;box-shadow:0 4px 20px rgba(127,29,29,.25)}
-.hdr-btn{width:40px;height:40px;border-radius:12px;border:none;background:rgba(255,255,255,.18);backdrop-filter:blur(8px);cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;transition:all .18s;flex-shrink:0}
-.hdr-btn:active{background:rgba(255,255,255,.32);transform:scale(.94)}
+.hdr{background:var(--card);padding:0;flex-shrink:0;position:sticky;top:0;z-index:60;box-shadow:0 1px 0 var(--brd)}
+.hdr-btn{width:44px;height:44px;border-radius:14px;border:1.5px solid var(--brd);background:var(--card);cursor:pointer;color:var(--t2);display:flex;align-items:center;justify-content:center;transition:all .18s;flex-shrink:0}
+.hdr-btn:active{background:var(--bg2);transform:scale(.94)}
 
-.hdr-top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px;gap:12px}
 .hdr-search{margin:0 16px 14px;position:relative}
-.hdr-search input{width:100%;padding:14px 54px 14px 46px;border-radius:30px;border:none;background:#fff;color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.10)}
-.hdr-search-ico{position:absolute;left:18px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
+.hdr-search input{width:100%;padding:14px 18px 14px 46px;border-radius:16px;border:1.5px solid var(--brd);background:var(--card);color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;font-weight:600}
+.hdr-search input:focus{border-color:var(--in-m)}
+.hdr-search-ico{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
+.hdr-avatar{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;color:#fff;flex-shrink:0;background:var(--grad)}
+.hdr-hi{font-size:17px;font-weight:900;color:var(--t1);letter-spacing:-.02em;line-height:1.15}
+.hdr-sub{font-size:12px;color:var(--t3);font-weight:600;margin-top:2px;line-height:1.3}
 /* TABBAR */
 .tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tab);background:rgba(255,255,255,.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;z-index:50;box-shadow:0 -1px 0 var(--brd),0 -10px 30px rgba(0,0,0,.08);border-radius:24px 24px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--t4);transition:all .22s cubic-bezier(.34,1.56,.64,1);position:relative;padding:8px 2px 5px;min-width:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
@@ -476,10 +480,12 @@ export default function App() {
   const [carouselEdit, setCarouselEdit] = useState(false);
   const [cTitle,       setCTitle]       = useState("");
   const [cSubtitle,    setCSubtitle]    = useState("");
-  const [cBg,          setCBg]          = useState("#cc0000");
+  const [cBg,          setCBg]          = useState("#e0224e");
   const [cEmoji,       setCEmoji]       = useState("🔥");
   const [cLink,        setCLink]        = useState("");
   const [cEditId,      setCEditId]      = useState(null);
+  const [cImg,         setCImg]         = useState("");      // URL de imagen del slide
+  const [cImgUp,       setCImgUp]       = useState(false);
   const [cDelConf,     setCDelConf]     = useState(null);
   const [cSaving,      setCSaving]      = useState(false);
 
@@ -619,18 +625,34 @@ export default function App() {
     } catch(e) { /* no carousel table yet = ok */ }
   }
 
+  async function uploadCarouselImg(file) {
+    if (!file) return;
+    if (file.size > 3000000) { toast("Imagen muy grande","Máx 3MB","e"); return; }
+    setCImgUp(true);
+    try {
+      var ext = file.name.split(".").pop();
+      var path = "carousel/" + Date.now() + "." + ext;
+      var up = await sb.storage.from("product-images").upload(path, file, { upsert: true });
+      if (up.error) throw up.error;
+      var pub = sb.storage.from("product-images").getPublicUrl(path);
+      setCImg(pub.data.publicUrl);
+      toast("✅ Imagen lista","","s");
+    } catch(e) { toast("Error al subir", e.message, "e"); }
+    finally { setCImgUp(false); }
+  }
+
   async function saveCarousel() {
     if (!cTitle.trim()) return;
     setCSaving(true);
     try {
-      const row = { title: cTitle.trim(), subtitle: cSubtitle.trim(), bg_color: cBg, emoji: cEmoji, link_tab: cLink.trim(), active: true, sort_order: carousels.length };
+      const row = { title: cTitle.trim(), subtitle: cSubtitle.trim(), bg_color: cBg, emoji: cEmoji, image_url: cImg||null, link_tab: cLink.trim(), active: true, sort_order: carousels.length };
       if (cEditId) {
         await sb.from("offer_carousels").update(row).eq("id", cEditId);
       } else {
         await sb.from("offer_carousels").insert(row);
       }
       await loadCarousels();
-      setCTitle(""); setCSubtitle(""); setCBg("#cc0000"); setCEmoji("🔥"); setCLink(""); setCEditId(null);
+      setCTitle(""); setCSubtitle(""); setCBg("#e0224e"); setCEmoji("🔥"); setCLink(""); setCEditId(null); setCImg("");
       toast(cEditId?"Carrusel actualizado":"Carrusel creado","","s");
     } catch(e) { toast("Error",e.message,"e"); }
     finally { setCSaving(false); }
@@ -1657,24 +1679,22 @@ export default function App() {
         {/* HEADER */}
         <div className="hdr">
           <div className="hdr-top">
-            <div style={{cursor:"pointer"}} onClick={function(){setTab("stock");}}>
-              <img src={LOGO_URL} alt="Venta Directa" style={{height:28,maxWidth:160,objectFit:"contain",display:"block",filter:"brightness(0) invert(1)"}} onError={function(e){e.target.style.display='none';}}/>
-              <div style={{fontSize:10,color:"rgba(255,255,255,.75)",marginTop:2,fontWeight:700,letterSpacing:".04em",textTransform:"uppercase"}}>
-                {me.role==="superadmin"?"👑 Administrador":("¡Hola, "+me.name.split(" ")[0]+"!")}
-              </div>
+            <div className="hdr-avatar" style={me.color?{background:me.color}:{}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+            <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={function(){setTab("stock");}}>
+              <div className="hdr-hi">{me.role==="superadmin"?"👑 Administrador":("¡Hola, "+me.name.split(" ")[0]+"!")}</div>
+              <div className="hdr-sub">{me.role==="superadmin"?"Panel de control":(tab==="recibidos"?"Acá ves lo que te entregaron para vender":"¿Lista para vender hoy?")}</div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
               <div style={{position:"relative",cursor:"pointer"}} onClick={function(){setTab("contacts");}}>
                 <button className="hdr-btn"><Ic n="bell" s={18}/></button>
-                {totalBadge>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,background:"#ffcc00",borderRadius:"50%",fontSize:8,fontWeight:900,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--in)"}}>{totalBadge}</div>}
+                {totalBadge>0&&<div style={{position:"absolute",top:-4,right:-4,width:18,height:18,background:"var(--in-m)",borderRadius:"50%",fontSize:9,fontWeight:900,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--card)"}}>{totalBadge}</div>}
               </div>
               <button className="hdr-btn" onClick={doLogout}><Ic n="logout" s={18}/></button>
             </div>
           </div>
           <div className="hdr-search">
             <span className="hdr-search-ico"><Ic n="search" s={18}/></span>
-            <input placeholder="Buscar productos..." value={srchStock} onChange={function(e){setSrchStock(e.target.value);if(e.target.value)setTab("stock");}} onFocus={function(){setTab("stock");}}/>
-            <button onClick={function(){setTab("stock");}} style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",width:38,height:38,borderRadius:"50%",border:"none",background:"var(--grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(224,34,78,.35)"}}><Ic n="search" s={17}/></button>
+            <input placeholder="Buscar productos, marcas o categorías..." value={srchStock} onChange={function(e){setSrchStock(e.target.value);if(e.target.value)setTab("stock");}} onFocus={function(){setTab("stock");}}/>
           </div>
         </div>
 
@@ -1823,8 +1843,8 @@ export default function App() {
 
             // ── Carousel slides (real + default) ────────────────────────────
             var slides = carousels.length>0 ? carousels : [
-              {id:"d1",title:"¡Bienvenida!",subtitle:"Tu catálogo digital",bg_color:"#cc0000",emoji:"🛍️",link_tab:"catalog"},
-              {id:"d2",title:"Compartí tus productos",subtitle:"Enviá lista por WhatsApp",bg_color:"#00b87a",emoji:"📲",link_tab:""},
+              {id:"d1",title:"¡Bienvenida!",subtitle:"Tu catálogo digital",bg_color:"#e0224e",emoji:"🛍️",link_tab:"catalog"},
+              {id:"d2",title:"Compartí tus productos",subtitle:"Enviá lista por WhatsApp",bg_color:"#10b981",emoji:"📲",link_tab:""},
             ];
 
             return (
@@ -1841,16 +1861,18 @@ export default function App() {
                       {slides.map(function(sl,i){
                         return (
                           <div key={sl.id} className="carousel-slide"
-                            style={{width:"calc(100vw - 44px)",height:140,background:sl.bg_color||"#cc0000",cursor:sl.link_tab?"pointer":"default"}}
+                            style={{width:"calc(100vw - 44px)",height:150,background:sl.bg_color||"#e0224e",cursor:sl.link_tab?"pointer":"default",position:"relative",overflow:"hidden"}}
                             onClick={function(){if(sl.link_tab)setTab(sl.link_tab);}}>
-                            <div style={{display:"flex",alignItems:"center",height:"100%",padding:"16px 20px",gap:16}}>
-                              <div style={{fontSize:52,flexShrink:0,filter:"drop-shadow(0 4px 8px rgba(0,0,0,.2))"}}>{sl.emoji||"🔥"}</div>
+                            <div style={{display:"flex",alignItems:"center",height:"100%",padding:"16px 20px",gap:16,position:"relative",zIndex:2}}>
+                              {!sl.image_url&&<div style={{fontSize:52,flexShrink:0,filter:"drop-shadow(0 4px 8px rgba(0,0,0,.2))"}}>{sl.emoji||"🔥"}</div>}
                               <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1.15,marginBottom:5}}>{sl.title}</div>
-                                {sl.subtitle&&<div style={{fontSize:12,color:"rgba(255,255,255,.85)",fontWeight:600}}>{sl.subtitle}</div>}
-                                {sl.link_tab&&<div style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.25)",borderRadius:20,padding:"4px 12px",fontSize:11,color:"#fff",fontWeight:800}}>Ver ahora →</div>}
+                                <div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1.15,marginBottom:5,textShadow:sl.image_url?"0 1px 6px rgba(0,0,0,.4)":"none"}}>{sl.title}</div>
+                                {sl.subtitle&&<div style={{fontSize:12,color:"rgba(255,255,255,.92)",fontWeight:600,textShadow:sl.image_url?"0 1px 4px rgba(0,0,0,.4)":"none"}}>{sl.subtitle}</div>}
+                                {sl.link_tab&&<div style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.95)",borderRadius:20,padding:"5px 14px",fontSize:11,color:sl.bg_color||"#e0224e",fontWeight:800}}>Ver producto →</div>}
                               </div>
+                              {sl.image_url&&<img src={sl.image_url} alt="" style={{height:"118%",maxWidth:"46%",objectFit:"contain",flexShrink:0,filter:"drop-shadow(0 8px 16px rgba(0,0,0,.3))",marginRight:-6}}/>}
                             </div>
+                            {sl.image_url&&<div style={{position:"absolute",inset:0,background:"linear-gradient(90deg,"+(sl.bg_color||"#e0224e")+" 35%,transparent 100%)",zIndex:1}}/>}
                           </div>
                         );
                       })}
@@ -2706,7 +2728,7 @@ export default function App() {
                 <div className="card" style={{marginBottom:12}}>
                   <div className="card-h">
                     <div className="card-title"><div className="card-ico" style={{background:"var(--in-l)",color:"var(--in)"}}><Ic n="img" s={14}/></div>🎠 Carruseles de Ofertas</div>
-                    <button className="btn btn-xs b-in" onClick={function(){setCarouselEdit(function(v){return !v;});setCEditId(null);setCTitle("");setCSubtitle("");setCBg("#cc0000");setCEmoji("🔥");setCLink("");}}>
+                    <button className="btn btn-xs b-in" onClick={function(){setCarouselEdit(function(v){return !v;});setCEditId(null);setCTitle("");setCSubtitle("");setCBg("#e0224e");setCEmoji("🔥");setCLink("");setCImg("");}}>
                       {carouselEdit?"✕ Cerrar":"+ Nuevo"}
                     </button>
                   </div>
@@ -2743,13 +2765,31 @@ export default function App() {
                           <option value="pedidos">Pedidos</option>
                         </select>
                       </div>
+                      {/* Imagen del slide */}
+                      <div className="fld">
+                        <label className="fl">Imagen del producto (opcional)</label>
+                        {cImg?(
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <img src={cImg} alt="" style={{width:60,height:60,borderRadius:12,objectFit:"cover",border:"1.5px solid var(--brd)"}}/>
+                            <button type="button" onClick={function(){setCImg("");}} style={{fontSize:12,color:"var(--cr)",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>Quitar imagen</button>
+                          </div>
+                        ):(
+                          <label style={{display:"block",background:"var(--in-l)",border:"1.5px dashed var(--in-m)",borderRadius:12,padding:"12px",textAlign:"center",cursor:"pointer"}}>
+                            <input type="file" accept="image/*" style={{display:"none"}} onChange={function(e){var f=e.target.files&&e.target.files[0];uploadCarouselImg(f);e.target.value="";}}/>
+                            {cImgUp?<div style={{fontSize:12,color:"var(--in-d)",fontWeight:700}}>Subiendo...</div>
+                              :<div><div style={{fontSize:20,marginBottom:2}}>📸</div><div style={{fontSize:12,fontWeight:700,color:"var(--in-d)"}}>Subir imagen</div></div>}
+                          </label>
+                        )}
+                      </div>
                       {/* Preview */}
-                      <div style={{borderRadius:14,overflow:"hidden",marginBottom:12,height:110,background:cBg,display:"flex",alignItems:"center",padding:"14px 18px",gap:14}}>
-                        <div style={{fontSize:44}}>{cEmoji}</div>
-                        <div>
-                          <div style={{fontSize:17,fontWeight:900,color:"#fff",lineHeight:1.15}}>{cTitle||"Título del carrusel"}</div>
-                          {cSubtitle&&<div style={{fontSize:11,color:"rgba(255,255,255,.85)",marginTop:4,fontWeight:600}}>{cSubtitle}</div>}
+                      <div style={{borderRadius:14,overflow:"hidden",marginBottom:12,height:120,background:cBg,display:"flex",alignItems:"center",padding:"14px 18px",gap:14,position:"relative"}}>
+                        {!cImg&&<div style={{fontSize:44}}>{cEmoji}</div>}
+                        <div style={{flex:1,minWidth:0,position:"relative",zIndex:2}}>
+                          <div style={{fontSize:17,fontWeight:900,color:"#fff",lineHeight:1.15,textShadow:cImg?"0 1px 6px rgba(0,0,0,.4)":"none"}}>{cTitle||"Título del carrusel"}</div>
+                          {cSubtitle&&<div style={{fontSize:11,color:"rgba(255,255,255,.9)",marginTop:4,fontWeight:600,textShadow:cImg?"0 1px 4px rgba(0,0,0,.4)":"none"}}>{cSubtitle}</div>}
                         </div>
+                        {cImg&&<img src={cImg} alt="" style={{height:"120%",maxWidth:"44%",objectFit:"contain",zIndex:2,filter:"drop-shadow(0 6px 12px rgba(0,0,0,.3))"}}/>}
+                        {cImg&&<div style={{position:"absolute",inset:0,background:"linear-gradient(90deg,"+cBg+" 35%,transparent 100%)",zIndex:1}}/>}
                       </div>
                       <button className="cta cta-in" style={{marginTop:0}} onClick={saveCarousel} disabled={cSaving||!cTitle.trim()}>
                         {cSaving?"Guardando...":cEditId?"💾 Guardar cambios":"✅ Crear carrusel"}
@@ -2772,7 +2812,7 @@ export default function App() {
                         </div>
                         <div style={{display:"flex",gap:6,flexShrink:0}}>
                           <button className="btn btn-xs b-ghost" onClick={function(){
-                            setCEditId(sl.id);setCTitle(sl.title);setCSubtitle(sl.subtitle||"");setCBg(sl.bg_color||"#cc0000");setCEmoji(sl.emoji||"🔥");setCLink(sl.link_tab||"");setCarouselEdit(true);
+                            setCEditId(sl.id);setCTitle(sl.title);setCSubtitle(sl.subtitle||"");setCBg(sl.bg_color||"#e0224e");setCEmoji(sl.emoji||"🔥");setCLink(sl.link_tab||"");setCImg(sl.image_url||"");setCarouselEdit(true);
                           }}><Ic n="edit" s={11}/></button>
                           <button className="btn btn-xs" style={{background:sl.active?"var(--am-l)":"var(--em-l)",color:sl.active?"var(--am-d)":"var(--em-d)",border:"1px solid var(--brd)",borderRadius:8,padding:"5px 9px",fontSize:10,fontWeight:700,cursor:"pointer"}} onClick={function(){toggleCarouselActive(sl);}}>
                             {sl.active?"Pausar":"Activar"}
