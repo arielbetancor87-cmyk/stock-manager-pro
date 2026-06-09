@@ -94,7 +94,7 @@ const CSS = `
   --wa:#16a34a;--wa-d:#15803d;--wa-l:#f0fdf4;
 
   /* ── Violeta ── */
-  --pu:#8b5cf6;--pu-d:#7c3aed;
+  --pu:#8b5cf6;--pu-d:#7c3aed;--pu-l:#f3eafe;
 
   /* ── Primario = rosa magenta ── */
   --pri:#e0224e;--pri-d:#c11743;--pri-l:#fff0f3;
@@ -279,6 +279,13 @@ tr:last-child td{border-bottom:none}
 .fav-card-ico{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:25px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)}
 .fav-card-lbl{font-size:13px;font-weight:800;color:var(--t1);line-height:1.3}
 .fav-card-sub{font-size:10.5px;color:var(--t3);font-weight:600;margin-top:1px}
+/* MÉTRICAS SUPERIORES (estilo dashboard) */
+.mtop-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:0 14px;margin-bottom:18px}
+.mtop-card{background:var(--card);border:1px solid var(--brd);border-radius:18px;padding:14px 12px;box-shadow:var(--sh);display:flex;flex-direction:column;gap:8px}
+.mtop-ico{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.mtop-lbl{font-size:10.5px;color:var(--t3);font-weight:700;line-height:1.25}
+.mtop-val{font-size:20px;font-weight:900;color:var(--t1);letter-spacing:-.03em;line-height:1}
+.mtop-foot{font-size:10px;font-weight:700;margin-top:1px}
 /* CATEGORÍAS */
 .cats-wrap{overflow-x:auto;display:flex;gap:10px;padding:0 14px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .cats-wrap::-webkit-scrollbar{display:none}
@@ -1724,6 +1731,12 @@ export default function App() {
               return s+(p?parseFloat(p.price||0)*i.qty_available:0);
             },0);
             const consignaEnv = consignActivas.filter(function(c){ return c.owner_id===me.id || c.vendedora_id===me.id; }).length;
+            // Ventas del mes actual (suma de sale_logs del mes)
+            var _now = new Date();
+            const ventasMes = logs.filter(function(l){
+              var d=new Date(l.created_at);
+              return d.getMonth()===_now.getMonth() && d.getFullYear()===_now.getFullYear();
+            }).reduce(function(s,l){ return s + (parseFloat(l.sale_price||0) * (l.qty||1)); }, 0);
 
             function StockTable(list, isConsigna){
               if(list.length===0) return <div className="empty" style={{padding:"16px"}}>Sin productos.</div>;
@@ -1884,6 +1897,32 @@ export default function App() {
                     )}
                   </div>
                 )}
+
+                {/* ─ MÉTRICAS SUPERIORES ─ */}
+                <div className="mtop-grid">
+                  <div className="mtop-card" onClick={function(){setTab("ventas");}} style={{cursor:"pointer"}}>
+                    <div className="mtop-ico" style={{background:"var(--in-l)",color:"var(--in)"}}><Ic n="chart" s={18}/></div>
+                    <div>
+                      <div className="mtop-lbl">Ventas del mes</div>
+                      <div className="mtop-val">{fmtARS(ventasMes).replace("$ ","$").replace(",00","")}</div>
+                    </div>
+                  </div>
+                  <div className="mtop-card" onClick={function(){if(isAdmin)setTab("catalog");}} style={{cursor:isAdmin?"pointer":"default"}}>
+                    <div className="mtop-ico" style={{background:"var(--pu-l,#f3eafe)",color:"var(--pu)"}}><Ic n="box" s={18}/></div>
+                    <div>
+                      <div className="mtop-lbl">Productos activos</div>
+                      <div className="mtop-val">{products.filter(function(p){return p.is_active!==false;}).length}</div>
+                    </div>
+                  </div>
+                  <div className="mtop-card" onClick={function(){setTab("pedidos");}} style={{cursor:"pointer"}}>
+                    <div className="mtop-ico" style={{background:"var(--em-l)",color:"var(--em-d)"}}><Ic n="list" s={18}/></div>
+                    <div>
+                      <div className="mtop-lbl">Pedidos pendientes</div>
+                      <div className="mtop-val">{pedPendCount}</div>
+                      {pedPendCount>0&&<div className="mtop-foot" style={{color:"var(--in)"}}>Ver pedidos →</div>}
+                    </div>
+                  </div>
+                </div>
 
                 {/* ─ SECCIONES FAVORITAS ─ */}
                 <div style={{marginBottom:18}}>
