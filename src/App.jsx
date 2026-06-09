@@ -418,6 +418,7 @@ export default function App() {
   const [pedProdId,  setPedProdId] = useState("");
   const [pedQty,     setPedQty]    = useState(1);
   const [pedNota,    setPedNota]   = useState("");
+  const [pedSena,    setPedSena]   = useState("");
   const [pedSrch,    setPedSrch]   = useState("");
   const [pedPSrch,   setPedPSrch]  = useState("");
   const [pedFilter,  setPedFilter] = useState("todos"); // todos|pendiente|entregado
@@ -974,6 +975,8 @@ export default function App() {
   async function doAddPedido() {
     if (!pedNombre.trim()) return;
     var prod = products.find(function(p){ return p.id===pedProdId; });
+    var totalPed = prod ? (parseFloat(prod.price||0) * pedQty) : 0;
+    var senaPed  = parseFloat(pedSena||0) || 0;
     var row = {
       user_id:       me.id,
       nombre:        pedNombre.trim(),
@@ -983,14 +986,44 @@ export default function App() {
       product_sku:   prod ? prod.sku   : null,
       product_price: prod ? prod.price : 0,
       qty:           pedQty,
+      total:         totalPed,
+      sena:          senaPed,
+      pagado:        false,
       nota:          pedNota.trim()||null,
       estado:        "pendiente",
     };
-    var { data, error } = await sb.from("pedidos").insert(row).select().single();
+    var { data, error } = await sb.from("pedidos").insert(row).select("*, product:product_id(id,name,sku,price,emoji)").single();
     if (error) { toast("Error al guardar pedido", error.message, "e"); return; }
     setPedidos(function(prev){ return [data, ...prev]; });
-    setPedNombre(""); setPedWA(""); setPedProdId(""); setPedQty(1); setPedNota(""); setPedPSrch("");
+    setPedNombre(""); setPedWA(""); setPedProdId(""); setPedQty(1); setPedNota(""); setPedPSrch(""); setPedSena("");
+    setShowPedForm(false);
     toast("Pedido guardado!", pedNombre.trim()+(prod?" — "+prod.name:""), "s");
+  }
+
+  async function doMarcarPagado(id) {
+    var { error } = await sb.from("pedidos").update({ pagado: true }).eq("id", id);
+    if (error) { toast("Error", error.message, "e"); return; }
+    setPedidos(function(prev){ return prev.map(function(p){ return p.id===id ? Object.assign({},p,{pagado:true}) : p; }); });
+    toast("✅ Pedido pagado", "", "s");
+  }
+
+  function waPedidoGracias(ped) {
+    var prod = ped.product || products.find(function(p){ return p.id===ped.product_id; });
+    var total = ped.total || (ped.product_price||0) * (ped.qty||1);
+    var sena  = ped.sena || 0;
+    var saldo = Math.max(0, total - sena);
+    var msg = "¡Hola " + ped.nombre + "! 🌸\n\n";
+    msg += "¡Gracias por tu compra! 💕\n\n";
+    if (prod) msg += "🛍️ " + (ped.qty||1) + "× " + prod.name + "\n";
+    if (total>0) msg += "💰 Total: " + fmtARS(total) + "\n";
+    if (sena>0) {
+      msg += "✅ Seña recibida: " + fmtARS(sena) + "\n";
+      msg += "📌 Saldo a pagar: " + fmtARS(saldo) + "\n";
+    }
+    msg += "\n¡Cualquier cosa me avisás! 😊";
+    var tel = (ped.wa||"").replace(/\D/g,"");
+    var url = "https://wa.me/" + tel + "?text=" + encodeURIComponent(msg);
+    window.open(url, "_blank");
   }
 
   async function doEntregarPedido(id) {
@@ -2182,7 +2215,7 @@ export default function App() {
           {/* ══ PEDIDOS ══ */}
           {tab==="pedidos"&&(function(){
             var pedFilt = pedidos.filter(function(p){
-              var q = srch.toLowerCase();
+              var q = (srchStock||"").toLowerCase();
               if (!q) return true;
               return (p.nombre||"").toLowerCase().includes(q)||(p.product_name||"").toLowerCase().includes(q);
             });
@@ -2197,6 +2230,10 @@ export default function App() {
                 cancelado:  {bg:"#fde8ea",col:"#c1121f",lbl:"❌ Cancelado"},
               };
               var sc = statusCfg[ped.estado]||statusCfg.pendiente;
+              var pTotal = ped.total || (ped.product_price||0)*(ped.qty||1);
+              var pSena  = ped.sena || 0;
+              var pSaldo = Math.max(0, pTotal - pSena);
+              var conDeuda = pSaldo>0 && !ped.pagado && ped.estado!=="cancelado";
               return (
                 <div style={{background:"var(--card)",borderRadius:16,border:"1.5px solid var(--brd)",marginBottom:10,overflow:"hidden",boxShadow:"var(--sh)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px"}}>
@@ -2214,14 +2251,50 @@ export default function App() {
                       <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(ped.created_at).toLocaleDateString("es-AR")}</div>
                     </div>
                   </div>
-                  {ped.estado==="pendiente"&&(
+                  {/* Desglose financiero */}
+                  {pTotal>0&&ped.estado!=="cancelado"&&(
+                    <div style={{padding:"0 14px 10px"}}>
+                      <div style={{background:conDeuda?"#fff7ed":"#ecfdf5",borderRadius:12,padding:"10px 12px"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:pSena>0?4:0}}>
+                          <span style={{color:"var(--t2)",fontWeight:700}}>Total</span>
+                          <span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--t1)"}}>{fmtARS(pTotal)}</span>
+                        </div>
+                        {pSena>0&&(
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                            <span style={{color:"#059669",fontWeight:700}}>Seña pagada</span>
+                            <span style={{fontFamily:"var(--mf)",fontWeight:800,color:"#059669"}}>− {fmtARS(pSena)}</span>
+                          </div>
+                        )}
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,paddingTop:pSena>0?6:0,borderTop:pSena>0?"1px solid rgba(0,0,0,.06)":"none"}}>
+                          <span style={{fontWeight:800,color:conDeuda?"#d97706":"#059669"}}>{ped.pagado?"✅ Pagado":(conDeuda?"🔴 Saldo pendiente":"Saldo")}</span>
+                          <span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:15,color:conDeuda?"#d97706":"#059669"}}>{ped.pagado?fmtARS(0):fmtARS(pSaldo)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Acciones */}
+                  {ped.estado!=="cancelado"&&(
                     <div style={{display:"flex",borderTop:"1px solid var(--brd)"}}>
-                      <button onClick={function(){doEntregarPedido(ped.id);}} style={{flex:1,padding:"10px",border:"none",background:"#e8faf4",color:"#009a66",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                        <Ic n="check" s={14}/>Entregar
-                      </button>
-                      <button onClick={function(){doCancelarPedido(ped.id);}} style={{flex:1,padding:"10px",border:"none",borderLeft:"1px solid var(--brd)",background:"#fde8ea",color:"#c1121f",fontFamily:"var(--hf)",fontWeight:800,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                        <Ic n="x" s={14}/>Cancelar
-                      </button>
+                      {ped.wa&&(
+                        <button onClick={function(){waPedidoGracias(ped);}} style={{flex:1,padding:"10px",border:"none",borderRight:"1px solid var(--brd)",background:"#f0fdf4",color:"#16a34a",fontFamily:"var(--hf)",fontWeight:800,fontSize:12.5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                          <Ic n="wa" s={14}/>Gracias
+                        </button>
+                      )}
+                      {conDeuda&&(
+                        <button onClick={function(){doMarcarPagado(ped.id);}} style={{flex:1,padding:"10px",border:"none",borderRight:"1px solid var(--brd)",background:"#eff6ff",color:"#0284c7",fontFamily:"var(--hf)",fontWeight:800,fontSize:12.5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                          <Ic n="check" s={14}/>Pagado
+                        </button>
+                      )}
+                      {ped.estado==="pendiente"&&(
+                        <button onClick={function(){doEntregarPedido(ped.id);}} style={{flex:1,padding:"10px",border:"none",borderRight:"1px solid var(--brd)",background:"#e8faf4",color:"#009a66",fontFamily:"var(--hf)",fontWeight:800,fontSize:12.5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                          <Ic n="check" s={14}/>Entregar
+                        </button>
+                      )}
+                      {ped.estado==="pendiente"&&(
+                        <button onClick={function(){doCancelarPedido(ped.id);}} style={{flex:1,padding:"10px",border:"none",background:"#fde8ea",color:"#c1121f",fontFamily:"var(--hf)",fontWeight:800,fontSize:12.5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                          <Ic n="x" s={14}/>Cancelar
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2267,6 +2340,13 @@ export default function App() {
                           <QtyControl val={pedQty} set={setPedQty}/>
                         </div>
                       )}
+                      {pedProdId&&(
+                        <div style={{background:"var(--bg2)",borderRadius:12,padding:"10px 12px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <span style={{fontSize:12,color:"var(--t2)",fontWeight:700}}>Total del pedido</span>
+                          <span style={{fontFamily:"var(--mf)",fontWeight:900,fontSize:15,color:"var(--in)"}}>{fmtARS((products.find(function(p){return p.id===pedProdId;})||{}).price*pedQty||0)}</span>
+                        </div>
+                      )}
+                      <div className="fld"><label className="fl">Seña / pago adelantado (opcional)</label><input className="fi" type="number" placeholder="0" value={pedSena} onChange={function(e){setPedSena(e.target.value);}}/></div>
                       <div className="fld"><label className="fl">Nota</label><input className="fi" placeholder="Ej: talla, color, etc." value={pedNota} onChange={function(e){setPedNota(e.target.value);}}/></div>
                       <button className="cta cta-am" onClick={doAddPedido} disabled={!pedNombre.trim()}>
                         <Ic n="check" s={16}/>Guardar pedido
