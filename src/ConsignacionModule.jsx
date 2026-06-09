@@ -101,7 +101,7 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
   const fileRef = useRef();
 
   const [dbError, setDbError] = useState(null);
-  useEffect(() => { if (me) loadAll(); }, [me]);
+  useEffect(() => { if (me && me.id) loadAll(); }, [me && me.id]);
 
   async function loadAll() {
     setLoading(true);
@@ -121,9 +121,15 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
       const recRes = await sb.from("consignaciones")
         .select("*, owner:owner_id(id,name,color), items:consignacion_items(*, product:product_id(id,name,sku,price,emoji,photo_url))")
         .eq("vendedora_id",me.id).neq("status","cancelada").order("created_at",{ascending:false});
-      const deuRes = await sb.from("consignacion_deudas")
+      // Deudas: intentar con el join anidado al producto; si falla, traer sin él
+      let deuRes = await sb.from("consignacion_deudas")
         .select("*, vendedora:vendedora_id(id,name,color), item:item_id(id,product_id,consignacion_id,precio_venta), product:item_id(product_id(id,name,sku,emoji,price))")
         .eq("owner_id",me.id).order("created_at",{ascending:false});
+      if (deuRes.error) {
+        deuRes = await sb.from("consignacion_deudas")
+          .select("*, vendedora:vendedora_id(id,name,color), item:item_id(id,product_id,consignacion_id,precio_venta)")
+          .eq("owner_id",me.id).order("created_at",{ascending:false});
+      }
       setEnviadas(envRes.data||[]);
       setRecibidas(recRes.data||[]);
       setDeudas(deuRes.data||[]);
