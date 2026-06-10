@@ -811,7 +811,7 @@ export default function App() {
       var PAGE = 800;
       var from = 0;
       while (true) {
-        var pr = await sb.from("products").select("*").eq("is_active",true).order("name").range(from, from+PAGE-1);
+        var pr = await sb.from("products").select("id,sku,name,price,category,emoji,photo_url,is_active,created_by,updated_at").eq("is_active",true).order("name").range(from, from+PAGE-1);
         if (pr.data && pr.data.length > 0) {
           allProds = allProds.concat(pr.data);
           if (pr.data.length < PAGE) break;
@@ -822,9 +822,9 @@ export default function App() {
 
       // Todas las demás consultas en paralelo
       var queries = [
-        sb.from("inventory").select("*, products(*)").eq("user_id",userId),
+        sb.from("inventory").select("id,user_id,product_id,qty_available,qty_sold,stock_recibido,products(id,sku,name,price,emoji,photo_url,category)").eq("user_id",userId),
         sb.from("contacts").select("*, contact:contact_id(id,name,email,color,role)").eq("user_id",userId),
-        sb.from("transfers").select("*, product:product_id(id,name,emoji,photo_url,sku,price,category), from_user:from_user_id(id,name,email,color), to_user:to_user_id(id,name,email,color)").or("from_user_id.eq."+userId+",to_user_id.eq."+userId).order("created_at",{ascending:false}),
+        sb.from("transfers").select("id,product_id,from_user_id,to_user_id,qty,status,created_at,product:product_id(id,name,emoji,photo_url,sku,price,category),from_user:from_user_id(id,name,color),to_user:to_user_id(id,name,color)").or("from_user_id.eq."+userId+",to_user_id.eq."+userId).order("created_at",{ascending:false}).limit(100),
         sb.from("notifications").select("*").eq("to_user_id",userId).order("created_at",{ascending:false}).limit(50),
         sb.from("sale_logs").select("*, product:product_id(name,sku,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(100),
         sb.from("pedidos").select("*, product:product_id(id,name,sku,price,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(200),
