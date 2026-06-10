@@ -813,51 +813,46 @@ export default function App() {
         var pr = await sb.from("products").select("*").eq("is_active",true).order("name").range(from, from+PAGE-1);
         if (pr.data && pr.data.length > 0) {
           allProds = allProds.concat(pr.data);
-          if (pr.data.length < PAGE) break; // last page
+          if (pr.data.length < PAGE) break;
           from += PAGE;
         } else { break; }
       }
       setProducts(allProds);
 
-      // My inventory
-      var inv = await sb.from("inventory").select("*, products(*)").eq("user_id",userId);
-      if (inv.data) setInventory(inv.data);
+      // Todas las demás consultas en paralelo
+      var queries = [
+        sb.from("inventory").select("*, products(*)").eq("user_id",userId),
+        sb.from("contacts").select("*, contact:contact_id(id,name,email,color,role)").eq("user_id",userId),
+        sb.from("transfers").select("*, product:product_id(id,name,emoji,photo_url,sku,price,category), from_user:from_user_id(id,name,email,color), to_user:to_user_id(id,name,email,color)").or("from_user_id.eq."+userId+",to_user_id.eq."+userId).order("created_at",{ascending:false}),
+        sb.from("notifications").select("*").eq("to_user_id",userId).order("created_at",{ascending:false}).limit(50),
+        sb.from("sale_logs").select("*, product:product_id(name,sku,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(100),
+        sb.from("pedidos").select("*, product:product_id(id,name,sku,price,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(200),
+        sb.from("consignaciones").select("id,status,owner_id,vendedora_id,comision_pct,created_at").eq("owner_id",userId).neq("status","cancelada"),
+        sb.from("consignaciones").select("id,status,owner_id,vendedora_id,comision_pct,created_at").eq("vendedora_id",userId).neq("status","cancelada"),
+      ];
 
-      // My contacts
-      var cts = await sb.from("contacts").select("*, contact:contact_id(id,name,email,color,role)").eq("user_id",userId);
-      if (cts.data) setContacts(cts.data.map(function(c){ return c.contact; }).filter(Boolean));
-
-      // Transfers (sent and received)
-      var tx = await sb.from("transfers").select("*, product:product_id(id,name,emoji,photo_url,sku,price,category), from_user:from_user_id(id,name,email,color), to_user:to_user_id(id,name,email,color)").or("from_user_id.eq."+userId+",to_user_id.eq."+userId).order("created_at",{ascending:false});
-      if (tx.data) setTransfers(tx.data);
-
-      // Notifications
-      var nf = await sb.from("notifications").select("*").eq("to_user_id",userId).order("created_at",{ascending:false}).limit(50);
-      if (nf.data) setNotifs(nf.data);
-
-      // My logs
-      var lg = await sb.from("sale_logs").select("*, product:product_id(name,sku,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(100);
-      var ped = await sb.from("pedidos").select("*, product:product_id(id,name,sku,price,emoji)").eq("user_id",userId).order("created_at",{ascending:false}).limit(200);
-      if (!ped.error) setPedidos(ped.data||[]);
-      if (lg.data) setLogs(lg.data);
-
-      // Admin only
       if (userRole === "superadmin") {
-        var us = await sb.from("users").select("*").order("created_at",{ascending:false});
-        if (us.data) setAllUsers(us.data);
-        var stats = await sb.from("admin_dashboard").select("*").single();
+        queries.push(sb.from("users").select("*").order("created_at",{ascending:false}));
+        queries.push(sb.from("admin_dashboard").select("*").single());
+      }
+
+      var results = await Promise.all(queries);
+      var inv = results[0], cts = results[1], tx = results[2], nf = results[3];
+      var lg = results[4], ped = results[5], envC = results[6], recC = results[7];
+
+      if (inv.data)   setInventory(inv.data);
+      if (cts.data)   setContacts(cts.data.map(function(c){ return c.contact; }).filter(Boolean));
+      if (tx.data)    setTransfers(tx.data);
+      if (nf.data)    setNotifs(nf.data);
+      if (lg.data)    setLogs(lg.data);
+      if (!ped.error) setPedidos(ped.data||[]);
+      setConsignActivas([...(envC.data||[]),...(recC.data||[])]);
+
+      if (userRole === "superadmin") {
+        var us = results[8]; var stats = results[9];
+        if (us.data)    setAllUsers(us.data);
         if (stats.data) setAdminStats(stats.data);
       }
-      // Consignaciones activas (enviadas + recibidas)
-      try {
-        const [envC, recC] = await Promise.all([
-          sb.from("consignaciones").select("id,status,owner_id,vendedora_id,comision_pct,created_at")
-            .eq("owner_id",userId).neq("status","cancelada"),
-          sb.from("consignaciones").select("id,status,owner_id,vendedora_id,comision_pct,created_at")
-            .eq("vendedora_id",userId).neq("status","cancelada"),
-        ]);
-        setConsignActivas([...(envC.data||[]),...(recC.data||[])]);
-      } catch(e) { /* tablas pueden no existir aún */ }
     } catch(e) { console.error("loadData error:", e); }
   }, []);
 
