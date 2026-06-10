@@ -731,6 +731,7 @@ export default function App() {
       await sb.from("sale_logs").delete().neq("id", NEQ);
       await sb.from("transfers").delete().neq("id", NEQ);
       await sb.from("stock_movements").delete().neq("id", NEQ);
+      await sb.from("pedidos").delete().neq("id", NEQ);
       await sb.from("inventory").update({qty_available:0, qty_sold:0, stock_recibido:0}).neq("id", NEQ);
       toast("Datos reseteados", "Stock y movimientos en cero", "s");
       setResetConf(false);
