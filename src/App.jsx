@@ -794,18 +794,26 @@ export default function App() {
       return false;
     }
 
+    // Red de seguridad: nunca quedar trabado en "Conectando..."
+    var bootSafety = setTimeout(function(){ setLoading(false); }, 6000);
+
     sb.auth.getSession().then(async function(res){
       var session = res.data.session;
-      if (session) { await ensureProfile(session); }
+      // Apagar el splash apenas sabemos si hay sesión o no; el perfil carga aparte
+      clearTimeout(bootSafety);
+      setLoading(false);
+      if (session) { try { await ensureProfile(session); } catch(e){ /* no bloquear */ } }
+    }).catch(function(){
+      clearTimeout(bootSafety);
       setLoading(false);
     });
 
     var sub = sb.auth.onAuthStateChange(async function(event, session){
       if (event === "SIGNED_OUT") { setMe(null); setProducts([]); setInventory([]); setContacts([]); setLogs([]); }
       // Al volver de Google (o cualquier login nuevo), asegurar perfil
-      if (event === "SIGNED_IN" && session) { await ensureProfile(session); }
+      if (event === "SIGNED_IN" && session) { try { await ensureProfile(session); } catch(e){ /* no bloquear */ } }
     });
-    return function(){ sub.data.subscription.unsubscribe(); };
+    return function(){ clearTimeout(bootSafety); sub.data.subscription.unsubscribe(); };
   }, [loadData]);
 
   // ── REALTIME ────────────────────────────────────────────────────────────────
