@@ -410,6 +410,7 @@ export default function App() {
   const [showPass,  setShowPass]  = useState(false);
   const [authErr,   setAuthErr]   = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
+  const [authOk,    setAuthOk]    = useState(false);  // login exitoso, cargando perfil
   const [authShake, setAuthShake] = useState(false);
 
   // ── DATA ────────────────────────────────────────────────────────────────────
@@ -876,7 +877,7 @@ export default function App() {
           if (upd.data) pr.data = upd.data;
         }
         setMe(pr.data);
-        await loadData(pr.data.id, pr.data.role);
+        loadData(pr.data.id, pr.data.role);  // no await — no bloquear
         loadCarousels();
         return true;
       }
@@ -922,7 +923,7 @@ export default function App() {
     });
 
     var sub = sb.auth.onAuthStateChange(async function(event, session){
-      if (event === "SIGNED_OUT") { setMe(null); setProducts([]); setInventory([]); setContacts([]); setLogs([]); }
+      if (event === "SIGNED_OUT") { setMe(null); setAuthOk(false); setProducts([]); setInventory([]); setContacts([]); setLogs([]); }
       // Al volver de Google (o cualquier login nuevo), asegurar perfil
       if (event === "SIGNED_IN" && session) { try { await ensureProfile(session); } catch(e){ /* no bloquear */ } }
     });
@@ -964,6 +965,7 @@ export default function App() {
         setAuthErr(res.error.message==="Invalid login credentials"?"Email o contraseña incorrectos.":res.error.message);
         shake();
       }
+      if (!res.error) setAuthOk(true);  // cambiar pantalla de inmediato
       // onAuthStateChange se encarga de cargar el perfil y los datos
     } catch(e) {
       setAuthErr("No se pudo entrar: " + (e&&e.message||e));
@@ -1839,6 +1841,14 @@ export default function App() {
   );
 
   // ── LOGIN SCREEN ──────────────────────────────────────────────────────────────
+  if (!me && authOk) return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:"var(--bg,#f5f5f5)"}}>
+      <style>{CSS}</style>
+      <div style={{fontSize:32,marginBottom:16}}>⏳</div>
+      <div style={{fontSize:16,fontWeight:700,color:"#e0224e"}}>Cargando tu cuenta...</div>
+    </div>
+  );
+
   if (!me) return (
     <div>
       <style>{CSS}</style>
