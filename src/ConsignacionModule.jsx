@@ -106,23 +106,28 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
   async function loadAll() {
     setLoading(true);
     setDbError(null);
+    // Red de seguridad: pase lo que pase, apagar loading a los 8s
+    var safety = setTimeout(function(){ setLoading(false); }, 8000);
     try {
-      const envRes = await sb.from("consignaciones")
+      // Enviadas
+      var envRes = await sb.from("consignaciones")
         .select("*, vendedora:vendedora_id(id,name,color), items:consignacion_items(*, product:product_id(id,name,sku,price,emoji,photo_url))")
         .eq("owner_id",me.id).neq("status","cancelada").order("created_at",{ascending:false});
       if (envRes.error) {
-        if (envRes.error.code==="42P01"||envRes.error.message?.includes("does not exist")) {
-          setDbError("falta_tabla");
-          setLoading(false);
-          return;
+        if (envRes.error.code==="42P01"||(envRes.error.message||"").includes("does not exist")) {
+          setDbError("falta_tabla"); clearTimeout(safety); setLoading(false); return;
         }
-        throw envRes.error;
       }
-      const recRes = await sb.from("consignaciones")
+      setEnviadas(envRes.data||[]);
+
+      // Recibidas
+      var recRes = await sb.from("consignaciones")
         .select("*, owner:owner_id(id,name,color), items:consignacion_items(*, product:product_id(id,name,sku,price,emoji,photo_url))")
         .eq("vendedora_id",me.id).neq("status","cancelada").order("created_at",{ascending:false});
-      // Deudas: intentar con el join anidado al producto; si falla, traer sin él
-      let deuRes = await sb.from("consignacion_deudas")
+      setRecibidas(recRes.data||[]);
+
+      // Deudas — con join anidado, con fallback sin él
+      var deuRes = await sb.from("consignacion_deudas")
         .select("*, vendedora:vendedora_id(id,name,color), item:item_id(id,product_id,consignacion_id,precio_venta), product:item_id(product_id(id,name,sku,emoji,price))")
         .eq("owner_id",me.id).order("created_at",{ascending:false});
       if (deuRes.error) {
@@ -130,19 +135,22 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
           .select("*, vendedora:vendedora_id(id,name,color), item:item_id(id,product_id,consignacion_id,precio_venta)")
           .eq("owner_id",me.id).order("created_at",{ascending:false});
       }
-      setEnviadas(envRes.data||[]);
-      setRecibidas(recRes.data||[]);
       setDeudas(deuRes.data||[]);
-      // Cargar historial de transfers
+
+      // Transfers (historial) — opcional, no bloquea
       try {
-        const txRes = await sb.from("transfers")
+        var txRes = await sb.from("transfers")
           .select("*, product:product_id(id,name,sku,emoji,photo_url), from_user:from_user_id(id,name,color), to_user:to_user_id(id,name,color)")
           .or("from_user_id.eq."+me.id+",to_user_id.eq."+me.id)
           .order("created_at",{ascending:false}).limit(50);
         setTransfers(txRes.data||[]);
       } catch(e) { /* ignore */ }
-    } catch(e) { toast("Error cargando",""+e.message,"e"); }
-    finally { setLoading(false); }
+    } catch(e) {
+      toast("Error cargando", ""+(e&&e.message||e), "e");
+    } finally {
+      clearTimeout(safety);
+      setLoading(false);
+    }
   }
 
   // ── CARGA MANUAL DE STOCK PROPIO ─────────────────────────────────────────────
@@ -230,41 +238,29 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
     try {
       const p=item.product||products.find(x=>x.id===item.product_id);
       const precio=item.precio_venta;
-      // Regla de negocio: la vendedora se queda con comision_pct% del precio.
-      // La deuda al propietario es el resto. Ej: 30% comisión → deuda = 70% del precio.
       const pct     = (consig.comision_pct!=null ? consig.comision_pct : 30) / 100;
-      const comis   = Math.round(precio * pct * 100) / 100;       // ganancia vendedora
-      const aPagar  = Math.round((precio - comis) * 100) / 100;   // deuda al propietario
-      await sb.from("consignacion_items").update({ qty_vendida:item.qty_vendida+1 }).eq("id",item.id);
-      const { data:vInv } = await sb.from("inventory").select("*").eq("user_id",consig.vendedora_id).eq("product_id",item.product_id).maybeSingle();
-      if (vInv) await sb.from("inventory").update({ qty_available:Math.max(0,vInv.qty_available-1), qty_sold:(vInv.qty_sold||0)+1, stock_recibido:Math.max(0,(vInv.stock_recibido||0)-1) }).eq("id",vInv.id);
-      var ahora = new Date().toISOString();
-      await sb.from("consignacion_deudas").insert({
-        consignacion_id: consig.id,
-        item_id:         item.id,
-        owner_id:        consig.owner_id,
-        vendedora_id:    consig.vendedora_id,
-        qty:             1,
-        monto_total:     precio,
-        comision:        comis,
-        monto_a_pagar:   aPagar,
-        pagada:          false,
-        fecha_venta:     ahora,
-        fecha_envio_consigna: consig.created_at,
-        notas_auditoria: "Venta registrada por " + me.name + " — Precio: " + fmt(precio) + " | Deuda propietario: " + fmt(aPagar) + " | Ganancia vendedora: " + fmt(comis)
+      const comis   = Math.round(precio * pct * 100) / 100;
+      const aPagar  = Math.round((precio - comis) * 100) / 100;
+      const nota = "Venta registrada por " + me.name + " — Precio: " + fmt(precio) + " | Deuda propietario: " + fmt(aPagar) + " | Ganancia vendedora: " + fmt(comis);
+      // Una sola llamada atómica (rápida y confiable)
+      const r = await sb.rpc("rpc_vender_consigna", {
+        p_item_id: item.id, p_consig_id: consig.id,
+        p_owner_id: consig.owner_id, p_vendedora_id: consig.vendedora_id,
+        p_product_id: item.product_id, p_precio: precio,
+        p_comis: comis, p_apagar: aPagar,
+        p_fecha_envio: consig.created_at, p_nota: nota
       });
-      await sb.from("sale_logs").insert({ user_id:consig.vendedora_id, product_id:item.product_id, qty:1, sale_price:precio, source:"consignment" });
-      await logMov(sb, me, {
-        product_id: item.product_id, qty: -1,
-        estado_anterior: "en_consigna", estado_nuevo: "vendido",
-        related_user_id: consig.owner_id,
-        referencia_tipo: "venta_consigna", referencia_id: item.id,
-        nota: "Vendido en consigna — comisión: " + fmt(comis)
-      });
-      await sb.from("notifications").insert({ to_user_id:consig.owner_id, from_name:me.name, type:"sale", message:`💰 ${me.name} vendió 1× "${p?.name}". Rendición: ${fmt(aPagar)} (tu comisión: ${fmt(comis)})` });
-      toast(`💰 ¡Vendido!`,`+${fmt(comis)} para vos`,"s");
-      await reloadDetRec(consig); loadAll();
-    } catch(err) { toast("Error",err.message,"e"); }
+      if (r.error) throw r.error;
+      // Actualización optimista local (sin recargar todo)
+      setRecibidas(function(prev){ return prev.map(function(c){
+        if (c.id!==consig.id) return c;
+        return Object.assign({}, c, { items: (c.items||[]).map(function(it){ return it.id===item.id ? Object.assign({},it,{qty_vendida:it.qty_vendida+1}) : it; }) });
+      }); });
+      toast("💰 ¡Vendido!", "+"+fmt(comis)+" para vos", "s");
+      // Notificación y ledger en segundo plano (no bloquean)
+      sb.from("notifications").insert({ to_user_id:consig.owner_id, from_name:me.name, type:"sale", message:`💰 ${me.name} vendió 1× "${p?.name}". Rendición: ${fmt(aPagar)} (tu comisión: ${fmt(comis)})` });
+      logMov(sb, me, { product_id: item.product_id, qty: -1, estado_anterior: "en_consigna", estado_nuevo: "vendido", related_user_id: consig.owner_id, referencia_tipo: "venta_consigna", referencia_id: item.id, nota: "Vendido en consigna — comisión: " + fmt(comis) });
+    } catch(err) { toast("Error", err.message, "e"); }
     finally { setSaving(false); setTimeout(()=>setSellAnim(null),700); }
   }
 
