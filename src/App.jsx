@@ -630,6 +630,14 @@ export default function App() {
   // ── DELETE USER (admin only) ─────────────────────────────────────────────────
   const [delUserConf, setDelUserConf] = useState(null);
 
+  // ── IMPORTAR PRECIOS ──────────────────────────────────────────────────────
+  const [pxFile,    setPxFile]    = useState(null);   // nombre del archivo
+  const [pxRows,    setPxRows]    = useState([]);     // [{sku, name, oldPrice, newPrice, ok, err}]
+  const [pxSaving,  setPxSaving]  = useState(false);
+  const [pxDone,    setPxDone]    = useState(false);
+  const [resetConf, setResetConf] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+
   async function doDeleteUser(userId, userName) {
     // Delete from public.users (CASCADE will handle related data)
     var r = await sb.from("users").delete().eq("id", userId);
@@ -641,6 +649,94 @@ export default function App() {
     toast("Usuario eliminado", userName, "i");
     setDelUserConf(null);
     await loadData(me.id, me.role);
+  }
+
+
+  // ── IMPORTAR PRECIOS POR EXCEL ────────────────────────────────────────────
+  function pxHandleFile(file) {
+    if (!file) return;
+    setPxFile(file.name); setPxRows([]); setPxDone(false);
+    var reader = new FileReader();
+    reader.onload = async function(ev) {
+      var raw;
+      try {
+        var wb = XLSX.read(ev.target.result, {type:"array"});
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+      } catch(e) { toast("Error al leer el archivo","","e"); return; }
+      var hdr = raw[0] ? raw[0].map(function(c){ return String(c).toLowerCase().trim(); }) : [];
+      var iSku   = hdr.findIndex(function(h){ return h.includes("sku") || h.includes("digo"); });
+      var iName  = hdr.findIndex(function(h){ return h.includes("nombre") || h.includes("name") || h.includes("producto"); });
+      var iPrice = hdr.findIndex(function(h){ return h.includes("precio") || h.includes("price"); });
+      if (iSku < 0 && iName < 0) { toast("No se encontró columna SKU o Nombre","Revisá el encabezado","e"); return; }
+      if (iPrice < 0) { toast("No se encontró columna Precio","El Excel debe tener Precio","e"); return; }
+      var { data: prods } = await sb.from("products").select("id,sku,name,price");
+      var prodBySku = {};
+      var prodByName = {};
+      (prods||[]).forEach(function(p){
+        if (p.sku) prodBySku[String(p.sku).toLowerCase().trim()] = p;
+        prodByName[p.name.toLowerCase().trim()] = p;
+      });
+      var rows = [];
+      for (var i = 1; i < raw.length; i++) {
+        var r = raw[i];
+        if (!r || r.every(function(c){ return !c; })) continue;
+        var sku   = iSku >= 0  ? String(r[iSku]||"").trim()  : "";
+        var name  = iName >= 0 ? String(r[iName]||"").trim() : "";
+        var priceRaw = String(r[iPrice]||"").replace(",",".").replace(/[^0-9.]/g,"");
+        var newPrice = parseFloat(priceRaw);
+        var match = (sku ? prodBySku[sku.toLowerCase()] : null) || (name ? prodByName[name.toLowerCase()] : null);
+        rows.push({
+          sku, name: name || (match ? match.name : ""),
+          oldPrice: match ? match.price : null,
+          newPrice: isNaN(newPrice) ? null : newPrice,
+          prodId:   match ? match.id : null,
+          ok:       !!match && !isNaN(newPrice) && newPrice > 0,
+          err:      !match ? "Sin coincidencia" : (isNaN(newPrice)||newPrice<=0 ? "Precio invalido" : "")
+        });
+      }
+      setPxRows(rows);
+      var validos = rows.filter(function(r){ return r.ok; }).length;
+      toast(validos + " precios listos", rows.length - validos + " sin coincidencia", validos > 0 ? "s" : "e");
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function doPxImport() {
+    var validos = pxRows.filter(function(r){ return r.ok; });
+    if (!validos.length) return;
+    setPxSaving(true);
+    var errores = 0;
+    for (var i = 0; i < validos.length; i++) {
+      var r = validos[i];
+      var res = await sb.from("products").update({price: r.newPrice}).eq("id", r.prodId);
+      if (res.error) errores++;
+    }
+    setPxSaving(false);
+    if (errores === 0) {
+      toast("Precios actualizados", validos.length + " productos", "s");
+      setPxDone(true);
+    } else {
+      toast("Actualizados " + (validos.length - errores) + "/" + validos.length, errores + " errores", "e");
+    }
+  }
+
+  async function doResetData() {
+    setResetBusy(true);
+    try {
+      var NEQ = "00000000-0000-0000-0000-000000000000";
+      await sb.from("consignacion_deudas").delete().neq("id", NEQ);
+      await sb.from("consignacion_items").delete().neq("id", NEQ);
+      await sb.from("consignaciones").delete().neq("id", NEQ);
+      await sb.from("sale_logs").delete().neq("id", NEQ);
+      await sb.from("transfers").delete().neq("id", NEQ);
+      await sb.from("stock_movements").delete().neq("id", NEQ);
+      await sb.from("inventory").update({qty_available:0, qty_sold:0, qty_reserved:0, stock_recibido:0}).neq("id", NEQ);
+      toast("Datos reseteados", "Stock y movimientos en cero", "s");
+      setResetConf(false);
+      await loadData(me.id, me.role);
+    } catch(e) { toast("Error en reset", ""+e.message, "e"); }
+    setResetBusy(false);
   }
 
   // ── PERSISTENCIA LOCAL ─────────────────────────────────────────────────────
@@ -3079,6 +3175,74 @@ export default function App() {
                             </tr>); })}</tbody></table></div>
                   )}
                 </div>
+
+                {/* ── IMPORTAR PRECIOS POR EXCEL ── */}
+                <div className="card" style={{marginBottom:12}}>
+                  <div className="card-h">
+                    <div className="card-title"><div className="card-ico" style={{background:"var(--am-l)",color:"var(--am-d)"}}><Ic n="upload" s={14}/></div>📊 Actualizar precios por Excel</div>
+                    {pxDone&&<button className="btn btn-xs b-ghost" onClick={function(){setPxFile(null);setPxRows([]);setPxDone(false);}}>Nuevo</button>}
+                  </div>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{fontSize:12,color:"var(--t3)",marginBottom:10}}>Subí un Excel con columnas <b>SKU</b> (o <b>Nombre</b>) y <b>Precio</b>. Solo se actualizan los precios, sin tocar el stock.</div>
+                    {!pxFile&&(
+                      <label style={{display:"block",background:"var(--am-l)",border:"1.5px dashed var(--am-m,#f0b429)",borderRadius:12,padding:"16px",textAlign:"center",cursor:"pointer"}}>
+                        <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={function(e){var f=e.target.files&&e.target.files[0];if(f)pxHandleFile(f);e.target.value="";}}/>
+                        <div style={{fontSize:24,marginBottom:4}}>📂</div>
+                        <div style={{fontSize:13,fontWeight:700,color:"var(--am-d)"}}>Elegir Excel o CSV</div>
+                        <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>Columnas requeridas: SKU o Nombre + Precio</div>
+                      </label>
+                    )}
+                    {pxFile&&<div style={{fontSize:12,color:"var(--t2)",fontWeight:700,marginBottom:8}}>📎 {pxFile}</div>}
+                    {pxRows.length>0&&(
+                      <div style={{marginTop:8}}>
+                        <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                          <span style={{background:"var(--em-l)",color:"var(--em-d)",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ {pxRows.filter(function(r){return r.ok;}).length} válidos</span>
+                          {pxRows.filter(function(r){return !r.ok;}).length>0&&<span style={{background:"var(--cr-l,#ffe0e5)",color:"var(--cr)",borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700}}>❌ {pxRows.filter(function(r){return !r.ok;}).length} sin coincidencia</span>}
+                        </div>
+                        <div style={{maxHeight:220,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:10,marginBottom:12}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                            <thead><tr style={{background:"var(--bg2)"}}><th style={{padding:"6px 10px",textAlign:"left",fontWeight:700}}>Producto</th><th style={{padding:"6px 10px",textAlign:"right",fontWeight:700}}>Precio actual</th><th style={{padding:"6px 10px",textAlign:"right",fontWeight:700}}>Precio nuevo</th><th style={{padding:"6px 10px",textAlign:"center",fontWeight:700}}></th></tr></thead>
+                            <tbody>
+                              {pxRows.map(function(r,i){
+                                return (
+                                  <tr key={i} style={{borderTop:"1px solid var(--brd)",opacity:r.ok?1:0.5}}>
+                                    <td style={{padding:"6px 10px",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||r.sku||"-"}</td>
+                                    <td style={{padding:"6px 10px",textAlign:"right",color:"var(--t3)"}}>{r.oldPrice!=null?"$"+r.oldPrice:"-"}</td>
+                                    <td style={{padding:"6px 10px",textAlign:"right",fontWeight:700,color:r.ok?(r.newPrice>r.oldPrice?"var(--cr)":"var(--em-d)"):"var(--t4)"}}>{r.newPrice!=null?"$"+r.newPrice:"-"}</td>
+                                    <td style={{padding:"6px 10px",textAlign:"center",fontSize:10}}>{r.ok?"✅":<span style={{color:"var(--cr)",fontWeight:700}}>{r.err}</span>}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        {!pxDone&&<button className="cta cta-in" onClick={doPxImport} disabled={pxSaving||pxRows.filter(function(r){return r.ok;}).length===0}>{pxSaving?"Actualizando...":"💾 Actualizar "+pxRows.filter(function(r){return r.ok;}).length+" precios"}</button>}
+                        {pxDone&&<div style={{textAlign:"center",padding:12,fontSize:14,fontWeight:700,color:"var(--em-d)"}}>✅ Precios actualizados correctamente</div>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── ZONA PELIGROSA: RESET ── */}
+                <div className="card" style={{marginBottom:12,border:"1.5px solid var(--cr)"}}>
+                  <div className="card-h"><div className="card-title"><div className="card-ico" style={{background:"var(--cr-l,#ffe0e5)",color:"var(--cr)"}}><Ic n="trash" s={14}/></div>⚠️ Zona peligrosa</div></div>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{fontSize:12,color:"var(--t3)",marginBottom:12}}>Borra <b>todo el stock, movimientos y consignaciones</b> para empezar desde cero. <b>No se eliminan productos ni usuarios.</b></div>
+                    {!resetConf&&(
+                      <button className="btn b-cr" style={{width:"100%",padding:"12px",fontWeight:700,borderRadius:12}} onClick={function(){setResetConf(true);}}>🗑️ Resetear todos los datos</button>
+                    )}
+                    {resetConf&&(
+                      <div style={{background:"var(--cr-l,#ffe0e5)",borderRadius:12,padding:"14px",textAlign:"center"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"var(--cr)",marginBottom:12}}>¿Estás seguro? Esta acción no se puede deshacer.</div>
+                        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+                          <button className="btn b-cr" style={{padding:"10px 24px",fontWeight:700}} onClick={doResetData} disabled={resetBusy}>{resetBusy?"Borrando...":"Sí, resetear"}</button>
+                          <button className="btn b-ghost" style={{padding:"10px 24px"}} onClick={function(){setResetConf(false);}} disabled={resetBusy}>Cancelar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
