@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo, useMemo } from "react";
+import React, { useState, useEffect, useCallback, memo, useMemo } from "react";
 import ConsignacionModule from "./ConsignacionModule";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
@@ -37,6 +37,8 @@ const IcBase = function Ic(props) {
   switch(n) {
     case "box":     return <svg {...p}><polyline points="21,8 21,21 3,21 3,8"/><rect x="1" y="3" width="22" height="5"/></svg>;
     case "plus":    return <svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+    case "home":    return <svg {...p}><path d="M3 9.5L12 3l9 6.5"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>;
+    case "dots":    return <svg {...p}><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>;
     case "send":    return <svg {...p}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9 22,2"/></svg>;
     case "upload":  return <svg {...p}><polyline points="16,16 12,12 8,16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>;
     case "list":    return <svg {...p}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
@@ -147,6 +149,9 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .tab-lbl{font-size:9px;font-weight:700;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px;transition:all .2s}
 .tab.on .tab-lbl{color:var(--in-m)}
 .tab-dot{position:absolute;top:5px;right:calc(50% - 22px);width:7px;height:7px;border-radius:50%;background:var(--cr);border:2px solid white;box-shadow:0 0 0 1px var(--cr-l)}
+.tab-fab-wrap{flex:1;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.tab-fab{width:56px;height:56px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 6px 20px rgba(224,34,78,.42);margin-top:-26px;border:4px solid var(--card);transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
+.tab-fab-wrap:active .tab-fab{transform:scale(.9)}
 
 /* PAGE */
 .ph{padding:20px 16px 10px;display:flex;align-items:flex-end;justify-content:space-between}
@@ -401,7 +406,8 @@ export default function App() {
   const [adminStats, setAdminStats] = useState(null);
 
   // ── UI ──────────────────────────────────────────────────────────────────────
-  const [tab,       setTab]       = useState("stock");
+  const [tab,       setTab]       = useState("inicio");
+  const [masMenu,   setMasMenu]   = useState(false);
   const [toasts,    setToasts]    = useState([]);
   const [srchStock, setSrchStock] = useState("");
   const [srchCat,   setSrchCat]   = useState("");
@@ -1796,7 +1802,7 @@ export default function App() {
               <button className="hdr-btn" onClick={doLogout}><Ic n="logout" s={18}/></button>
             </div>
           </div>
-          {tab==="stock"&&(
+          {(tab==="stock"||tab==="inicio")&&(
           <div className="hdr-search">
             <span className="hdr-search-ico"><Ic n="search" s={18}/></span>
             <input placeholder="Buscar productos, marcas o categorías..." value={srchStock} onChange={function(e){setSrchStock(e.target.value);}}/>
@@ -1807,7 +1813,7 @@ export default function App() {
         <div className="main">
 
           {/* ══ STOCK ══ */}
-          {tab==="stock"&&(function(){
+          {(tab==="stock"||tab==="inicio")&&(function(){
             // Separar por source: 'own' = stock propio, 'consigna' = recibido de otro usuario
             const ownStock      = inventory.filter(function(i){
               return i.user_id===me.id && (i.source==="own" || !i.source) && i.qty_available>0;
@@ -3040,19 +3046,73 @@ export default function App() {
 
         {/* TAB BAR */}
         <nav className="tabbar">
-          {TABS.map(function(t){
-            var hasDot = (t.id==="contacts"&&totalBadge>0)||(t.id==="pedidos"&&pedPendCount>0);
-            return (
-              <div key={t.id} className={"tab"+(tab===t.id?" on":"")} onClick={function(){setTab(t.id);}}>
-                <div className="tab-bub" style={{position:"relative"}}>
-                  <Ic n={t.ico} s={22}/>
-                  {hasDot&&<div style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"var(--cr)",border:"2px solid var(--card)"}}/>}
+          {(function(){
+            var izq = [
+              {id:"inicio", lbl:"Inicio", ico:"home"},
+              {id:"stock",  lbl:"Stock",  ico:"box"},
+            ];
+            var der = [
+              {id:"pedidos", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
+              {id:"__mas",   lbl:"Más",     ico:"dots"},
+            ];
+            function TabItem(t){
+              return (
+                <div key={t.id} className={"tab"+((tab===t.id||(t.id==="__mas"&&masMenu))?" on":"")}
+                  onClick={function(){ if(t.id==="__mas"){ setMasMenu(true); } else { setMasMenu(false); setTab(t.id); } }}>
+                  <div className="tab-bub" style={{position:"relative"}}>
+                    <Ic n={t.ico} s={22}/>
+                    {t.dot&&<div style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"var(--cr)",border:"2px solid var(--card)"}}/>}
+                  </div>
+                  <span className="tab-lbl">{t.lbl}</span>
                 </div>
-                <span className="tab-lbl">{t.lbl}</span>
-              </div>
+              );
+            }
+            return (
+              <React.Fragment>
+                {izq.map(TabItem)}
+                {/* Botón central [+] */}
+                <div className="tab-fab-wrap" onClick={function(){ setMasMenu(false); setTab("cargar"); }}>
+                  <div className="tab-fab"><Ic n="plus" s={26}/></div>
+                </div>
+                {der.map(TabItem)}
+              </React.Fragment>
             );
-          })}
+          })()}
         </nav>
+
+        {/* ── MENÚ "MÁS" ── */}
+        {masMenu&&(
+          <div className="ovl" style={{alignItems:"flex-end",zIndex:120}} onClick={function(e){if(e.target===e.currentTarget)setMasMenu(false);}}>
+            <div style={{background:"var(--card)",borderRadius:"28px 28px 0 0",width:"100%",maxWidth:600,padding:"10px 16px calc(env(safe-area-inset-bottom,0px) + 20px)",boxShadow:"var(--sh3)",animation:"fadeUp .3s cubic-bezier(.16,1,.3,1)"}}>
+              <div style={{width:40,height:4,borderRadius:2,background:"var(--brd2)",margin:"6px auto 14px"}}/>
+              <div style={{fontSize:16,fontWeight:900,color:"var(--t1)",marginBottom:14,paddingLeft:4}}>Más opciones</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                {(function(){
+                  var items = [
+                    {id:"enviados",  lbl:"Enviados",  ico:"send",  col:"var(--in)"},
+                    {id:"recibidos", lbl:"Recibidos", ico:"users", col:"var(--bl-d)"},
+                    {id:"ventas",    lbl:"Ventas",    ico:"chart", col:"var(--em-d)"},
+                    {id:"contacts",  lbl:"Red",       ico:"clock", col:"var(--pu)"},
+                  ];
+                  if (isAdmin) {
+                    items.push({id:"catalog", lbl:"Catálogo", ico:"list",   col:"var(--am-d)"});
+                    items.push({id:"importar",lbl:"Importar", ico:"upload", col:"var(--t2)"});
+                    items.push({id:"admin",   lbl:"Admin",    ico:"shield", col:"var(--in-d)"});
+                  }
+                  return items.map(function(it){
+                    return (
+                      <div key={it.id} onClick={function(){ setTab(it.id); setMasMenu(false); }}
+                        style={{background:"var(--bg2)",borderRadius:18,padding:"16px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:8,cursor:"pointer"}}>
+                        <div style={{width:46,height:46,borderRadius:14,background:"var(--card)",display:"flex",alignItems:"center",justifyContent:"center",color:it.col,boxShadow:"var(--sh)"}}><Ic n={it.ico} s={22}/></div>
+                        <span style={{fontSize:12,fontWeight:700,color:"var(--t1)"}}>{it.lbl}</span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* RETURN CONSIGNA MODAL */}
