@@ -882,7 +882,7 @@ export default function App() {
       }
       // No existe la fila todavía. Reintentar varias veces (la sesión RLS tarda).
       if (intentos < 2) {
-        await new Promise(function(r){ setTimeout(r, 300); });
+        await new Promise(function(r){ setTimeout(r, 200); });
         return ensureProfile(session, intentos + 1);
       }
       // Tras varios intentos sin encontrarla → crearla como revendedora.
@@ -962,28 +962,13 @@ export default function App() {
       var res = await sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass});
       if (res.error) {
         setAuthErr(res.error.message==="Invalid login credentials"?"Email o contraseña incorrectos.":res.error.message);
-        shake(); setLoggingIn(false); return;
+        shake();
       }
-      var uid = res.data.user.id;
-      // Buscar el perfil con reintentos (la sesión RLS tarda un instante)
-      var perfil = null;
-      for (var i=0; i<5 && !perfil; i++) {
-        var pr = await sb.from("users").select("*").eq("id",uid).maybeSingle();
-        if (pr.data) { perfil = pr.data; break; }
-        await new Promise(function(r){ setTimeout(r, 500); });
-      }
-      // Fallback: si no se pudo leer el perfil, usar los datos básicos del auth
-      if (!perfil) {
-        var meta = res.data.user.user_metadata || {};
-        perfil = { id: uid, email: res.data.user.email, name: meta.name||meta.full_name||(res.data.user.email||"").split("@")[0], role: "reseller", color: "#e0224e" };
-      }
-      setMe(perfil);
-      // No llamamos loadData acá — onAuthStateChange → ensureProfile lo hace
-      toast("Bienvenido, "+perfil.name+"!","","s");
-      setLoggingIn(false);
+      // onAuthStateChange se encarga de cargar el perfil y los datos
     } catch(e) {
       setAuthErr("No se pudo entrar: " + (e&&e.message||e));
       shake();
+    } finally {
       setLoggingIn(false);
     }
   }
