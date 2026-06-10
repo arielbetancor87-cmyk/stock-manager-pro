@@ -409,6 +409,7 @@ export default function App() {
   const [aPass2,    setAPass2]    = useState("");
   const [showPass,  setShowPass]  = useState(false);
   const [authErr,   setAuthErr]   = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
   const [authShake, setAuthShake] = useState(false);
 
   // ── DATA ────────────────────────────────────────────────────────────────────
@@ -787,26 +788,27 @@ export default function App() {
         loadCarousels();
         return true;
       }
-      // No existe la fila todavía. Reintentar por si un trigger la está creando.
-      if (intentos < 3) {
-        await new Promise(function(r){ setTimeout(r, 400); });
+      // No existe la fila todavía. Reintentar varias veces (la sesión RLS tarda).
+      if (intentos < 5) {
+        await new Promise(function(r){ setTimeout(r, 500); });
         return ensureProfile(session, intentos + 1);
       }
-      // Sigue sin existir → crearla nosotros como revendedora (entra directo)
+      // Tras varios intentos sin encontrarla → crearla como revendedora.
+      // upsert evita romper si la fila en realidad ya existía (timing RLS).
       var meta2 = session.user.user_metadata || {};
       var nuevoNombre = meta2.full_name || meta2.name || (session.user.email||"").split("@")[0];
       var nuevoColor  = ["#e0224e","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ec4899"][Math.floor(Math.random()*6)];
-      var ins = await sb.from("users").insert({
+      var ins = await sb.from("users").upsert({
         id:         session.user.id,
         email:      session.user.email,
         name:       nuevoNombre,
         role:       "reseller",
         color:      nuevoColor,
         avatar_url: meta2.avatar_url || meta2.picture || null
-      }).select("*").maybeSingle();
+      }, { onConflict: "id", ignoreDuplicates: false }).select("*").maybeSingle();
       if (ins.data) {
         setMe(ins.data);
-        await loadData(ins.data.id, ins.data.role);
+        loadData(ins.data.id, ins.data.role);
         loadCarousels();
         return true;
       }
@@ -861,23 +863,36 @@ export default function App() {
   }
 
   async function doLogin() {
+    if (loggingIn) return;
     setAuthErr("");
-    var res = await sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass});
-    if (res.error) { setAuthErr(res.error.message==="Invalid login credentials"?"Email o contraseña incorrectos.":res.error.message); shake(); return; }
-    // Retry loop: wait for RLS session to settle
-    var pr = null;
-    for (var attempt=0; attempt<3; attempt++) {
-      await new Promise(function(r){ setTimeout(r, 600); });
-      pr = await sb.from("users").select("*").eq("id",res.data.user.id).single();
-      if (pr.data) break;
-    }
-    if (pr && pr.data) {
-      setMe(pr.data);
-      await loadData(pr.data.id, pr.data.role);
-      toast("Bienvenido, "+pr.data.name+"!","","s");
-    } else {
-      setAuthErr("No se encontró tu perfil. Intentá de nuevo en unos segundos.");
+    setLoggingIn(true);
+    try {
+      var res = await sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass});
+      if (res.error) {
+        setAuthErr(res.error.message==="Invalid login credentials"?"Email o contraseña incorrectos.":res.error.message);
+        shake(); setLoggingIn(false); return;
+      }
+      var uid = res.data.user.id;
+      // Buscar el perfil con reintentos (la sesión RLS tarda un instante)
+      var perfil = null;
+      for (var i=0; i<5 && !perfil; i++) {
+        var pr = await sb.from("users").select("*").eq("id",uid).maybeSingle();
+        if (pr.data) { perfil = pr.data; break; }
+        await new Promise(function(r){ setTimeout(r, 500); });
+      }
+      // Fallback: si no se pudo leer el perfil, usar los datos básicos del auth
+      if (!perfil) {
+        var meta = res.data.user.user_metadata || {};
+        perfil = { id: uid, email: res.data.user.email, name: meta.name||meta.full_name||(res.data.user.email||"").split("@")[0], role: "reseller", color: "#e0224e" };
+      }
+      setMe(perfil);
+      loadData(perfil.id, perfil.role);
+      toast("Bienvenido, "+perfil.name+"!","","s");
+    } catch(e) {
+      setAuthErr("No se pudo entrar: " + (e&&e.message||e));
       shake();
+    } finally {
+      setLoggingIn(false);
     }
   }
 
@@ -1764,7 +1779,7 @@ export default function App() {
             <div>
               <div className="fld"><label className="fl">Email</label><input className="fi" type="email" placeholder="tu@email.com" value={aEmail} onChange={function(e){setAEmail(e.target.value);setAuthErr("");}} onKeyDown={function(e){if(e.key==="Enter")doLogin();}}/></div>
               <div className="fld"><label className="fl">Contraseña</label><div className="pw-wrap"><input className="fi" style={{paddingRight:42}} type={showPass?"text":"password"} placeholder="••••••" value={aPass} onChange={function(e){setAPass(e.target.value);setAuthErr("");}} onKeyDown={function(e){if(e.key==="Enter")doLogin();}}/><button className="pw-eye" type="button" onClick={function(){setShowPass(function(v){return !v;});}}><Ic n={showPass?"eyeoff":"eye"} s={16}/></button></div></div>
-              <button className="cta cta-in" onClick={doLogin}><Ic n="check" s={18}/>Entrar</button>
+              <button className="cta cta-in" onClick={doLogin} disabled={loggingIn}><Ic n="check" s={18}/>{loggingIn?"Entrando...":"Entrar"}</button>
             </div>
           ):(
             <div>
