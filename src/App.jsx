@@ -960,15 +960,22 @@ export default function App() {
     setAuthErr("");
     setLoggingIn(true);
     try {
-      var res = await sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass});
+      // Timeout de 12 segundos — si Supabase no responde, mostrar error claro
+      var timeout = new Promise(function(_, rej){
+        setTimeout(function(){ rej(new Error("Tiempo de espera agotado. Verificá tu conexión a internet e intentá de nuevo."));  }, 12000);
+      });
+      var res = await Promise.race([
+        sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass}),
+        timeout
+      ]);
       if (res.error) {
         setAuthErr(res.error.message==="Invalid login credentials"?"Email o contraseña incorrectos.":res.error.message);
         shake();
+      } else {
+        setAuthOk(true);  // cambiar pantalla de inmediato
       }
-      if (!res.error) setAuthOk(true);  // cambiar pantalla de inmediato
-      // onAuthStateChange se encarga de cargar el perfil y los datos
     } catch(e) {
-      setAuthErr("No se pudo entrar: " + (e&&e.message||e));
+      setAuthErr((e&&e.message)||"No se pudo conectar. Revisá tu internet.");
       shake();
     } finally {
       setLoggingIn(false);
