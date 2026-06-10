@@ -646,12 +646,15 @@ export default function App() {
     try {
       var ext = file.name.split(".").pop();
       var path = "carousel/" + Date.now() + "." + ext;
-      var up = await sb.storage.from("product-images").upload(path, file, { upsert: true });
+      // Timeout: si la subida no resuelve en 20s, cortar
+      var uploadPromise = sb.storage.from("product-images").upload(path, file, { upsert: true });
+      var timeout = new Promise(function(_, rej){ setTimeout(function(){ rej(new Error("La subida tardó demasiado. Revisá los permisos del bucket en Supabase.")); }, 20000); });
+      var up = await Promise.race([uploadPromise, timeout]);
       if (up.error) throw up.error;
       var pub = sb.storage.from("product-images").getPublicUrl(path);
       setCImg(pub.data.publicUrl);
       toast("✅ Imagen lista","","s");
-    } catch(e) { toast("Error al subir", e.message, "e"); }
+    } catch(e) { toast("Error al subir", e.message||"No se pudo subir", "e"); }
     finally { setCImgUp(false); }
   }
 
@@ -1286,7 +1289,9 @@ export default function App() {
     try {
       const ext  = file.name.split(".").pop();
       const path = "products/"+pid+"/"+Date.now()+"."+ext;
-      const { error:upErr } = await sb.storage.from("product-images").upload(path, file, {upsert:true});
+      var upPromise = sb.storage.from("product-images").upload(path, file, {upsert:true});
+      var upTimeout = new Promise(function(_, rej){ setTimeout(function(){ rej(new Error("La subida tardó demasiado. Revisá los permisos del bucket.")); }, 20000); });
+      const { error:upErr } = await Promise.race([upPromise, upTimeout]);
       if (upErr) throw upErr;
       const { data:urlData } = sb.storage.from("product-images").getPublicUrl(path);
       const existentes = prodImages[pid]||[];
@@ -3057,7 +3062,7 @@ export default function App() {
           {(function(){
             var izq = [
               {id:"inicio", lbl:"Inicio", ico:"home"},
-              {id:"stock",  lbl:"Stock",  ico:"box"},
+              {id:"ventas", lbl:"Ventas", ico:"chart"},
             ];
             var der = [
               {id:"pedidos", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
@@ -3097,9 +3102,9 @@ export default function App() {
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                 {(function(){
                   var items = [
+                    {id:"stock",     lbl:"Stock",     ico:"box",   col:"var(--in-d)"},
                     {id:"enviados",  lbl:"Enviados",  ico:"send",  col:"var(--in)"},
                     {id:"recibidos", lbl:"Recibidos", ico:"users", col:"var(--bl-d)"},
-                    {id:"ventas",    lbl:"Ventas",    ico:"chart", col:"var(--em-d)"},
                     {id:"contacts",  lbl:"Red",       ico:"clock", col:"var(--pu)"},
                   ];
                   if (isAdmin) {
