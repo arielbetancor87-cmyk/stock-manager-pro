@@ -881,8 +881,8 @@ export default function App() {
         return true;
       }
       // No existe la fila todavía. Reintentar varias veces (la sesión RLS tarda).
-      if (intentos < 5) {
-        await new Promise(function(r){ setTimeout(r, 500); });
+      if (intentos < 2) {
+        await new Promise(function(r){ setTimeout(r, 300); });
         return ensureProfile(session, intentos + 1);
       }
       // Tras varios intentos sin encontrarla → crearla como revendedora.
@@ -978,12 +978,12 @@ export default function App() {
         perfil = { id: uid, email: res.data.user.email, name: meta.name||meta.full_name||(res.data.user.email||"").split("@")[0], role: "reseller", color: "#e0224e" };
       }
       setMe(perfil);
-      loadData(perfil.id, perfil.role);
+      // No llamamos loadData acá — onAuthStateChange → ensureProfile lo hace
       toast("Bienvenido, "+perfil.name+"!","","s");
+      setLoggingIn(false);
     } catch(e) {
       setAuthErr("No se pudo entrar: " + (e&&e.message||e));
       shake();
-    } finally {
       setLoggingIn(false);
     }
   }
