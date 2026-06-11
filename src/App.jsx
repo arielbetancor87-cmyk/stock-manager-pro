@@ -2151,7 +2151,7 @@ export default function App() {
                           <span style={{fontSize:20,width:28,textAlign:"center"}}>{p.photo_url?<img src={p.photo_url} style={{width:28,height:28,borderRadius:6,objectFit:"cover"}}/>:p.emoji||"📦"}</span>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-                            <div style={{fontSize:10,color:"var(--t3)"}}>{p.sku}{p.category?" · "+p.category:""}</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--pri)",background:"var(--pri-l)",borderRadius:4,padding:"1px 5px",marginRight:5}}>{p.sku||"s/c"}</span>{p.category||""}</div>
                           </div>
                           <div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:16,color:"var(--em-d,#00875a)",whiteSpace:"nowrap"}}>${parseFloat(p.price||0).toLocaleString("es-AR")}</div>
                         </div>
@@ -2523,11 +2523,17 @@ export default function App() {
                         <SearchBar value={pedPSrch} onChange={setPedPSrch} placeholder="Buscar producto..."/>
                         {pedPSrch&&(
                           <div style={{maxHeight:180,overflowY:"auto",marginTop:6,borderRadius:10,border:"1px solid var(--brd)"}}>
-                            {products.filter(function(p){return p.name.toLowerCase().includes(pedPSrch.toLowerCase());}).slice(0,8).map(function(p){
+                            {products.filter(function(p){var q=pedPSrch.toLowerCase();return p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);}).slice(0,8).map(function(p){
                               return (
-                                <div key={p.id} onClick={function(){setPedProdId(p.id);setPedPSrch(p.name);}} style={{padding:"10px 12px",cursor:"pointer",borderBottom:"1px solid var(--brd)",display:"flex",alignItems:"center",gap:8,background:pedProdId===p.id?"var(--pri-l)":"var(--card)"}}>
+                                <div key={p.id} onClick={function(){setPedProdId(p.id);setPedPSrch(p.name+" ["+(p.sku||"")+"]");}} style={{padding:"10px 12px",cursor:"pointer",borderBottom:"1px solid var(--brd)",display:"flex",alignItems:"center",gap:8,background:pedProdId===p.id?"var(--pri-l)":"var(--card)"}}>
                                   <ProdThumb prod={p} size={32}/>
-                                  <div><div style={{fontSize:13,fontWeight:700}}>{p.name}</div><div style={{fontSize:11,color:"var(--t3)"}}>{fmtARS(p.price)}</div></div>
+                                  <div>
+                                    <div style={{fontSize:13,fontWeight:700}}>{p.name}</div>
+                                    <div style={{fontSize:11,color:"var(--t3)"}}>
+                                      <span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--pri)",background:"var(--pri-l)",borderRadius:5,padding:"1px 6px",marginRight:6}}>{p.sku||"sin código"}</span>
+                                      {fmtARS(p.price)}
+                                    </div>
+                                  </div>
                                 </div>
                               );
                             })}
