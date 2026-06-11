@@ -820,6 +820,20 @@ export default function App() {
     } catch(e) { toast("Error",e.message,"e"); }
   }
 
+  async function moveCarousel(row, dir) {
+    // dir: -1 = subir, +1 = bajar
+    var idx = carousels.findIndex(function(c){ return c.id === row.id; });
+    var swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= carousels.length) return;
+    var other = carousels[swapIdx];
+    // Intercambiar sort_order en DB
+    await Promise.all([
+      sb.from("offer_carousels").update({ sort_order: swapIdx }).eq("id", row.id),
+      sb.from("offer_carousels").update({ sort_order: idx }).eq("id", other.id)
+    ]);
+    await loadCarousels();
+  }
+
   async function toggleCarouselActive(row) {
     await sb.from("offer_carousels").update({ active: !row.active }).eq("id", row.id);
     await loadCarousels();
@@ -3253,6 +3267,8 @@ export default function App() {
                           <div style={{fontSize:10,color:sl.active?"var(--em-d)":"var(--t4)",fontWeight:700,marginTop:2}}>{sl.active?"● Activo":"○ Inactivo"}</div>
                         </div>
                         <div style={{display:"flex",gap:6,flexShrink:0}}>
+                          <button className="btn btn-xs b-ghost" style={{padding:"5px 7px"}} onClick={function(){moveCarousel(sl,-1);}} title="Subir">▲</button>
+                          <button className="btn btn-xs b-ghost" style={{padding:"5px 7px"}} onClick={function(){moveCarousel(sl,1);}} title="Bajar">▼</button>
                           <button className="btn btn-xs b-ghost" onClick={function(){
                             setCEditId(sl.id);setCTitle(sl.title);setCSubtitle(sl.subtitle||"");setCBg(sl.bg_color||"#e0224e");setCEmoji(sl.emoji||"🔥");setCLink(sl.link_tab||"");setCImg(sl.image_url||"");setCarouselEdit(true);
                           }}><Ic n="edit" s={11}/></button>
