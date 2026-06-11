@@ -914,6 +914,20 @@ export default function App() {
     // Red de seguridad: nunca quedar trabado en "Conectando..."
     var bootSafety = setTimeout(function(){ setLoading(false); }, 6000);
 
+    // Renovar sesión cuando la pestaña vuelve a estar visible (fix token expirado)
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        sb.auth.getSession().then(function(s){
+          if (s.data && s.data.session) {
+            var exp = s.data.session.expires_at * 1000;
+            // Si expira en menos de 5 min, renovar ya
+            if (exp - Date.now() < 5*60*1000) sb.auth.refreshSession();
+          }
+        });
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+
     sb.auth.getSession().then(async function(res){
       var session = res.data.session;
       // Apagar el splash apenas sabemos si hay sesión o no; el perfil carga aparte
@@ -1174,19 +1188,21 @@ export default function App() {
       .eq("id", id);
     if (error) { toast("Error", error.message, "e"); return; }
 
-    // Actualizar inventario si tiene producto asociado
+    // SIEMPRE registrar la venta al entregar (independiente del inventario)
     if (ped.product_id) {
+      var precioVenta = parseFloat(ped.total || ped.product_price || 0);
+      var slRes = await sb.from("sale_logs").insert({
+        user_id: me.id, product_id: ped.product_id,
+        qty: ped.qty, sale_price: precioVenta / (ped.qty||1), source: "pedido"
+      });
+      if (slRes.error) toast("Aviso", "Venta no registrada: "+slRes.error.message, "e");
+
+      // Descontar inventario solo si existe y alcanza
       var invRow = inventory.find(function(i){ return i.product_id===ped.product_id; });
       if (invRow && invRow.qty_available >= ped.qty) {
         await sb.from("inventory")
           .update({ qty_available: invRow.qty_available - ped.qty, qty_sold: (invRow.qty_sold||0) + ped.qty })
           .eq("id", invRow.id);
-        // Registrar venta en sale_logs
-        await sb.from("sale_logs").insert({
-          user_id: me.id, product_id: ped.product_id,
-          qty: ped.qty, sale_price: ped.product_price||0, source: "pedido"
-        });
-        // Ledger
         var estadoAnt = invRow.source==="consigna" ? "en_consigna" : "stock_central";
         await logMovimiento({
           product_id: ped.product_id, qty: -(ped.qty),
