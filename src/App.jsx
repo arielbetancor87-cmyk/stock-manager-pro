@@ -1006,8 +1006,10 @@ export default function App() {
   // ── LOGOUT ──────────────────────────────────────────────────────────────────
   async function doLogout() {
     var n = me.name;
-    await sb.auth.signOut();
-    setMe(null); setTab("stock"); setAEmail(""); setAPass(""); toast("Hasta luego, "+n+"!","","i");
+    // Resetear UI de inmediato — no esperar a Supabase
+    setMe(null); setAuthOk(false); setTab("stock"); setAEmail(""); setAPass("");
+    toast("Hasta luego, "+n+"!","","i");
+    try { await sb.auth.signOut(); } catch(e) { /* la sesión local ya se limpió */ }
   }
 
   // ── SELL ────────────────────────────────────────────────────────────────────
