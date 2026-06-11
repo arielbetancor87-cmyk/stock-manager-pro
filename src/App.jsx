@@ -411,6 +411,7 @@ export default function App() {
   const [authErr,   setAuthErr]   = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [authOk,    setAuthOk]    = useState(false);  // login exitoso, cargando perfil
+  const [pSearch,   setPSearch]   = useState("");     // buscador rápido de precios
   const [authShake, setAuthShake] = useState(false);
 
   // ── DATA ────────────────────────────────────────────────────────────────────
@@ -2102,8 +2103,44 @@ export default function App() {
               {id:"d2",title:"Compartí tus productos",subtitle:"Enviá lista por WhatsApp",bg_color:"#10b981",emoji:"📲",link_tab:""},
             ];
 
+            const pq = pSearch.toLowerCase().trim();
+            const pResults = pq.length >= 2 ? products.filter(function(p){
+              return p.name.toLowerCase().includes(pq) || (p.sku||"").toLowerCase().includes(pq);
+            }).slice(0, 8) : [];
+
             return (
               <div style={{paddingBottom:24}}>
+
+                {/* ─ BUSCADOR RÁPIDO DE PRECIOS ─ */}
+                <div className="card" style={{marginTop:10,marginBottom:14}}>
+                  <div style={{padding:"12px 14px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:pResults.length>0||pq.length>=2?10:0}}>
+                      <span style={{fontSize:18}}>💲</span>
+                      <input
+                        value={pSearch}
+                        onChange={function(e){setPSearch(e.target.value);}}
+                        placeholder="Consultar precio... (nombre o SKU)"
+                        style={{flex:1,border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,outline:"none",fontFamily:"inherit"}}
+                      />
+                      {pSearch&&<button onClick={function(){setPSearch("");}} style={{background:"none",border:"none",fontSize:16,cursor:"pointer",color:"var(--t3)"}}>✕</button>}
+                    </div>
+                    {pq.length>=2&&pResults.length===0&&(
+                      <div style={{fontSize:12,color:"var(--t3)",textAlign:"center",padding:"8px 0"}}>Sin resultados para "{pSearch}"</div>
+                    )}
+                    {pResults.map(function(p){
+                      return (
+                        <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 4px",borderTop:"1px solid var(--brd)"}}>
+                          <span style={{fontSize:20,width:28,textAlign:"center"}}>{p.photo_url?<img src={p.photo_url} style={{width:28,height:28,borderRadius:6,objectFit:"cover"}}/>:p.emoji||"📦"}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>{p.sku}{p.category?" · "+p.category:""}</div>
+                          </div>
+                          <div style={{fontFamily:"var(--mf)",fontWeight:800,fontSize:16,color:"var(--em-d,#00875a)",whiteSpace:"nowrap"}}>${parseFloat(p.price||0).toLocaleString("es-AR")}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 {/* ─ CARRUSEL DE OFERTAS ─ */}
                 {slides.length>0&&(
