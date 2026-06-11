@@ -411,6 +411,16 @@ export default function App() {
   const [authErr,   setAuthErr]   = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [authOk,    setAuthOk]    = useState(false);  // login exitoso, cargando perfil
+
+  // Seguridad: si el perfil no carga en 10s, volver al login con mensaje
+  useEffect(function() {
+    if (!authOk || me) return;
+    var t = setTimeout(function() {
+      setAuthOk(false);
+      setAuthErr("No se pudo cargar tu cuenta. Intentá de nuevo.");
+    }, 10000);
+    return function(){ clearTimeout(t); };
+  }, [authOk, me]);
   const [pSearch,   setPSearch]   = useState("");     // buscador rápido de precios
   const [authShake, setAuthShake] = useState(false);
 
@@ -462,7 +472,6 @@ export default function App() {
   // Carrusel de imágenes por producto
   const [prodImages,   setProdImages]   = useState({});  // { product_id: [img,...] }
   const [imgUploading, setImgUploading] = useState(false);
-  const [carouselIdx,  setCarouselIdx]  = useState({});  // { product_id: activeIdx }
   const [imgEditPid,   setImgEditPid]   = useState(null);
   // Carga rápida inline en card de stock
   const [quickLoadId,  setQuickLoadId]  = useState(null);  // inventory item.id abierto
@@ -513,7 +522,8 @@ export default function App() {
 
   // Rotación automática del carrusel cada 4 segundos
   useEffect(function() {
-    var total = carousels.length > 0 ? carousels.length : 1;
+    var activos = carousels.filter(function(c){ return c.active; });
+    var total = activos.length > 0 ? activos.length : 1;
     if (total <= 1) return;
     var timer = setInterval(function() {
       setOfferSlide(function(prev) {
@@ -527,7 +537,7 @@ export default function App() {
       });
     }, 4000);
     return function() { clearInterval(timer); };
-  }, [carousels.length]);
+  }, [carousels]);
   const [carouselEdit, setCarouselEdit] = useState(false);
   const [cTitle,       setCTitle]       = useState("");
   const [cSubtitle,    setCSubtitle]    = useState("");
@@ -767,7 +777,7 @@ export default function App() {
   async function loadCarousels() {
     try {
       const { data } = await sb.from("offer_carousels")
-        .select("*").eq("active", true)
+        .select("*")
         .order("sort_order", { ascending: true });
       setCarousels(data || []);
     } catch(e) { /* no carousel table yet = ok */ }
@@ -1866,7 +1876,9 @@ export default function App() {
     setInventory(function(p){return p.map(function(i){return i.id===item.id?r.data:i;});});
     var entry={t:new Date().toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}),prod:prod?prod.name:"",sku:prod?prod.sku:"",type:movType,before:item.qty_available,after:newQty,diff:newQty-item.qty_available,note:movNote||""};
     setMovHistory(function(p){return [entry,...p.slice(0,99)];});
-    await sb.from("sale_logs").insert({user_id:me.id,product_id:item.product_id,qty:Math.abs(newQty-item.qty_available),sale_price:0,source:movType==="salida"?"own_stock":movType});
+    if (movType==="salida") {
+      await sb.from("sale_logs").insert({user_id:me.id,product_id:item.product_id,qty:Math.abs(newQty-item.qty_available),sale_price:prod?parseFloat(prod.price||0):0,source:"own_stock"});
+    }
     var icons={entrada:"📥",salida:"📤",ajuste:"🔧"};
     toast(icons[movType]+" "+movType.charAt(0).toUpperCase()+movType.slice(1),(prod?prod.name:"")+": "+item.qty_available+" → "+newQty+" u.","s");
     setMovModal(null);setMovNote("");setMovQty(1);
@@ -2183,7 +2195,8 @@ export default function App() {
             }
 
             // ── Carousel slides (real + default) ────────────────────────────
-            var slides = carousels.length>0 ? carousels : [
+            var activos = carousels.filter(function(c){ return c.active; });
+            var slides = activos.length>0 ? activos : [
               {id:"d1",title:"¡Bienvenida!",subtitle:"Tu catálogo digital",bg_color:"#e0224e",emoji:"🛍️",link_tab:"catalog"},
               {id:"d2",title:"Compartí tus productos",subtitle:"Enviá lista por WhatsApp",bg_color:"#10b981",emoji:"📲",link_tab:""},
             ];
