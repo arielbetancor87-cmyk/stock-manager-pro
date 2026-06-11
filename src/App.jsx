@@ -914,19 +914,18 @@ export default function App() {
     // Red de seguridad: nunca quedar trabado en "Conectando..."
     var bootSafety = setTimeout(function(){ setLoading(false); }, 6000);
 
-    // Renovar sesión cuando la pestaña vuelve a estar visible (fix token expirado)
+    // Renovar sesión SIEMPRE que la app vuelve a primer plano (fix cliente congelado en móvil)
     function onVisible() {
       if (document.visibilityState === "visible") {
-        sb.auth.getSession().then(function(s){
-          if (s.data && s.data.session) {
-            var exp = s.data.session.expires_at * 1000;
-            // Si expira en menos de 5 min, renovar ya
-            if (exp - Date.now() < 5*60*1000) sb.auth.refreshSession();
-          }
-        });
+        try { sb.auth.startAutoRefresh && sb.auth.startAutoRefresh(); } catch(e){}
+        sb.auth.refreshSession().catch(function(){});
+      } else {
+        try { sb.auth.stopAutoRefresh && sb.auth.stopAutoRefresh(); } catch(e){}
       }
     }
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("online", function(){ sb.auth.refreshSession().catch(function(){}); });
 
     sb.auth.getSession().then(async function(res){
       var session = res.data.session;
@@ -1162,8 +1161,27 @@ export default function App() {
     toast("Pedido guardado!", pedNombre.trim()+(prod?" — "+prod.name:""), "s");
   }
 
+  // Helper: promesa con timeout para evitar cuelgues silenciosos en móvil
+  function conTimeout(promesa, ms) {
+    return Promise.race([
+      promesa,
+      new Promise(function(_, rej){ setTimeout(function(){ rej(new Error("Sin respuesta del servidor. Reintentá.")); }, ms||8000); })
+    ]);
+  }
+
   async function doMarcarPagado(id) {
-    var { error } = await sb.from("pedidos").update({ pagado: true }).eq("id", id);
+    var error;
+    try {
+      var r = await conTimeout(sb.from("pedidos").update({ pagado: true }).eq("id", id));
+      error = r.error;
+    } catch(e) {
+      // Reintentar una vez tras renovar sesión
+      try {
+        await sb.auth.refreshSession();
+        var r2 = await conTimeout(sb.from("pedidos").update({ pagado: true }).eq("id", id));
+        error = r2.error;
+      } catch(e2) { toast("Error", e2.message, "e"); return; }
+    }
     if (error) { toast("Error", error.message, "e"); return; }
     setPedidos(function(prev){ return prev.map(function(p){ return p.id===id ? Object.assign({},p,{pagado:true}) : p; }); });
     toast("✅ Pedido pagado", "", "s");
@@ -1192,9 +1210,17 @@ export default function App() {
     var ped = pedidos.find(function(p){ return p.id===id; });
     if (!ped) return;
     var now = new Date().toISOString();
-    var { error } = await sb.from("pedidos")
-      .update({ estado: "entregado", entregado_at: now })
-      .eq("id", id);
+    var error;
+    try {
+      var r = await conTimeout(sb.from("pedidos").update({ estado: "entregado", entregado_at: now }).eq("id", id));
+      error = r.error;
+    } catch(e) {
+      try {
+        await sb.auth.refreshSession();
+        var r2 = await conTimeout(sb.from("pedidos").update({ estado: "entregado", entregado_at: now }).eq("id", id));
+        error = r2.error;
+      } catch(e2) { toast("Error", e2.message, "e"); return; }
+    }
     if (error) { toast("Error", error.message, "e"); return; }
 
     // SIEMPRE registrar la venta al entregar (independiente del inventario)
