@@ -510,6 +510,24 @@ export default function App() {
   // ── CAROUSEL ─────────────────────────────────────────────────────────────────
   const [carousels,    setCarousels]    = useState([]);  // rows from offer_carousels table
   const [offerSlide,   setOfferSlide]   = useState(0);   // active offer carousel index
+
+  // Rotación automática del carrusel cada 4 segundos
+  useEffect(function() {
+    var total = carousels.length > 0 ? carousels.length : 1;
+    if (total <= 1) return;
+    var timer = setInterval(function() {
+      setOfferSlide(function(prev) {
+        var next = (prev + 1) % total;
+        var el = document.getElementById("main-carousel");
+        if (el) {
+          var w = el.scrollWidth / total;
+          el.scrollTo({ left: w * next, behavior: "smooth" });
+        }
+        return next;
+      });
+    }, 4000);
+    return function() { clearInterval(timer); };
+  }, [carousels.length]);
   const [carouselEdit, setCarouselEdit] = useState(false);
   const [cTitle,       setCTitle]       = useState("");
   const [cSubtitle,    setCSubtitle]    = useState("");
@@ -2201,7 +2219,7 @@ export default function App() {
                     <div className="carousel-wrap" id="main-carousel"
                       onScroll={function(e){
                         var w=e.target.scrollWidth/slides.length;
-                        setCarouselIdx(Math.round(e.target.scrollLeft/w));
+                        setOfferSlide(Math.round(e.target.scrollLeft/w));
                       }}>
                       {slides.map(function(sl,i){
                         return (
