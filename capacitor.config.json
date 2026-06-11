@@ -1,0 +1,23 @@
+{
+  "appId": "com.ventadirecta.app",
+  "appName": "Venta Directa",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#e0224e"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#e0224e",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#e0224e"
+    }
+  }
+}
