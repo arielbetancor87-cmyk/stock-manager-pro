@@ -1126,7 +1126,10 @@ export default function App() {
 
   // ── PEDIDOS FUNCTIONS ────────────────────────────────────────────────────────
   async function doAddPedido() {
-    if (!pedNombre.trim()) return;
+    if (!pedNombre.trim()) {
+      toast("Falta el nombre del cliente", "Completá el campo Nombre arriba del formulario", "e");
+      return;
+    }
     var prod = products.find(function(p){ return p.id===pedProdId; });
     var totalPed = prod ? (parseFloat(prod.price||0) * pedQty) : 0;
     var senaPed  = parseFloat(pedSena||0) || 0;
@@ -1145,7 +1148,13 @@ export default function App() {
       nota:          pedNota.trim()||null,
       estado:        "pendiente",
     };
-    var { data, error } = await sb.from("pedidos").insert(row).select("*, product:product_id(id,name,sku,price,emoji)").single();
+    var insPromise = sb.from("pedidos").insert(row).select("*, product:product_id(id,name,sku,price,emoji)").single();
+    var timeoutP = new Promise(function(_, rej){ setTimeout(function(){ rej(new Error("La conexión tardó demasiado. Reintentá.")); }, 10000); });
+    var data, error;
+    try {
+      var r = await Promise.race([insPromise, timeoutP]);
+      data = r.data; error = r.error;
+    } catch(e) { toast("Error al guardar pedido", e.message, "e"); return; }
     if (error) { toast("Error al guardar pedido", error.message, "e"); return; }
     setPedidos(function(prev){ return [data, ...prev]; });
     setPedNombre(""); setPedWA(""); setPedProdId(""); setPedQty(1); setPedNota(""); setPedPSrch(""); setPedSena("");
@@ -2554,7 +2563,7 @@ export default function App() {
                       )}
                       <div className="fld"><label className="fl">Seña / pago adelantado (opcional)</label><input className="fi" type="number" placeholder="0" value={pedSena} onChange={function(e){setPedSena(e.target.value);}}/></div>
                       <div className="fld"><label className="fl">Nota</label><input className="fi" placeholder="Ej: talla, color, etc." value={pedNota} onChange={function(e){setPedNota(e.target.value);}}/></div>
-                      <button className="cta cta-am" onClick={doAddPedido} disabled={!pedNombre.trim()}>
+                      <button className="cta cta-am" onClick={doAddPedido}>
                         <Ic n="check" s={16}/>Guardar pedido
                       </button>
                     </div>
