@@ -778,11 +778,13 @@ export default function App() {
     setCSaving(true);
     try {
       const row = { title: cTitle.trim(), subtitle: cSubtitle.trim(), bg_color: cBg, emoji: cEmoji, image_url: cImg||null, link_tab: cLink.trim(), active: true, sort_order: carousels.length };
+      var res;
       if (cEditId) {
-        await sb.from("offer_carousels").update(row).eq("id", cEditId);
+        res = await sb.from("offer_carousels").update(row).eq("id", cEditId);
       } else {
-        await sb.from("offer_carousels").insert(row);
+        res = await sb.from("offer_carousels").insert(row);
       }
+      if (res.error) { toast("Error al guardar", res.error.message, "e"); return; }
       await loadCarousels();
       setCTitle(""); setCSubtitle(""); setCBg("#e0224e"); setCEmoji("🔥"); setCLink(""); setCEditId(null); setCImg("");
       toast(cEditId?"Carrusel actualizado":"Carrusel creado","","s");
