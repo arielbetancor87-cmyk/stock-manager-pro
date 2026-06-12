@@ -397,7 +397,139 @@ const QtyControl = memo(function QtyControl(props) {
 });
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
+// ══════════ TIENDA PÚBLICA (sin login) ══════════
+function TiendaPublica({ tiendaId }) {
+  const [info, setInfo]       = useState(null);
+  const [prods, setProds]     = useState([]);
+  const [vista, setVista]     = useState("stock"); // stock | catalogo
+  const [busq, setBusq]       = useState("");
+  const [sel, setSel]         = useState(null);    // producto seleccionado
+  const [qty, setQty]         = useState(1);
+  const [nom, setNom]         = useState("");
+  const [tel, setTel]         = useState("");
+  const [nota, setNota]       = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [exito, setExito]     = useState(false);
+  const [err, setErr]         = useState("");
+
+  useEffect(function() {
+    Promise.all([
+      sb.rpc("rpc_tienda_info", { p_user_id: tiendaId }),
+      sb.rpc("rpc_tienda_publica", { p_user_id: tiendaId })
+    ]).then(function(rs) {
+      if (rs[0].data && rs[0].data.length) setInfo(rs[0].data[0]);
+      if (rs[1].data) setProds(rs[1].data);
+    }).catch(function(){ setErr("No se pudo cargar la tienda"); });
+  }, [tiendaId]);
+
+  async function enviarPedido() {
+    if (!nom.trim() || nom.trim().length < 2) { setErr("Poné tu nombre"); return; }
+    if (!sel) return;
+    setEnviando(true); setErr("");
+    try {
+      var r = await sb.rpc("rpc_pedido_publico", {
+        p_user_id: tiendaId, p_nombre: nom.trim(), p_telefono: tel.trim(),
+        p_product_id: sel.product_id, p_qty: qty, p_nota: nota.trim()
+      });
+      if (r.error) { setErr(r.error.message); setEnviando(false); return; }
+      setExito(true);
+    } catch(e) { setErr("Error de conexión. Reintentá."); }
+    setEnviando(false);
+  }
+
+  var col = (info && info.color) || "#e0224e";
+  var q = busq.toLowerCase().trim();
+  var lista = prods.filter(function(p) {
+    if (vista === "stock" && p.qty_disponible <= 0) return false;
+    if (q && !p.name.toLowerCase().includes(q) && !(p.sku||"").toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  if (exito) return (
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#fdf6f7",fontFamily:"system-ui",padding:20,textAlign:"center"}}>
+      <div style={{fontSize:60,marginBottom:16}}>🎉</div>
+      <div style={{fontSize:22,fontWeight:800,color:col,marginBottom:8}}>¡Pedido enviado!</div>
+      <div style={{fontSize:14,color:"#777",maxWidth:300}}>{info?info.name:"La vendedora"} recibió tu pedido de <b>{sel?sel.name:""}</b> y se va a contactar con vos para coordinar la entrega.</div>
+      <button onClick={function(){setExito(false);setSel(null);setQty(1);setNota("");}} style={{marginTop:24,background:col,color:"#fff",border:"none",borderRadius:12,padding:"12px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>Hacer otro pedido</button>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:"100vh",background:"#fdf6f7",fontFamily:"system-ui",paddingBottom:40}}>
+      {/* Header */}
+      <div style={{background:col,padding:"26px 18px 20px",color:"#fff"}}>
+        <div style={{fontSize:12,opacity:0.85,fontWeight:600,letterSpacing:1}}>TIENDA DE</div>
+        <div style={{fontSize:24,fontWeight:800}}>{info?info.name:"..."}</div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8,padding:"14px 16px 6px"}}>
+        <button onClick={function(){setVista("stock");}} style={{flex:1,padding:"10px",borderRadius:12,border:"none",fontWeight:700,fontSize:13,cursor:"pointer",background:vista==="stock"?col:"#fff",color:vista==="stock"?"#fff":"#999",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>📦 Disponible ya</button>
+        <button onClick={function(){setVista("catalogo");}} style={{flex:1,padding:"10px",borderRadius:12,border:"none",fontWeight:700,fontSize:13,cursor:"pointer",background:vista==="catalogo"?col:"#fff",color:vista==="catalogo"?"#fff":"#999",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>📖 Catálogo completo</button>
+      </div>
+
+      {/* Buscador */}
+      <div style={{padding:"8px 16px"}}>
+        <input value={busq} onChange={function(e){setBusq(e.target.value);}} placeholder="Buscar producto..."
+          style={{width:"100%",boxSizing:"border-box",border:"1.5px solid #eee",borderRadius:12,padding:"11px 14px",fontSize:14,outline:"none"}}/>
+      </div>
+
+      {/* Lista */}
+      <div style={{padding:"4px 16px"}}>
+        {lista.length===0&&<div style={{textAlign:"center",color:"#aaa",fontSize:13,padding:"30px 0"}}>{vista==="stock"?"Sin stock disponible en este momento":"Sin resultados"}</div>}
+        {lista.map(function(p) {
+          return (
+            <div key={p.product_id} onClick={function(){setSel(p);setQty(1);setErr("");}}
+              style={{display:"flex",alignItems:"center",gap:12,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",cursor:"pointer",border:sel&&sel.product_id===p.product_id?"2px solid "+col:"2px solid transparent"}}>
+              {p.photo_url
+                ? <img src={p.photo_url} style={{width:46,height:46,borderRadius:10,objectFit:"cover"}}/>
+                : <div style={{width:46,height:46,borderRadius:10,background:"#fdf0f2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{p.emoji||"📦"}</div>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#333"}}>{p.name}</div>
+                <div style={{fontSize:11,color:"#999"}}>{p.sku}{p.qty_disponible>0?" · "+p.qty_disponible+" disponibles":" · a pedido"}</div>
+              </div>
+              <div style={{fontWeight:800,fontSize:15,color:col,whiteSpace:"nowrap"}}>${parseFloat(p.price||0).toLocaleString("es-AR")}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Formulario de pedido */}
+      {sel&&(
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderRadius:"22px 22px 0 0",boxShadow:"0 -4px 24px rgba(0,0,0,0.15)",padding:"18px 18px 22px",zIndex:50}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:15,fontWeight:800,color:"#333"}}>{sel.name}</div>
+            <button onClick={function(){setSel(null);}} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#bbb"}}>✕</button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+            <span style={{fontSize:13,color:"#777"}}>Cantidad</span>
+            <button onClick={function(){setQty(Math.max(1,qty-1));}} style={{width:32,height:32,borderRadius:9,border:"1.5px solid #eee",background:"#fff",fontSize:16,cursor:"pointer"}}>−</button>
+            <span style={{fontWeight:800,fontSize:16,minWidth:24,textAlign:"center"}}>{qty}</span>
+            <button onClick={function(){setQty(Math.min(50,qty+1));}} style={{width:32,height:32,borderRadius:9,border:"1.5px solid #eee",background:"#fff",fontSize:16,cursor:"pointer"}}>+</button>
+            <div style={{marginLeft:"auto",fontWeight:800,fontSize:17,color:col}}>${(parseFloat(sel.price||0)*qty).toLocaleString("es-AR")}</div>
+          </div>
+          <input value={nom} onChange={function(e){setNom(e.target.value);}} placeholder="Tu nombre *"
+            style={{width:"100%",boxSizing:"border-box",border:"1.5px solid #eee",borderRadius:11,padding:"11px 13px",fontSize:14,outline:"none",marginBottom:8}}/>
+          <input value={tel} onChange={function(e){setTel(e.target.value);}} placeholder="Tu teléfono (opcional)"
+            style={{width:"100%",boxSizing:"border-box",border:"1.5px solid #eee",borderRadius:11,padding:"11px 13px",fontSize:14,outline:"none",marginBottom:8}}/>
+          <input value={nota} onChange={function(e){setNota(e.target.value);}} placeholder="Nota: talle, color, etc. (opcional)"
+            style={{width:"100%",boxSizing:"border-box",border:"1.5px solid #eee",borderRadius:11,padding:"11px 13px",fontSize:14,outline:"none",marginBottom:10}}/>
+          {err&&<div style={{color:"#d32",fontSize:12,fontWeight:700,marginBottom:8}}>{err}</div>}
+          <button onClick={enviarPedido} disabled={enviando}
+            style={{width:"100%",background:col,color:"#fff",border:"none",borderRadius:13,padding:"14px",fontSize:15,fontWeight:800,cursor:"pointer",opacity:enviando?0.6:1}}>
+            {enviando?"Enviando...":"✅ Confirmar pedido"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
+  // Modo tienda pública: ?tienda=USER_ID — sin login
+  var tiendaParam = new URLSearchParams(window.location.search).get("tienda");
+  if (tiendaParam) return <TiendaPublica tiendaId={tiendaParam}/>;
+
   // ── SESSION ─────────────────────────────────────────────────────────────────
   const [loading,   setLoading]   = useState(true);
   const [me,        setMe]        = useState(null);   // users row
@@ -2587,9 +2719,16 @@ export default function App() {
                     <div className="ph-h">Pedidos</div>
                     <div className="ph-s">{pedPendCount>0?pedPendCount+" pendientes de entrega":"Todos al día"}</div>
                   </div>
-                  <button className="btn b-pri" onClick={function(){setShowPedForm(function(v){return !v;});}}>
-                    <Ic n="plus" s={15}/>{showPedForm?"Cancelar":"Nuevo"}
-                  </button>
+                  <div style={{display:"flex",gap:8}}>
+                    <button className="btn" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:12,fontWeight:700,fontSize:12,padding:"9px 12px",cursor:"pointer"}} onClick={function(){
+                      var link = window.location.origin + "/?tienda=" + me.id;
+                      var msg = "¡Hola! 👋 Mirá mi tienda y hacé tu pedido acá: " + link;
+                      window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+                    }}>📲 Compartir tienda</button>
+                    <button className="btn b-pri" onClick={function(){setShowPedForm(function(v){return !v;});}}>
+                      <Ic n="plus" s={15}/>{showPedForm?"Cancelar":"Nuevo"}
+                    </button>
+                  </div>
                 </div>
                 <div className="pc">
                   {/* Formulario nuevo pedido */}
