@@ -606,11 +606,16 @@ export default function App() {
   const [peHistOpen,   setPeHistOpen]   = useState(null); // id del pedido con historial abierto
   const [peHist,       setPeHist]       = useState([]);
 
+  // ── FASE 3: Resúmenes (pedidos + ventas + comisiones) ───────────────────
+  const [resumen,       setResumen]       = useState(null);
+  const [resumenLoading,setResumenLoading]= useState(false);
+
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
     loadJerarquia();
     loadPedidosEspeciales();
+    loadResumen();
   }, [me && me.id]);
 
   // Re-sincronizar mi propio perfil cada vez que vuelvo a la app — así si un
@@ -1458,6 +1463,44 @@ export default function App() {
       cancelado:            {lbl:"Cancelado",               bg:"#f1f1f1", col:"#888"},
     };
     return map[estado] || {lbl:estado, bg:"#eee", col:"#666"};
+  }
+
+  // ── FASE 3: Resúmenes ────────────────────────────────────────────────────
+  async function loadResumen() {
+    if (!me || (me.role!=="lider" && me.role!=="empresaria")) return;
+    setResumenLoading(true);
+    try {
+      var fn = me.role==="lider" ? "rpc_resumen_lider" : "rpc_resumen_empresaria";
+      var param = me.role==="lider" ? {p_lider_id: me.id} : {p_empresa_id: me.id};
+      var res = await sb.rpc(fn, param);
+      if (res.data && res.data.length) setResumen(res.data[0]);
+    } catch(e) { /* noop */ }
+    setResumenLoading(false);
+  }
+
+  function compartirResumenWhatsapp() {
+    if (!resumen) return;
+    var msg;
+    if (me.role==="lider") {
+      msg = "📋 Resumen de "+me.name+"\n\n"+
+        "🔸 Pedidos pendientes de mi aprobación: "+resumen.pedidos_pendientes+"\n"+
+        "🔸 Pedidos en curso: "+resumen.pedidos_en_curso+"\n"+
+        "💰 Ventas del mes: $"+Number(resumen.ventas_mes||0).toLocaleString("es-AR")+"\n"+
+        "📦 Unidades vendidas: "+resumen.unidades_mes+"\n"+
+        "💵 Mi comisión del mes: $"+Number(resumen.comision_mes||0).toLocaleString("es-AR")+"\n"+
+        "👥 Vendedoras a mi cargo: "+resumen.equipo_count;
+    } else {
+      msg = "📊 Resumen de "+me.name+"\n\n"+
+        "🔸 Pedidos pendientes de mi aprobación: "+resumen.pedidos_pendientes+"\n"+
+        "🔸 Pedidos en curso: "+resumen.pedidos_en_curso+"\n"+
+        "💰 Ventas del mes: $"+Number(resumen.ventas_mes||0).toLocaleString("es-AR")+"\n"+
+        "📦 Unidades vendidas: "+resumen.unidades_mes+"\n"+
+        "💵 Comisiones a líderes: $"+Number(resumen.comision_lideres_mes||0).toLocaleString("es-AR")+"\n"+
+        "💵 Comisiones a vendedoras: $"+Number(resumen.comision_vendedoras_mes||0).toLocaleString("es-AR")+"\n"+
+        "📈 Rentabilidad del mes: $"+Number(resumen.rentabilidad_mes||0).toLocaleString("es-AR")+"\n"+
+        "👥 Líderes: "+resumen.lideres_count+" · Vendedoras: "+resumen.vendedoras_count;
+    }
+    window.open("https://wa.me/?text="+encodeURIComponent(msg), "_blank");
   }
 
   async function doLogout() {
@@ -3772,6 +3815,88 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ RESUMEN (pedidos + ventas + comisiones) ══ */}
+          {tab==="resumen"&&(me.role==="lider"||me.role==="empresaria")&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">{me.role==="lider"?"📋 Mi Resumen":"📊 Resumen General"}</div><div className="ph-s">Este mes</div></div>
+                <button className="btn btn-xs b-ghost" onClick={loadResumen}><Ic n="undo" s={13}/>Actualizar</button>
+              </div>
+              <div className="pc">
+                {resumenLoading&&<div className="empty">Cargando...</div>}
+                {!resumenLoading&&resumen&&(
+                  <>
+                    {/* Pedidos pendientes de mi acción */}
+                    <div className="card" style={{marginBottom:12,background:resumen.pedidos_pendientes>0?"var(--am-l,#fff3e0)":undefined}}>
+                      <div style={{padding:"16px",display:"flex",alignItems:"center",gap:14}}>
+                        <div style={{fontSize:32}}>{resumen.pedidos_pendientes>0?"🔔":"✅"}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:24,fontWeight:800,color:resumen.pedidos_pendientes>0?"var(--am-d,#e07800)":"var(--em-d,#0a8f4d)"}}>{resumen.pedidos_pendientes}</div>
+                          <div style={{fontSize:12,color:"var(--t3)"}}>Pedidos pendientes de tu aprobación</div>
+                        </div>
+                        {resumen.pedidos_pendientes>0&&<button className="btn btn-xs b-pri" onClick={function(){setTab("pedesp");}}>Ver →</button>}
+                      </div>
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                      <div className="card"><div style={{padding:"14px"}}>
+                        <div style={{fontSize:20,fontWeight:800,color:"var(--pri)"}}>{resumen.pedidos_en_curso}</div>
+                        <div style={{fontSize:11,color:"var(--t3)"}}>Pedidos en curso</div>
+                      </div></div>
+                      <div className="card"><div style={{padding:"14px"}}>
+                        <div style={{fontSize:20,fontWeight:800,color:"var(--bl-d)"}}>{resumen.unidades_mes}</div>
+                        <div style={{fontSize:11,color:"var(--t3)"}}>Unidades vendidas</div>
+                      </div></div>
+                    </div>
+
+                    <div className="card" style={{marginBottom:12}}>
+                      <div style={{padding:"16px"}}>
+                        <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>💰 Ventas del mes</div>
+                        <div style={{fontSize:26,fontWeight:800,color:"var(--em-d,#0a8f4d)"}}>${Number(resumen.ventas_mes||0).toLocaleString("es-AR")}</div>
+                      </div>
+                    </div>
+
+                    {me.role==="lider"&&(
+                      <div className="card" style={{marginBottom:12}}>
+                        <div style={{padding:"16px"}}>
+                          <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>💵 Mi comisión del mes</div>
+                          <div style={{fontSize:26,fontWeight:800,color:"var(--pri)"}}>${Number(resumen.comision_mes||0).toLocaleString("es-AR")}</div>
+                          <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>👥 {resumen.equipo_count} vendedora(s) a tu cargo</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {me.role==="empresaria"&&(
+                      <>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                          <div className="card"><div style={{padding:"14px"}}>
+                            <div style={{fontSize:16,fontWeight:800,color:"var(--pri)"}}>${Number(resumen.comision_lideres_mes||0).toLocaleString("es-AR")}</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>Comisiones a líderes</div>
+                          </div></div>
+                          <div className="card"><div style={{padding:"14px"}}>
+                            <div style={{fontSize:16,fontWeight:800,color:"var(--pri)"}}>${Number(resumen.comision_vendedoras_mes||0).toLocaleString("es-AR")}</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>Comisiones a vendedoras</div>
+                          </div></div>
+                        </div>
+                        <div className="card" style={{marginBottom:12}}>
+                          <div style={{padding:"16px"}}>
+                            <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>📈 Rentabilidad del mes</div>
+                            <div style={{fontSize:26,fontWeight:800,color:resumen.rentabilidad_mes>=0?"var(--em-d,#0a8f4d)":"var(--cr,#d32)"}}>${Number(resumen.rentabilidad_mes||0).toLocaleString("es-AR")}</div>
+                            <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>⭐ {resumen.lideres_count} líder(es) · 🛍️ {resumen.vendedoras_count} vendedora(s)</div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <button className="cta" style={{background:"#25D366",color:"#fff"}} onClick={compartirResumenWhatsapp}>
+                      📲 Compartir resumen por WhatsApp
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ══ MI EQUIPO ══ */}
           {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
             <div>
@@ -4158,6 +4283,7 @@ export default function App() {
                     items.push({id:"pedesp", lbl:"Pedidos Esp.", ico:"send", col:"var(--am-d)", badge:pePend});
                   }
                   if (me.role==="empresaria" || me.role==="lider") {
+                    items.push({id:"resumen", lbl:"Resumen", ico:"chart", col:"var(--em-d,#0a8f4d)"});
                     items.push({id:"equipo", lbl:"Mi Estructura", ico:"users", col:"var(--pu)"});
                   }
                   if (isAdmin) {
