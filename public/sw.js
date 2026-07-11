@@ -1,4 +1,4 @@
-const CACHE = "ventadirecta-v1";
+const CACHE = "ventadirecta-v2";
 const STATIC = ["/", "/index.html"];
 
 self.addEventListener("install", function(e) {
