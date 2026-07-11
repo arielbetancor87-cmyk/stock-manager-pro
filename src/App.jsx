@@ -1357,6 +1357,17 @@ export default function App() {
     toast("Comisión actualizada", "", "s");
   }
 
+  // Cambiar el rol de un usuario del equipo (superadmin: cualquiera / empresaria: los suyos)
+  async function doCambiarRol(userId, nuevoRol) {
+    var patch = { role: nuevoRol };
+    if (nuevoRol === "empresaria") { patch.empresa_id = null; patch.lider_id = null; }
+    else if (nuevoRol === "lider") { patch.lider_id = null; }
+    var res = await sb.from("users").update(patch).eq("id", userId);
+    if (res.error) { toast("Error al cambiar el rol", res.error.message, "e"); return; }
+    setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,patch) : u; }); });
+    toast("Rol actualizado", "", "s");
+  }
+
   // ── FASE 2: Pedidos en cascada ──────────────────────────────────────────
 
   async function loadPedidosEspeciales() {
@@ -3812,9 +3823,18 @@ export default function App() {
                               <div style={{fontSize:13,fontWeight:700}}>{u.name}</div>
                               <div style={{fontSize:11,color:"var(--t3)"}}>{u.email}</div>
                             </div>
-                            <span style={{background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800,textTransform:"uppercase",whiteSpace:"nowrap"}}>
-                              {u.role==="empresaria"?"🏢 Empresaria":u.role==="lider"?"⭐ Líder":"🛍️ Vendedora"}
-                            </span>
+                            {(isAdmin || (me.role==="empresaria" && u.role!=="empresaria")) ? (
+                              <select value={u.role} onChange={function(e){doCambiarRol(u.id, e.target.value);}}
+                                style={{fontSize:10,fontWeight:800,textTransform:"uppercase",border:"1.5px solid var(--pri-l)",background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"3px 6px",fontFamily:"inherit",cursor:"pointer"}}>
+                                {isAdmin&&<option value="empresaria">🏢 Empresaria</option>}
+                                <option value="lider">⭐ Líder</option>
+                                <option value="reseller">🛍️ Vendedora</option>
+                              </select>
+                            ) : (
+                              <span style={{background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800,textTransform:"uppercase",whiteSpace:"nowrap"}}>
+                                {u.role==="empresaria"?"🏢 Empresaria":u.role==="lider"?"⭐ Líder":"🛍️ Vendedora"}
+                              </span>
+                            )}
                           </div>
                           {/* Asignar líder a una vendedora (solo empresaria) */}
                           {(me.role==="empresaria"&&u.role==="reseller")&&(
