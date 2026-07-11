@@ -590,10 +590,27 @@ export default function App() {
   const [invSaving,     setInvSaving]     = useState(false);
   const [equipoEditComis, setEquipoEditComis] = useState({}); // {userId: valor en edición}
 
+  // ── FASE 2: Pedidos en cascada (productos sin stock) ───────────────────
+  const [pedEspList,   setPedEspList]   = useState([]);
+  const [pedEspLoading,setPedEspLoading]= useState(false);
+  const [peShowForm,   setPeShowForm]   = useState(false);
+  const [peProdSrch,   setPeProdSrch]   = useState("");
+  const [peProdId,     setPeProdId]     = useState("");
+  const [peQty,        setPeQty]        = useState(1);
+  const [peCliNom,     setPeCliNom]     = useState("");
+  const [peCliTel,     setPeCliTel]     = useState("");
+  const [peNota,       setPeNota]       = useState("");
+  const [peSaving,     setPeSaving]     = useState(false);
+  const [peObserv,     setPeObserv]     = useState({}); // {pedidoId: texto observación}
+  const [peBusy,       setPeBusy]       = useState({}); // {pedidoId: true mientras procesa acción}
+  const [peHistOpen,   setPeHistOpen]   = useState(null); // id del pedido con historial abierto
+  const [peHist,       setPeHist]       = useState([]);
+
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
     loadJerarquia();
+    loadPedidosEspeciales();
   }, [me && me.id]);
   const [toasts,    setToasts]    = useState([]);
   const [srchStock, setSrchStock] = useState("");
@@ -1338,6 +1355,74 @@ export default function App() {
     if (res.error) { toast("Error", res.error.message, "e"); return; }
     setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{comision_lider_pct:val}) : u; }); });
     toast("Comisión actualizada", "", "s");
+  }
+
+  // ── FASE 2: Pedidos en cascada ──────────────────────────────────────────
+
+  async function loadPedidosEspeciales() {
+    if (!me) return;
+    setPedEspLoading(true);
+    try {
+      var res = await sb.from("pedidos_especiales")
+        .select("*, product:product_id(id,name,sku,emoji,photo_url), vendedor:vendedor_id(id,name,color), lider:lider_id(id,name), empresa:empresa_id(id,name)")
+        .order("created_at", {ascending:false})
+        .limit(200);
+      if (res.data) setPedEspList(res.data);
+    } catch(e) { /* noop */ }
+    setPedEspLoading(false);
+  }
+
+  async function doCrearPedidoEspecial() {
+    if (!peProdId) { toast("Elegí un producto", "", "e"); return; }
+    if (!peCliNom.trim()) { toast("Falta el nombre del cliente", "", "e"); return; }
+    setPeSaving(true);
+    try {
+      var res = await sb.rpc("rpc_crear_pedido_especial", {
+        p_product_id: peProdId, p_qty: peQty,
+        p_cliente_nombre: peCliNom.trim(), p_cliente_telefono: peCliTel.trim(), p_nota: peNota.trim()
+      });
+      if (res.error) { toast("Error al crear pedido", res.error.message, "e"); setPeSaving(false); return; }
+      toast("Pedido enviado", "Queda pendiente de aprobación", "s");
+      setPeShowForm(false); setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeCliNom(""); setPeCliTel(""); setPeNota("");
+      await loadPedidosEspeciales();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPeSaving(false);
+  }
+
+  async function doAccionPedidoEsp(id, rpcName, extraParams) {
+    setPeBusy(function(prev){ return Object.assign({},prev,{[id]:true}); });
+    try {
+      var params = Object.assign({ p_pedido_id: id, p_observ: peObserv[id]||"" }, extraParams||{});
+      var res = await sb.rpc(rpcName, params);
+      if (res.error) { toast("Error", res.error.message, "e"); setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); }); return; }
+      toast("Listo", "", "s");
+      setPeObserv(function(prev){ return Object.assign({},prev,{[id]:""}); });
+      await loadPedidosEspeciales();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); });
+  }
+
+  async function verHistorialPedidoEsp(id) {
+    if (peHistOpen === id) { setPeHistOpen(null); return; }
+    setPeHistOpen(id);
+    var res = await sb.from("pedidos_especiales_historial").select("*, usuario:usuario_id(name)").eq("pedido_id", id).order("created_at",{ascending:true});
+    setPeHist(res.data || []);
+  }
+
+  function peEstadoInfo(estado) {
+    var map = {
+      pendiente_lider:      {lbl:"Pendiente de líder",      bg:"#fff3e0", col:"#e07800"},
+      rechazado_lider:      {lbl:"Rechazado por líder",     bg:"#ffe0e5", col:"#d32"},
+      pendiente_empresaria: {lbl:"Pendiente de empresaria", bg:"#fff3e0", col:"#e07800"},
+      rechazado_empresaria: {lbl:"Rechazado por empresaria",bg:"#ffe0e5", col:"#d32"},
+      aprobado:             {lbl:"Aprobado",                bg:"#e0f2ff", col:"#0369a1"},
+      enviado_proveedor:    {lbl:"Enviado a proveedor",     bg:"#f3e8ff", col:"#7c3aed"},
+      recibido:             {lbl:"Recibido",                bg:"#e7f9ee", col:"#0a8f4d"},
+      listo_entregar:       {lbl:"Listo para entregar",     bg:"#dcfce7", col:"#15803d"},
+      entregado:            {lbl:"Entregado",               bg:"#dcfce7", col:"#15803d"},
+      cancelado:            {lbl:"Cancelado",               bg:"#f1f1f1", col:"#888"},
+    };
+    return map[estado] || {lbl:estado, bg:"#eee", col:"#666"};
   }
 
   async function doLogout() {
@@ -3529,6 +3614,129 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ PEDIDOS ESPECIALES (flujo en cascada) ══ */}
+          {tab==="pedesp"&&(me.role==="reseller"||me.role==="lider"||me.role==="empresaria"||isAdmin)&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">📦 Pedidos Especiales</div><div className="ph-s">Productos sin stock — requieren aprobación</div></div>
+                <div style={{display:"flex",gap:8}}>
+                  <button className="btn btn-xs b-ghost" onClick={loadPedidosEspeciales}><Ic n="undo" s={13}/></button>
+                  {me.role==="reseller"&&<button className="btn b-pri" onClick={function(){setPeShowForm(function(v){return !v;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
+                </div>
+              </div>
+              <div className="pc">
+
+                {/* Formulario nuevo pedido especial (vendedora) */}
+                {peShowForm&&me.role==="reseller"&&(
+                  <div className="card" style={{marginBottom:14}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>Nuevo pedido especial</div>
+                      <SearchBar value={peProdSrch} onChange={setPeProdSrch} placeholder="Buscar producto..."/>
+                      {peProdSrch&&(
+                        <div style={{maxHeight:220,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:10,marginTop:8}}>
+                          {products.filter(function(p){var q=peProdSrch.toLowerCase();return p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);}).slice(0,8).map(function(p){
+                            return (
+                              <div key={p.id} onClick={function(){setPeProdId(p.id);setPeProdSrch(p.name+" ["+(p.sku||"")+"]");}} style={{padding:"10px 12px",cursor:"pointer",borderBottom:"1px solid var(--brd)",display:"flex",alignItems:"center",gap:8,background:peProdId===p.id?"var(--pri-l)":"var(--card)"}}>
+                                <ProdThumb prod={p} size={32}/>
+                                <div>
+                                  <div style={{fontSize:13,fontWeight:700}}>{p.name}</div>
+                                  <div style={{fontSize:11,color:"var(--t3)"}}><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--pri)",background:"var(--pri-l)",borderRadius:5,padding:"1px 6px",marginRight:6}}>{p.sku||"s/c"}</span>{fmtARS(p.price)}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div style={{display:"flex",alignItems:"center",gap:10,margin:"12px 0"}}>
+                        <span style={{fontSize:13,color:"var(--t3)"}}>Cantidad</span>
+                        <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(Math.max(1,peQty-1));}}>−</button>
+                        <span style={{fontWeight:800,minWidth:24,textAlign:"center"}}>{peQty}</span>
+                        <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(peQty+1);}}>+</button>
+                      </div>
+                      <input value={peCliNom} onChange={function(e){setPeCliNom(e.target.value);}} placeholder="Nombre del cliente" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={peNota} onChange={function(e){setPeNota(e.target.value);}} placeholder="Nota: talle, color, etc. (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
+                      <button className="cta cta-am" onClick={doCrearPedidoEspecial} disabled={peSaving}><Ic n="check" s={16}/>{peSaving?"Enviando...":"Enviar pedido"}</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de pedidos */}
+                {pedEspLoading&&<div className="empty">Cargando...</div>}
+                {!pedEspLoading&&pedEspList.length===0&&<div className="empty">No hay pedidos especiales todavía</div>}
+                {pedEspList.map(function(p){
+                  var ei = peEstadoInfo(p.estado);
+                  var busy = !!peBusy[p.id];
+                  var puedeLider = me.role==="lider" && p.lider_id===me.id && p.estado==="pendiente_lider";
+                  var puedeEmpAprobar   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="pendiente_empresaria";
+                  var puedeEmpEnviar    = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="aprobado";
+                  var puedeEmpRecibir   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="enviado_proveedor";
+                  var puedeEmpListo     = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="recibido";
+                  var puedeVendEntregar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="listo_entregar";
+                  var puedeCancelar = (p.vendedor_id===me.id||p.lider_id===me.id||p.empresa_id===me.id) && !["entregado","cancelado"].includes(p.estado);
+                  var necesitaAccion = puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeEmpListo||puedeVendEntregar;
+                  return (
+                    <div key={p.id} className="card" style={{marginBottom:10,border:necesitaAccion?"1.5px solid var(--am-d)":undefined}}>
+                      <div style={{padding:"12px 14px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <ProdThumb prod={p.product} size={38}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700}}>{p.product?p.product.name:"Producto"}</div>
+                            <div style={{fontSize:11,color:"var(--t3)"}}>{p.qty} un. · {fmtARS(p.total)} · Cliente: {p.cliente_nombre}</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>Vendedora: {p.vendedor?p.vendedor.name:"-"}{p.lider?" · Líder: "+p.lider.name:""}</div>
+                          </div>
+                          <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
+                        </div>
+
+                        {p.nota&&<div style={{fontSize:11,color:"var(--t3)",marginTop:6,fontStyle:"italic"}}>📝 {p.nota}</div>}
+
+                        {necesitaAccion&&(
+                          <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--brd)"}}>
+                            <input value={peObserv[p.id]||""} onChange={function(e){setPeObserv(function(prev){return Object.assign({},prev,{[p.id]:e.target.value});});}}
+                              placeholder="Observación (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,marginBottom:8,fontFamily:"inherit"}}/>
+                            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                              {puedeLider&&(<>
+                                <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:true});}}>✅ Aprobar</button>
+                                <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:false});}}>✕ Rechazar</button>
+                              </>)}
+                              {puedeEmpAprobar&&(<>
+                                <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_empresaria_decidir_pedido",{p_aprobar:true});}}>✅ Aprobar</button>
+                                <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_empresaria_decidir_pedido",{p_aprobar:false});}}>✕ Rechazar</button>
+                              </>)}
+                              {puedeEmpEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_enviado_proveedor");}}>📤 Enviar a proveedor</button>}
+                              {puedeEmpRecibir&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_recibido");}}>📦 Marcar recibido</button>}
+                              {puedeEmpListo&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_listo_entregar");}}>✅ Listo para entregar</button>}
+                              {puedeVendEntregar&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_entregado");}}>🎉 Entregar al cliente</button>}
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{display:"flex",gap:12,marginTop:8}}>
+                          <button onClick={function(){verHistorialPedidoEsp(p.id);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{peHistOpen===p.id?"▲ Ocultar historial":"▼ Ver historial"}</button>
+                          {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
+                        </div>
+
+                        {peHistOpen===p.id&&(
+                          <div style={{marginTop:8,background:"var(--bg2)",borderRadius:10,padding:"10px 12px"}}>
+                            {peHist.length===0&&<div style={{fontSize:11,color:"var(--t3)"}}>Sin historial</div>}
+                            {peHist.map(function(h){
+                              return (
+                                <div key={h.id} style={{fontSize:11,color:"var(--t2)",marginBottom:6}}>
+                                  <b>{peEstadoInfo(h.estado_nuevo).lbl}</b> — {h.usuario?h.usuario.name:"Sistema"} · {new Date(h.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}
+                                  {h.observaciones&&<div style={{fontStyle:"italic",color:"var(--t3)"}}>"{h.observaciones}"</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ══ MI EQUIPO ══ */}
           {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
             <div>
@@ -3896,6 +4104,15 @@ export default function App() {
                     {id:"contacts",  lbl:"Red",       ico:"clock", col:"var(--pu)"},
                     {id:"cuenta",    lbl:"Mi Cuenta", ico:"user",  col:"var(--pri)"},
                   ];
+                  if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
+                    var pePend = pedEspList.filter(function(p){
+                      if (me.role==="reseller")   return p.vendedor_id===me.id && p.estado==="listo_entregar";
+                      if (me.role==="lider")      return p.lider_id===me.id && p.estado==="pendiente_lider";
+                      if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
+                      return false;
+                    }).length;
+                    items.push({id:"pedesp", lbl:"Pedidos Esp.", ico:"send", col:"var(--am-d)", badge:pePend});
+                  }
                   if (me.role==="empresaria" || me.role==="lider") {
                     items.push({id:"equipo", lbl:"Mi Equipo", ico:"users", col:"var(--pu)"});
                   }
@@ -3909,7 +4126,10 @@ export default function App() {
                     return (
                       <div key={it.id} onClick={function(){ setTab(it.id); setMasMenu(false); }}
                         style={{background:"var(--bg2)",borderRadius:18,padding:"16px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:8,cursor:"pointer"}}>
-                        <div style={{width:46,height:46,borderRadius:14,background:"var(--card)",display:"flex",alignItems:"center",justifyContent:"center",color:it.col,boxShadow:"var(--sh)"}}><Ic n={it.ico} s={22}/></div>
+                        <div style={{width:46,height:46,borderRadius:14,background:"var(--card)",display:"flex",alignItems:"center",justifyContent:"center",color:it.col,boxShadow:"var(--sh)",position:"relative"}}>
+                          <Ic n={it.ico} s={22}/>
+                          {!!it.badge&&<span style={{position:"absolute",top:-4,right:-4,background:"var(--cr,#e0224e)",color:"#fff",borderRadius:9,minWidth:18,height:18,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}}>{it.badge}</span>}
+                        </div>
                         <span style={{fontSize:12,fontWeight:700,color:"var(--t1)"}}>{it.lbl}</span>
                       </div>
                     );
