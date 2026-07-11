@@ -43,6 +43,7 @@ const IcBase = function Ic(props) {
     case "upload":  return <svg {...p}><polyline points="16,16 12,12 8,16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>;
     case "list":    return <svg {...p}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
     case "users":   return <svg {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+    case "user":    return <svg {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
     case "clock":   return <svg {...p}><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>;
     case "check":   return <svg {...p} strokeWidth="2.5"><polyline points="20,6 9,17 4,12"/></svg>;
     case "x":       return <svg {...p} strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
@@ -569,6 +570,31 @@ export default function App() {
   // ── UI ──────────────────────────────────────────────────────────────────────
   const [tab,       setTab]       = useState("inicio");
   const [masMenu,   setMasMenu]   = useState(false);
+
+  // ── FASE 1: Roles y jerarquía ──────────────────────────────────────────
+  const [misDatos,      setMisDatos]      = useState(null); // {telefono, direccion, avatar_url} de "me" (recargado aparte por si acaso)
+  const [ctaName,       setCtaName]       = useState("");
+  const [ctaTel,        setCtaTel]        = useState("");
+  const [ctaDir,        setCtaDir]        = useState("");
+  const [ctaPass,       setCtaPass]       = useState("");
+  const [ctaPass2,      setCtaPass2]      = useState("");
+  const [ctaSaving,     setCtaSaving]     = useState(false);
+  const [ctaJerInfo,    setCtaJerInfo]    = useState(null); // {lider:{name}, empresa:{name}, comision}
+  const [miEquipo,      setMiEquipo]      = useState([]);   // usuarios bajo mi jerarquía
+  const [misInvites,    setMisInvites]    = useState([]);   // invitaciones pendientes creadas por mí
+  const [invName,       setInvName]       = useState("");
+  const [invEmail,      setInvEmail]      = useState("");
+  const [invRole,       setInvRole]       = useState("reseller");
+  const [invLiderId,    setInvLiderId]    = useState("");
+  const [invComis,      setInvComis]      = useState("10");
+  const [invSaving,     setInvSaving]     = useState(false);
+  const [equipoEditComis, setEquipoEditComis] = useState({}); // {userId: valor en edición}
+
+  useEffect(function() {
+    if (!me) return;
+    setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
+    loadJerarquia();
+  }, [me && me.id]);
   const [toasts,    setToasts]    = useState([]);
   const [srchStock, setSrchStock] = useState("");
   const [srchCat,   setSrchCat]   = useState("");
@@ -1077,8 +1103,13 @@ export default function App() {
         avatar_url: meta2.avatar_url || meta2.picture || null
       }, { onConflict: "id", ignoreDuplicates: false }).select("*").maybeSingle();
       if (ins.data) {
-        setMe(ins.data);
-        loadData(ins.data.id, ins.data.role);
+        var perfilFinal = ins.data;
+        try {
+          var invitado = await aplicarInvitacionSiExiste(ins.data.id, session.user.email);
+          if (invitado) perfilFinal = invitado;
+        } catch(e) { /* noop */ }
+        setMe(perfilFinal);
+        loadData(perfilFinal.id, perfilFinal.role);
         loadCarousels();
         return true;
       }
@@ -1172,6 +1203,23 @@ export default function App() {
     }
   }
 
+  // Si hay una invitación pendiente para este email, aplica el rol/jerarquía
+  // definidos por quien invitó, y borra la invitación (se consume una sola vez).
+  async function aplicarInvitacionSiExiste(userId, email) {
+    try {
+      var inv = await sb.from("pending_invites").select("*").eq("email", email.toLowerCase()).maybeSingle();
+      if (!inv.data) return null;
+      var upd = await sb.from("users").update({
+        role: inv.data.role,
+        empresa_id: inv.data.empresa_id,
+        lider_id: inv.data.lider_id,
+        comision_lider_pct: inv.data.comision_lider_pct || 0
+      }).eq("id", userId).select().single();
+      await sb.from("pending_invites").delete().eq("id", inv.data.id);
+      return upd.data || null;
+    } catch(e) { return null; }
+  }
+
   // ── REGISTER ────────────────────────────────────────────────────────────────
   async function doRegister() {
     var em = aEmail.trim().toLowerCase();
@@ -1185,12 +1233,113 @@ export default function App() {
     if (res.data.user) {
       await new Promise(function(r){ setTimeout(r,1000); }); // wait for trigger
       await sb.from("users").update({name:aName.trim()}).eq("id",res.data.user.id);
-      var pr = await sb.from("users").select("*").eq("id",res.data.user.id).single();
+      var invitada = await aplicarInvitacionSiExiste(res.data.user.id, em);
+      var pr = invitada ? {data:invitada} : await sb.from("users").select("*").eq("id",res.data.user.id).single();
       if (pr.data){ setMe(pr.data); await loadData(pr.data.id, pr.data.role); toast("Cuenta creada!","Bienvenida "+aName,"s"); }
     }
   }
 
   // ── LOGOUT ──────────────────────────────────────────────────────────────────
+  // ── FASE 1: Roles y jerarquía ──────────────────────────────────────────
+
+  // Cargar info de jerarquía propia (líder, empresa, comisión) + mi equipo
+  async function loadJerarquia() {
+    if (!me) return;
+    try {
+      var tareas = [];
+      if (me.lider_id) tareas.push(sb.from("users").select("id,name").eq("id", me.lider_id).maybeSingle());
+      else tareas.push(Promise.resolve({data:null}));
+      if (me.empresa_id) tareas.push(sb.from("users").select("id,name").eq("id", me.empresa_id).maybeSingle());
+      else tareas.push(Promise.resolve({data:null}));
+      var res = await Promise.all(tareas);
+      setCtaJerInfo({ lider: res[0].data, empresa: res[1].data });
+    } catch(e) { /* noop */ }
+
+    // Mi equipo (según jerarquía; RLS ya filtra automáticamente)
+    if (me.role === "empresaria" || me.role === "lider" || me.role === "superadmin") {
+      try {
+        var eq = await sb.from("users").select("id,name,email,role,lider_id,empresa_id,comision_lider_pct,color,avatar_url")
+          .neq("id", me.id).order("role").order("name");
+        if (eq.data) setMiEquipo(eq.data);
+      } catch(e) { /* noop */ }
+    }
+    // Mis invitaciones pendientes
+    if (me.role === "empresaria" || me.role === "superadmin") {
+      try {
+        var inv = await sb.from("pending_invites").select("*").eq("invited_by", me.id).order("created_at", {ascending:false});
+        if (inv.data) setMisInvites(inv.data);
+      } catch(e) { /* noop */ }
+    }
+  }
+
+  // Guardar cambios de "Mi Cuenta"
+  async function doSaveMiCuenta() {
+    if (!ctaName.trim()) { toast("Falta el nombre", "", "e"); return; }
+    if (ctaPass && ctaPass.length < 6) { toast("La contraseña debe tener al menos 6 caracteres", "", "e"); return; }
+    if (ctaPass && ctaPass !== ctaPass2) { toast("Las contraseñas no coinciden", "", "e"); return; }
+    setCtaSaving(true);
+    try {
+      var upd = await sb.from("users").update({
+        name: ctaName.trim(), telefono: ctaTel.trim(), direccion: ctaDir.trim()
+      }).eq("id", me.id).select().single();
+      if (upd.error) { toast("Error al guardar", upd.error.message, "e"); setCtaSaving(false); return; }
+      if (ctaPass) {
+        var pr = await sb.auth.updateUser({ password: ctaPass });
+        if (pr.error) { toast("Datos guardados, pero la contraseña falló", pr.error.message, "e"); setCtaSaving(false); return; }
+      }
+      setMe(upd.data);
+      setCtaPass(""); setCtaPass2("");
+      toast("Datos actualizados", "", "s");
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCtaSaving(false);
+  }
+
+  // Crear invitación (superadmin invita empresaria; empresaria invita líder/vendedora)
+  async function doInvitar() {
+    if (!invName.trim() || !invEmail.trim()) { toast("Completá nombre y email", "", "e"); return; }
+    setInvSaving(true);
+    try {
+      var row = {
+        name: invName.trim(),
+        email: invEmail.trim().toLowerCase(),
+        role: me.role === "superadmin" ? "empresaria" : invRole,
+        invited_by: me.id,
+        empresa_id: me.role === "empresaria" ? me.id : null,
+        lider_id: (me.role === "empresaria" && invRole === "reseller" && invLiderId) ? invLiderId : null,
+        comision_lider_pct: (me.role === "empresaria" && invRole === "lider") ? parseFloat(invComis||0) : 0
+      };
+      var res = await sb.from("pending_invites").insert(row).select().single();
+      if (res.error) { toast("Error al invitar", res.error.message, "e"); setInvSaving(false); return; }
+      setMisInvites(function(prev){ return [res.data, ...prev]; });
+      setInvName(""); setInvEmail(""); setInvLiderId(""); setInvComis("10");
+      toast("Invitación creada", "Compartí el link de registro con "+row.name, "s");
+    } catch(e) { toast("Error", e.message, "e"); }
+    setInvSaving(false);
+  }
+
+  async function doCancelarInvite(id) {
+    await sb.from("pending_invites").delete().eq("id", id);
+    setMisInvites(function(prev){ return prev.filter(function(i){ return i.id !== id; }); });
+  }
+
+  // Asignar/cambiar líder de una vendedora (empresaria)
+  async function doAsignarLider(userId, liderId) {
+    var res = await sb.from("users").update({ lider_id: liderId || null }).eq("id", userId);
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{lider_id:liderId||null}) : u; }); });
+    toast("Asignación actualizada", "", "s");
+  }
+
+  // Actualizar % de comisión de un líder (empresaria)
+  async function doGuardarComisionLider(userId) {
+    var val = parseFloat(equipoEditComis[userId]);
+    if (isNaN(val) || val < 0 || val > 100) { toast("Porcentaje inválido", "", "e"); return; }
+    var res = await sb.from("users").update({ comision_lider_pct: val }).eq("id", userId);
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{comision_lider_pct:val}) : u; }); });
+    toast("Comisión actualizada", "", "s");
+  }
+
   async function doLogout() {
     var n = me.name;
     // Resetear UI de inmediato — no esperar a Supabase
@@ -3322,6 +3471,171 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ MI CUENTA ══ */}
+          {tab==="cuenta"&&(
+            <div>
+              <div className="ph"><div><div className="ph-h">👤 Mi Cuenta</div><div className="ph-s">Tus datos personales</div></div></div>
+              <div className="pc">
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"18px 16px",display:"flex",alignItems:"center",gap:14}}>
+                    <Avatar name={me.name} color={me.color} size={56}/>
+                    <div>
+                      <div style={{fontSize:16,fontWeight:800,color:"var(--t1)"}}>{me.name}</div>
+                      <div style={{fontSize:12,color:"var(--t3)"}}>{me.email}</div>
+                      <div style={{marginTop:4}}>
+                        <span style={{background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"2px 9px",fontSize:10,fontWeight:800,textTransform:"uppercase"}}>
+                          {me.role==="superadmin"?"👑 Superadmin":me.role==="empresaria"?"🏢 Empresaria":me.role==="lider"?"⭐ Líder":"🛍️ Vendedora"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {(ctaJerInfo&&(ctaJerInfo.lider||ctaJerInfo.empresa))&&(
+                  <div className="card" style={{marginBottom:14}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>Mi jerarquía</div>
+                      {ctaJerInfo.empresa&&<div style={{fontSize:13,marginBottom:4}}>🏢 Empresa: <b>{ctaJerInfo.empresa.name}</b></div>}
+                      {ctaJerInfo.lider&&<div style={{fontSize:13,marginBottom:4}}>⭐ Líder: <b>{ctaJerInfo.lider.name}</b></div>}
+                      {me.role==="reseller"&&<div style={{fontSize:13}}>💰 Comisión: <b>30% fijo</b></div>}
+                      {me.role==="lider"&&<div style={{fontSize:13}}>💰 Mi comisión: <b>{me.comision_lider_pct||0}%</b></div>}
+                    </div>
+                  </div>
+                )}
+
+                <div className="card">
+                  <div style={{padding:"16px"}}>
+                    <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:10}}>Editar datos</div>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Nombre</label>
+                    <input value={ctaName} onChange={function(e){setCtaName(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Teléfono</label>
+                    <input value={ctaTel} onChange={function(e){setCtaTel(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección</label>
+                    <input value={ctaDir} onChange={function(e){setCtaDir(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+
+                    <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:10,borderTop:"1px solid var(--brd)",paddingTop:14}}>Cambiar contraseña (opcional)</div>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Nueva contraseña</label>
+                    <input type="password" value={ctaPass} onChange={function(e){setCtaPass(e.target.value);}} placeholder="Dejar vacío para no cambiar" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                    {ctaPass&&(
+                      <div style={{marginBottom:14}}>
+                        <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Repetir contraseña</label>
+                        <input type="password" value={ctaPass2} onChange={function(e){setCtaPass2(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,fontFamily:"inherit"}}/>
+                      </div>
+                    )}
+                    <button className="cta cta-in" onClick={doSaveMiCuenta} disabled={ctaSaving}>{ctaSaving?"Guardando...":"💾 Guardar cambios"}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MI EQUIPO ══ */}
+          {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
+            <div>
+              <div className="ph"><div><div className="ph-h">👥 Mi Equipo</div><div className="ph-s">{me.role==="empresaria"?"Tus líderes y vendedoras":me.role==="lider"?"Tus vendedoras":"Empresarias del sistema"}</div></div><button className="btn btn-xs b-ghost" onClick={loadJerarquia}><Ic n="undo" s={13}/>Actualizar</button></div>
+              <div className="pc">
+
+                {/* Invitar (empresaria invita líder/vendedora; superadmin invita empresaria) */}
+                {(me.role==="empresaria"||isAdmin)&&(
+                  <div className="card" style={{marginBottom:14}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>➕ Invitar {isAdmin?"empresaria":"a mi equipo"}</div>
+                      <input value={invName} onChange={function(e){setInvName(e.target.value);}} placeholder="Nombre completo" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={invEmail} onChange={function(e){setInvEmail(e.target.value);}} placeholder="Email" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                      {!isAdmin&&(
+                        <div style={{display:"flex",gap:8,marginBottom:8}}>
+                          <button onClick={function(){setInvRole("reseller");}} style={{flex:1,padding:"9px",borderRadius:9,border:"1.5px solid "+(invRole==="reseller"?"var(--pri)":"var(--brd)"),background:invRole==="reseller"?"var(--pri-l)":"#fff",fontWeight:700,fontSize:12,cursor:"pointer",color:invRole==="reseller"?"var(--pri)":"var(--t2)"}}>🛍️ Vendedora</button>
+                          <button onClick={function(){setInvRole("lider");}} style={{flex:1,padding:"9px",borderRadius:9,border:"1.5px solid "+(invRole==="lider"?"var(--pri)":"var(--brd)"),background:invRole==="lider"?"var(--pri-l)":"#fff",fontWeight:700,fontSize:12,cursor:"pointer",color:invRole==="lider"?"var(--pri)":"var(--t2)"}}>⭐ Líder</button>
+                        </div>
+                      )}
+                      {(!isAdmin&&invRole==="reseller"&&miEquipo.filter(function(u){return u.role==="lider";}).length>0)&&(
+                        <select value={invLiderId} onChange={function(e){setInvLiderId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
+                          <option value="">Sin líder (directo)</option>
+                          {miEquipo.filter(function(u){return u.role==="lider";}).map(function(l){return <option key={l.id} value={l.id}>{l.name}</option>;})}
+                        </select>
+                      )}
+                      {(!isAdmin&&invRole==="lider")&&(
+                        <div style={{marginBottom:8}}>
+                          <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>% de comisión para este líder</label>
+                          <input type="number" value={invComis} onChange={function(e){setInvComis(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,fontFamily:"inherit"}}/>
+                        </div>
+                      )}
+                      <button className="cta cta-in" onClick={doInvitar} disabled={invSaving}>{invSaving?"Creando...":"✉️ Crear invitación"}</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Invitaciones pendientes */}
+                {misInvites.length>0&&(
+                  <div className="card" style={{marginBottom:14}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>⏳ Invitaciones pendientes</div>
+                      {misInvites.map(function(inv){
+                        var link = window.location.origin + "?invite=" + encodeURIComponent(inv.email);
+                        return (
+                          <div key={inv.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:700}}>{inv.name}</div>
+                              <div style={{fontSize:11,color:"var(--t3)"}}>{inv.email} · {inv.role}</div>
+                            </div>
+                            <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontSize:10,fontWeight:700,padding:"6px 8px"}} onClick={function(){
+                              var msg = "¡Hola "+inv.name+"! Te invito a StockPro. Registrate con este email ("+inv.email+") en: "+window.location.origin;
+                              window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
+                            }}>📲</button>
+                            <button className="btn btn-xs b-cr" style={{padding:"6px 8px"}} onClick={function(){doCancelarInvite(inv.id);}}><Ic n="trash" s={11}/></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de equipo */}
+                <div className="card">
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>{isAdmin?"Empresarias":"Miembros"} ({miEquipo.length})</div>
+                    {miEquipo.length===0&&<div className="empty">Todavía no hay nadie en tu equipo</div>}
+                    {miEquipo.map(function(u){
+                      return (
+                        <div key={u.id} style={{padding:"10px 0",borderTop:"1px solid var(--brd)"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <Avatar name={u.name} color={u.color} size={34}/>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:700}}>{u.name}</div>
+                              <div style={{fontSize:11,color:"var(--t3)"}}>{u.email}</div>
+                            </div>
+                            <span style={{background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800,textTransform:"uppercase",whiteSpace:"nowrap"}}>
+                              {u.role==="empresaria"?"🏢 Empresaria":u.role==="lider"?"⭐ Líder":"🛍️ Vendedora"}
+                            </span>
+                          </div>
+                          {/* Asignar líder a una vendedora (solo empresaria) */}
+                          {(me.role==="empresaria"&&u.role==="reseller")&&(
+                            <div style={{marginTop:8,marginLeft:44}}>
+                              <select value={u.lider_id||""} onChange={function(e){doAsignarLider(u.id, e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 10px",fontFamily:"inherit"}}>
+                                <option value="">Sin líder (directo)</option>
+                                {miEquipo.filter(function(l){return l.role==="lider";}).map(function(l){return <option key={l.id} value={l.id}>{l.name}</option>;})}
+                              </select>
+                            </div>
+                          )}
+                          {/* Editar % comisión de un líder (solo empresaria) */}
+                          {(me.role==="empresaria"&&u.role==="lider")&&(
+                            <div style={{marginTop:8,marginLeft:44,display:"flex",gap:6,alignItems:"center"}}>
+                              <input type="number" value={equipoEditComis[u.id]!==undefined?equipoEditComis[u.id]:(u.comision_lider_pct||0)}
+                                onChange={function(e){setEquipoEditComis(function(prev){return Object.assign({},prev,{[u.id]:e.target.value});});}}
+                                style={{width:64,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                              <span style={{fontSize:12,color:"var(--t3)"}}>% comisión</span>
+                              <button className="btn btn-xs b-pri" style={{padding:"5px 10px",fontSize:10}} onClick={function(){doGuardarComisionLider(u.id);}}>Guardar</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ══ ADMIN DASHBOARD ══ */}
           {tab==="admin"&&isAdmin&&(
             <div>
@@ -3580,11 +3894,16 @@ export default function App() {
                     {id:"enviados",  lbl:"Enviados",  ico:"send",  col:"var(--in)"},
                     {id:"recibidos", lbl:"Recibidos", ico:"users", col:"var(--bl-d)"},
                     {id:"contacts",  lbl:"Red",       ico:"clock", col:"var(--pu)"},
+                    {id:"cuenta",    lbl:"Mi Cuenta", ico:"user",  col:"var(--pri)"},
                   ];
+                  if (me.role==="empresaria" || me.role==="lider") {
+                    items.push({id:"equipo", lbl:"Mi Equipo", ico:"users", col:"var(--pu)"});
+                  }
                   if (isAdmin) {
                     items.push({id:"catalog", lbl:"Catálogo", ico:"list",   col:"var(--am-d)"});
                     items.push({id:"importar",lbl:"Importar", ico:"upload", col:"var(--t2)"});
                     items.push({id:"admin",   lbl:"Admin",    ico:"shield", col:"var(--in-d)"});
+                    items.push({id:"equipo",  lbl:"Empresas", ico:"users",  col:"var(--pu)"});
                   }
                   return items.map(function(it){
                     return (
