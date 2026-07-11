@@ -618,27 +618,32 @@ export default function App() {
     loadResumen();
   }, [me && me.id]);
 
-  // Re-sincronizar mi propio perfil cada vez que vuelvo a la app — así si un
-  // superadmin/empresaria me cambia el rol o la jerarquía, se refleja solo
-  // sin necesitar cerrar sesión.
+  // Re-sincronizar mi propio perfil: al volver a la app, al navegar a
+  // secciones sensibles al rol, y cada 30s de respaldo — así si un
+  // superadmin/empresaria me cambia el rol, se refleja solo sin relogin.
+  async function resyncPerfil() {
+    if (!me) return;
+    try {
+      var res = await sb.from("users").select("*").eq("id", me.id).maybeSingle();
+      if (!res.data) return;
+      var d = res.data;
+      if (d.role !== me.role || d.empresa_id !== me.empresa_id || d.lider_id !== me.lider_id || d.comision_lider_pct !== me.comision_lider_pct) {
+        setMe(d);
+        toast("Tu cuenta fue actualizada", "Tu rol o equipo cambió", "i");
+      }
+    } catch(e) { /* noop */ }
+  }
+
   useEffect(function() {
     if (!me) return;
-    function resyncPerfil() {
-      if (document.visibilityState !== "visible") return;
-      sb.from("users").select("*").eq("id", me.id).maybeSingle().then(function(res){
-        if (!res.data) return;
-        var d = res.data;
-        if (d.role !== me.role || d.empresa_id !== me.empresa_id || d.lider_id !== me.lider_id || d.comision_lider_pct !== me.comision_lider_pct) {
-          setMe(d);
-          toast("Tu cuenta fue actualizada", "Tu rol o equipo cambió", "i");
-        }
-      }).catch(function(){});
-    }
-    document.addEventListener("visibilitychange", resyncPerfil);
-    window.addEventListener("focus", resyncPerfil);
+    function onFocusResync() { if (document.visibilityState === "visible") resyncPerfil(); }
+    document.addEventListener("visibilitychange", onFocusResync);
+    window.addEventListener("focus", onFocusResync);
+    var poll = setInterval(resyncPerfil, 30000);
     return function() {
-      document.removeEventListener("visibilitychange", resyncPerfil);
-      window.removeEventListener("focus", resyncPerfil);
+      document.removeEventListener("visibilitychange", onFocusResync);
+      window.removeEventListener("focus", onFocusResync);
+      clearInterval(poll);
     };
   }, [me && me.id, me && me.role, me && me.empresa_id, me && me.lider_id, me && me.comision_lider_pct]);
   const [toasts,    setToasts]    = useState([]);
@@ -4294,7 +4299,7 @@ export default function App() {
                   }
                   return items.map(function(it){
                     return (
-                      <div key={it.id} onClick={function(){ setTab(it.id); setMasMenu(false); }}
+                      <div key={it.id} onClick={function(){ setTab(it.id); setMasMenu(false); if(["cuenta","equipo","resumen","pedesp"].includes(it.id)) resyncPerfil(); }}
                         style={{background:"var(--bg2)",borderRadius:18,padding:"16px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:8,cursor:"pointer"}}>
                         <div style={{width:46,height:46,borderRadius:14,background:"var(--card)",display:"flex",alignItems:"center",justifyContent:"center",color:it.col,boxShadow:"var(--sh)",position:"relative"}}>
                           <Ic n={it.ico} s={22}/>
