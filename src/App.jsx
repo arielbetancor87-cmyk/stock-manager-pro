@@ -612,6 +612,30 @@ export default function App() {
     loadJerarquia();
     loadPedidosEspeciales();
   }, [me && me.id]);
+
+  // Re-sincronizar mi propio perfil cada vez que vuelvo a la app — así si un
+  // superadmin/empresaria me cambia el rol o la jerarquía, se refleja solo
+  // sin necesitar cerrar sesión.
+  useEffect(function() {
+    if (!me) return;
+    function resyncPerfil() {
+      if (document.visibilityState !== "visible") return;
+      sb.from("users").select("*").eq("id", me.id).maybeSingle().then(function(res){
+        if (!res.data) return;
+        var d = res.data;
+        if (d.role !== me.role || d.empresa_id !== me.empresa_id || d.lider_id !== me.lider_id || d.comision_lider_pct !== me.comision_lider_pct) {
+          setMe(d);
+          toast("Tu cuenta fue actualizada", "Tu rol o equipo cambió", "i");
+        }
+      }).catch(function(){});
+    }
+    document.addEventListener("visibilitychange", resyncPerfil);
+    window.addEventListener("focus", resyncPerfil);
+    return function() {
+      document.removeEventListener("visibilitychange", resyncPerfil);
+      window.removeEventListener("focus", resyncPerfil);
+    };
+  }, [me && me.id, me && me.role, me && me.empresa_id, me && me.lider_id, me && me.comision_lider_pct]);
   const [toasts,    setToasts]    = useState([]);
   const [srchStock, setSrchStock] = useState("");
   const [srchCat,   setSrchCat]   = useState("");
@@ -3751,7 +3775,7 @@ export default function App() {
           {/* ══ MI EQUIPO ══ */}
           {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
             <div>
-              <div className="ph"><div><div className="ph-h">👥 Mi Equipo</div><div className="ph-s">{me.role==="empresaria"?"Tus líderes y vendedoras":me.role==="lider"?"Tus vendedoras":"Empresarias del sistema"}</div></div><button className="btn btn-xs b-ghost" onClick={loadJerarquia}><Ic n="undo" s={13}/>Actualizar</button></div>
+              <div className="ph"><div><div className="ph-h">{isAdmin?"🏢 Empresas":"👥 Mi Estructura"}</div><div className="ph-s">{me.role==="empresaria"?"Tus líderes y vendedoras":me.role==="lider"?"Tus vendedoras":"Empresarias del sistema"}</div></div><button className="btn btn-xs b-ghost" onClick={loadJerarquia}><Ic n="undo" s={13}/>Actualizar</button></div>
               <div className="pc">
 
                 {/* Invitar (empresaria invita líder/vendedora; superadmin invita empresaria) */}
@@ -4134,7 +4158,7 @@ export default function App() {
                     items.push({id:"pedesp", lbl:"Pedidos Esp.", ico:"send", col:"var(--am-d)", badge:pePend});
                   }
                   if (me.role==="empresaria" || me.role==="lider") {
-                    items.push({id:"equipo", lbl:"Mi Equipo", ico:"users", col:"var(--pu)"});
+                    items.push({id:"equipo", lbl:"Mi Estructura", ico:"users", col:"var(--pu)"});
                   }
                   if (isAdmin) {
                     items.push({id:"catalog", lbl:"Catálogo", ico:"list",   col:"var(--am-d)"});
