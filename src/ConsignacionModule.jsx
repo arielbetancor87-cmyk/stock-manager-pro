@@ -200,29 +200,16 @@ export default function ConsignacionModule({ sb, me, products, inventory, contac
         const p=products.find(x=>x.id===pid);
         if (!inv||inv.qty_available<qty) throw new Error(`Stock insuficiente: "${p?.name}" — tenés ${inv?.qty_available??0} u.`);
       }
-      const { data:consig, error:cErr } = await sb.from("consignaciones").insert({
-        owner_id:me.id, vendedora_id:vendedoraId, comision_pct:comision,
-        notas:notas.trim()||null, status:"activa"
-      }).select().single();
-      if (cErr) throw cErr;
-      for (const [pid,qty] of items) {
+      const itemsPayload = items.map(([pid,qty])=>{
         const p=products.find(x=>x.id===pid);
-        const inv=inventory.find(i=>i.product_id===pid);
-        await sb.from("consignacion_items").insert({ consignacion_id:consig.id, product_id:pid, qty_enviada:qty, qty_vendida:0, qty_devuelta:0, precio_venta:p?.price??0 });
-        await sb.from("inventory").update({ qty_available:inv.qty_available-qty }).eq("id",inv.id);
-        await logMov(sb, me, {
-          product_id: pid, qty: -qty,
-          estado_anterior: "stock_central", estado_nuevo: "en_consigna",
-          related_user_id: vendedoraId,
-          referencia_tipo: "consignacion", referencia_id: consig.id,
-          nota: "Entregado en consigna a " + (contacts.find(c=>c.id===vendedoraId)?.name||"")
-        });
-        const { data:vInv } = await sb.from("inventory").select("*").eq("user_id",vendedoraId).eq("product_id",pid).maybeSingle();
-        if (vInv) { await sb.from("inventory").update({ qty_available:vInv.qty_available+qty }).eq("id",vInv.id); }
-        else { await sb.from("inventory").insert({ user_id:vendedoraId, product_id:pid, qty_available:qty, qty_sold:0, source:"consigna", supplier_id:me.id }); }
-      }
+        return { product_id: pid, qty: qty, precio_venta: p?.price??0 };
+      });
+      const { data:consigId, error:rpcErr } = await sb.rpc("rpc_crear_consignacion", {
+        p_vendedora_id: vendedoraId, p_comision_pct: comision,
+        p_notas: notas.trim()||null, p_items: itemsPayload
+      });
+      if (rpcErr) throw rpcErr;
       const totalU=items.reduce((s,[,q])=>s+q,0);
-      await sb.from("notifications").insert({ to_user_id:vendedoraId, from_name:me.name, type:"transfer", message:`📦 ${me.name} te entregó ${items.length} producto${items.length!==1?"s":""} en consignación (${totalU} u. en total)` });
       const vName=contacts.find(c=>c.id===vendedoraId)?.name??"la vendedora";
       toast("✅ Entrega registrada",`${totalU} u. a ${vName}`,"s");
       setCarrito({}); setVendedoraId(""); setNotas(""); setPaso(1); setView("main");
