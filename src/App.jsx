@@ -1258,16 +1258,8 @@ export default function App() {
   // definidos por quien invitó, y borra la invitación (se consume una sola vez).
   async function aplicarInvitacionSiExiste(userId, email) {
     try {
-      var inv = await sb.from("pending_invites").select("*").eq("email", email.toLowerCase()).maybeSingle();
-      if (!inv.data) return null;
-      var upd = await sb.from("users").update({
-        role: inv.data.role,
-        empresa_id: inv.data.empresa_id,
-        lider_id: inv.data.lider_id,
-        comision_lider_pct: inv.data.comision_lider_pct || 0
-      }).eq("id", userId).select().single();
-      await sb.from("pending_invites").delete().eq("id", inv.data.id);
-      return upd.data || null;
+      var res = await sb.rpc("rpc_consumir_invitacion", { p_email: email });
+      return res.data || null;
     } catch(e) { return null; }
   }
 
@@ -1375,8 +1367,8 @@ export default function App() {
 
   // Asignar/cambiar líder de una vendedora (empresaria)
   async function doAsignarLider(userId, liderId) {
-    var res = await sb.from("users").update({ lider_id: liderId || null }).eq("id", userId);
-    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    var res = await sb.rpc("rpc_editar_jerarquia_usuario", { p_user_id: userId, p_set_lider: true, p_lider_id: liderId || null });
+    if (res.error) { toast("No se pudo asignar", res.error.message, "e"); return; }
     setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{lider_id:liderId||null}) : u; }); });
     toast("Asignación actualizada", "", "s");
   }
@@ -1385,7 +1377,7 @@ export default function App() {
   async function doGuardarComisionLider(userId) {
     var val = parseFloat(equipoEditComis[userId]);
     if (isNaN(val) || val < 0 || val > 100) { toast("Porcentaje inválido", "", "e"); return; }
-    var res = await sb.from("users").update({ comision_lider_pct: val }).eq("id", userId);
+    var res = await sb.rpc("rpc_editar_jerarquia_usuario", { p_user_id: userId, p_comision: val });
     if (res.error) { toast("Error", res.error.message, "e"); return; }
     setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{comision_lider_pct:val}) : u; }); });
     toast("Comisión actualizada", "", "s");
@@ -1393,11 +1385,11 @@ export default function App() {
 
   // Cambiar el rol de un usuario del equipo (superadmin: cualquiera / empresaria: los suyos)
   async function doCambiarRol(userId, nuevoRol) {
+    var res = await sb.rpc("rpc_editar_jerarquia_usuario", { p_user_id: userId, p_nuevo_role: nuevoRol });
+    if (res.error) { toast("No se pudo cambiar el rol", res.error.message, "e"); return; }
     var patch = { role: nuevoRol };
     if (nuevoRol === "empresaria") { patch.empresa_id = null; patch.lider_id = null; }
     else if (nuevoRol === "lider") { patch.lider_id = null; }
-    var res = await sb.from("users").update(patch).eq("id", userId);
-    if (res.error) { toast("Error al cambiar el rol", res.error.message, "e"); return; }
     setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,patch) : u; }); });
     toast("Rol actualizado", "", "s");
   }
