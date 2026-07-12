@@ -878,13 +878,9 @@ export default function App() {
   const [resetBusy, setResetBusy] = useState(false);
 
   async function doDeleteUser(userId, userName) {
-    // Delete from public.users (CASCADE will handle related data)
-    var r = await sb.from("users").delete().eq("id", userId);
-    if (r.error) { toast("Error",""+r.error.message,"e"); return; }
+    var r = await sb.rpc("rpc_eliminar_usuario", { p_user_id: userId });
+    if (r.error) { toast("Error", ""+r.error.message, "e"); return; }
     setAllUsers(function(p){ return p.filter(function(u){ return u.id!==userId; }); });
-    // Also remove from contacts
-    await sb.from("contacts").delete().eq("contact_id", userId);
-    await sb.from("contacts").delete().eq("user_id", userId);
     toast("Usuario eliminado", userName, "i");
     setDelUserConf(null);
     await loadData(me.id, me.role);
