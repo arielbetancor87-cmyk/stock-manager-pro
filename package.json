@@ -19,7 +19,7 @@
     "@capacitor/android": "^5.7.0",
     "@capacitor/splash-screen": "^5.0.7",
     "@capacitor/status-bar": "^5.0.7",
-    "jspdf": "^2.5.1",
+    "jspdf": "^4.2.0",
     "jspdf-autotable": "^3.8.2"
   },
   "devDependencies": {
