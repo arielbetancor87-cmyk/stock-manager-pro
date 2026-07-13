@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, memo, useMemo } from "react";
 import ConsignacionModule from "./ConsignacionModule";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 // Requiere archivo .env en la raíz:
@@ -576,6 +578,9 @@ export default function App() {
   const [ctaName,       setCtaName]       = useState("");
   const [ctaTel,        setCtaTel]        = useState("");
   const [ctaDir,        setCtaDir]        = useState("");
+  const [ctaDni,        setCtaDni]        = useState("");
+  const [ctaCodVend,    setCtaCodVend]    = useState("");
+  const [ctaLocalidad,  setCtaLocalidad]  = useState("");
   const [ctaPass,       setCtaPass]       = useState("");
   const [ctaPass2,      setCtaPass2]      = useState("");
   const [ctaSaving,     setCtaSaving]     = useState(false);
@@ -600,6 +605,12 @@ export default function App() {
   const [peCliNom,     setPeCliNom]     = useState("");
   const [peCliTel,     setPeCliTel]     = useState("");
   const [peNota,       setPeNota]       = useState("");
+  const [peCampania,   setPeCampania]   = useState("");
+  const [peFiltroEmp,  setPeFiltroEmp]  = useState("");
+  const [peFiltroLid,  setPeFiltroLid]  = useState("");
+  const [peFiltroVend, setPeFiltroVend] = useState("");
+  const [peFiltroCamp, setPeFiltroCamp] = useState("");
+  const [peFiltroEst,  setPeFiltroEst]  = useState("");
   const [peSaving,     setPeSaving]     = useState(false);
   const [peObserv,     setPeObserv]     = useState({}); // {pedidoId: texto observación}
   const [peBusy,       setPeBusy]       = useState({}); // {pedidoId: true mientras procesa acción}
@@ -613,6 +624,7 @@ export default function App() {
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
+    setCtaDni(me.dni||""); setCtaCodVend(me.codigo_vendedora||""); setCtaLocalidad(me.localidad||"");
     loadJerarquia();
     loadPedidosEspeciales();
     loadResumen();
@@ -1319,7 +1331,8 @@ export default function App() {
     setCtaSaving(true);
     try {
       var upd = await sb.from("users").update({
-        name: ctaName.trim(), telefono: ctaTel.trim(), direccion: ctaDir.trim()
+        name: ctaName.trim(), telefono: ctaTel.trim(), direccion: ctaDir.trim(),
+        dni: ctaDni.trim(), codigo_vendedora: ctaCodVend.trim(), localidad: ctaLocalidad.trim()
       }).eq("id", me.id).select().single();
       if (upd.error) { toast("Error al guardar", upd.error.message, "e"); setCtaSaving(false); return; }
       if (ctaPass) {
@@ -1397,7 +1410,7 @@ export default function App() {
     setPedEspLoading(true);
     try {
       var res = await sb.from("pedidos_especiales")
-        .select("*, product:product_id(id,name,sku,emoji,photo_url), vendedor:vendedor_id(id,name,color), lider:lider_id(id,name), empresa:empresa_id(id,name)")
+        .select("*, product:product_id(id,name,sku,emoji,photo_url,price), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name)")
         .order("created_at", {ascending:false})
         .limit(200);
       if (res.data) setPedEspList(res.data);
@@ -1412,11 +1425,12 @@ export default function App() {
     try {
       var res = await sb.rpc("rpc_crear_pedido_especial", {
         p_product_id: peProdId, p_qty: peQty,
-        p_cliente_nombre: peCliNom.trim(), p_cliente_telefono: peCliTel.trim(), p_nota: peNota.trim()
+        p_cliente_nombre: peCliNom.trim(), p_cliente_telefono: peCliTel.trim(), p_nota: peNota.trim(),
+        p_campania: peCampania.trim()
       });
       if (res.error) { toast("Error al crear pedido", res.error.message, "e"); setPeSaving(false); return; }
       toast("Pedido enviado", "Queda pendiente de aprobación", "s");
-      setPeShowForm(false); setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeCliNom(""); setPeCliTel(""); setPeNota("");
+      setPeShowForm(false); setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeCliNom(""); setPeCliTel(""); setPeNota(""); setPeCampania("");
       await loadPedidosEspeciales();
     } catch(e) { toast("Error", e.message, "e"); }
     setPeSaving(false);
@@ -1431,6 +1445,16 @@ export default function App() {
       toast("Listo", "", "s");
       setPeObserv(function(prev){ return Object.assign({},prev,{[id]:""}); });
       await loadPedidosEspeciales();
+
+      // Al quedar "Aprobado" (aprobó la empresaria), generar el PDF automáticamente
+      if (rpcName === "rpc_empresaria_decidir_pedido" && extraParams && extraParams.p_aprobar) {
+        var pedido = pedEspList.find(function(x){ return x.id===id; });
+        if (pedido) {
+          toast("Generando PDF...", "", "i");
+          var url = await generarYSubirPdfPedido(Object.assign({}, pedido, {estado:"aprobado"}));
+          if (url) { toast("📄 PDF generado", "Disponible para el administrador", "s"); await loadPedidosEspeciales(); }
+        }
+      }
     } catch(e) { toast("Error", e.message, "e"); }
     setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); });
   }
@@ -1456,6 +1480,129 @@ export default function App() {
       cancelado:            {lbl:"Cancelado",               bg:"#f1f1f1", col:"#888"},
     };
     return map[estado] || {lbl:estado, bg:"#eee", col:"#666"};
+  }
+
+  // ── FASE 4: Generación automática de PDF del pedido ─────────────────────
+  async function generarYSubirPdfPedido(p) {
+    try {
+      var doc = new jsPDF({ unit: "mm", format: "a4" });
+      var pageW = doc.internal.pageSize.getWidth();
+      var margin = 14;
+
+      // Encabezado
+      doc.setFillColor(224, 34, 78);
+      doc.rect(0, 0, pageW, 26, "F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(18);
+      doc.setFont(undefined, "bold");
+      doc.text("Venta Directa", margin, 12);
+      doc.setFontSize(10);
+      doc.setFont(undefined, "normal");
+      doc.text("Pedido Especial — Orden de Compra", margin, 19);
+      doc.setFontSize(11);
+      doc.setFont(undefined, "bold");
+      doc.text("Pedido #" + (p.numero_pedido||"-"), pageW-margin, 12, {align:"right"});
+      doc.setFont(undefined, "normal");
+      doc.setFontSize(9);
+      doc.text(new Date(p.created_at).toLocaleString("es-AR"), pageW-margin, 19, {align:"right"});
+
+      var y = 34;
+      doc.setTextColor(30,30,30);
+
+      // Datos del pedido
+      doc.setFontSize(11); doc.setFont(undefined,"bold");
+      doc.text("Datos del pedido", margin, y); y += 6;
+      doc.setFontSize(9.5); doc.setFont(undefined,"normal");
+      var ei = peEstadoInfo(p.estado);
+      doc.text("Estado: " + ei.lbl, margin, y);
+      doc.text("Campaña: " + (p.campania||"-"), margin+90, y); y += 5;
+      if (p.fecha_entrega_estimada) { doc.text("Entrega estimada: " + p.fecha_entrega_estimada, margin, y); y += 5; }
+      y += 3;
+
+      // Datos de la vendedora
+      doc.setFontSize(11); doc.setFont(undefined,"bold");
+      doc.text("Vendedora", margin, y); y += 6;
+      doc.setFontSize(9.5); doc.setFont(undefined,"normal");
+      var v = p.vendedor||{};
+      doc.text("Nombre: " + (v.name||"-"), margin, y);
+      doc.text("Código: " + (v.codigo_vendedora||"-"), margin+90, y); y += 5;
+      doc.text("DNI: " + (v.dni||"-"), margin, y);
+      doc.text("Teléfono: " + (v.telefono||"-"), margin+90, y); y += 5;
+      doc.text("Localidad: " + (v.localidad||"-"), margin, y); y += 8;
+
+      // Estructura comercial
+      doc.setFontSize(11); doc.setFont(undefined,"bold");
+      doc.text("Estructura comercial", margin, y); y += 6;
+      doc.setFontSize(9.5); doc.setFont(undefined,"normal");
+      doc.text("Líder: " + (p.lider?p.lider.name:"— (directa)"), margin, y);
+      doc.text("Empresaria: " + (p.empresa?p.empresa.name:"-"), margin+90, y); y += 8;
+
+      // Tabla de productos
+      autoTable(doc, {
+        startY: y,
+        head: [["Código","Descripción","Cant.","P. Unit.","Subtotal"]],
+        body: [[
+          p.product?p.product.sku||"-":"-",
+          p.product?p.product.name:"-",
+          String(p.qty),
+          "$"+Number(p.precio_unit).toLocaleString("es-AR"),
+          "$"+Number(p.total).toLocaleString("es-AR")
+        ]],
+        theme: "grid",
+        headStyles: { fillColor: [224,34,78], textColor: 255, fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+        margin: { left: margin, right: margin }
+      });
+
+      var finalY = doc.lastAutoTable.finalY + 8;
+
+      // Resumen
+      doc.setFillColor(245,245,245);
+      doc.rect(margin, finalY, pageW-margin*2, 20, "F");
+      doc.setFontSize(10); doc.setFont(undefined,"bold");
+      doc.text("Cantidad total: " + p.qty + " unidad(es)", margin+4, finalY+8);
+      doc.setFontSize(13);
+      doc.setTextColor(224,34,78);
+      doc.text("Total: $" + Number(p.total).toLocaleString("es-AR"), pageW-margin-4, finalY+12, {align:"right"});
+      doc.setTextColor(30,30,30);
+      finalY += 26;
+
+      if (p.nota) {
+        doc.setFontSize(9.5); doc.setFont(undefined,"bold");
+        doc.text("Observaciones:", margin, finalY); finalY += 5;
+        doc.setFont(undefined,"normal");
+        var notaLines = doc.splitTextToSize(p.nota, pageW-margin*2);
+        doc.text(notaLines, margin, finalY);
+      }
+
+      // Pie de página
+      var pageCount = doc.internal.getNumberOfPages();
+      for (var i=1; i<=pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8); doc.setTextColor(150,150,150);
+        doc.text("Emitido: " + new Date().toLocaleDateString("es-AR"), margin, 290);
+        doc.text("Página " + i + " de " + pageCount, pageW-margin, 290, {align:"right"});
+      }
+
+      var blob = doc.output("blob");
+      var fileName = "pedido-" + (p.numero_pedido||p.id) + "-" + Date.now() + ".pdf";
+      var up = await sb.storage.from("pedidos-pdf").upload(fileName, blob, { contentType: "application/pdf", upsert: true });
+      if (up.error) { console.error("Error subiendo PDF:", up.error); return null; }
+
+      var pub = sb.storage.from("pedidos-pdf").getPublicUrl(fileName);
+      var url = pub.data.publicUrl;
+
+      await sb.rpc("rpc_guardar_pdf_pedido", { p_pedido_id: p.id, p_pdf_url: url });
+      return url;
+    } catch(e) { console.error("Error generando PDF:", e); return null; }
+  }
+
+  function compartirPdfPorEmail(p) {
+    if (!p.pdf_url) { toast("Todavía no hay PDF generado", "", "e"); return; }
+    var asunto = "Pedido #" + (p.numero_pedido||"") + " — " + (p.vendedor?p.vendedor.name:"");
+    var cuerpo = "Adjunto el pedido especial.\n\nDescargar PDF: " + p.pdf_url + "\n\nVendedora: " + (p.vendedor?p.vendedor.name:"") +
+      "\nProducto: " + (p.product?p.product.name:"") + "\nCantidad: " + p.qty + "\nTotal: $" + Number(p.total).toLocaleString("es-AR");
+    window.location.href = "mailto:?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo);
   }
 
   // ── FASE 3: Resúmenes ────────────────────────────────────────────────────
@@ -3669,6 +3816,15 @@ export default function App() {
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección</label>
                     <input value={ctaDir} onChange={function(e){setCtaDir(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
 
+                    {me.role==="reseller"&&(<>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>DNI</label>
+                      <input value={ctaDni} onChange={function(e){setCtaDni(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Código de vendedora</label>
+                      <input value={ctaCodVend} onChange={function(e){setCtaCodVend(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad</label>
+                      <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                    </>)}
+
                     <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:10,borderTop:"1px solid var(--brd)",paddingTop:14}}>Cambiar contraseña (opcional)</div>
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Nueva contraseña</label>
                     <input type="password" value={ctaPass} onChange={function(e){setCtaPass(e.target.value);}} placeholder="Dejar vacío para no cambiar" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
@@ -3726,16 +3882,63 @@ export default function App() {
                       </div>
                       <input value={peCliNom} onChange={function(e){setPeCliNom(e.target.value);}} placeholder="Nombre del cliente" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
                       <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={peCampania} onChange={function(e){setPeCampania(e.target.value);}} placeholder="Campaña (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
                       <input value={peNota} onChange={function(e){setPeNota(e.target.value);}} placeholder="Nota: talle, color, etc. (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
                       <button className="cta cta-am" onClick={doCrearPedidoEspecial} disabled={peSaving}><Ic n="check" s={16}/>{peSaving?"Enviando...":"Enviar pedido"}</button>
                     </div>
                   </div>
                 )}
 
+                {/* Filtros (solo superadmin — agrupar por estructura comercial) */}
+                {isAdmin&&pedEspList.length>0&&(function(){
+                  var empresas = Array.from(new Set(pedEspList.map(function(p){return p.empresa?p.empresa.name:null;}).filter(Boolean)));
+                  var lideres  = Array.from(new Set(pedEspList.map(function(p){return p.lider?p.lider.name:null;}).filter(Boolean)));
+                  var vendedoras = Array.from(new Set(pedEspList.map(function(p){return p.vendedor?p.vendedor.name:null;}).filter(Boolean)));
+                  var campanias = Array.from(new Set(pedEspList.map(function(p){return p.campania;}).filter(Boolean)));
+                  return (
+                    <div className="card" style={{marginBottom:14}}>
+                      <div style={{padding:"12px 14px"}}>
+                        <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>🔍 Filtrar / agrupar</div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                          <select value={peFiltroEmp} onChange={function(e){setPeFiltroEmp(e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 8px",fontFamily:"inherit"}}>
+                            <option value="">Todas las empresarias</option>
+                            {empresas.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                          </select>
+                          <select value={peFiltroLid} onChange={function(e){setPeFiltroLid(e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 8px",fontFamily:"inherit"}}>
+                            <option value="">Todos los líderes</option>
+                            {lideres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                          </select>
+                          <select value={peFiltroVend} onChange={function(e){setPeFiltroVend(e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 8px",fontFamily:"inherit"}}>
+                            <option value="">Todas las vendedoras</option>
+                            {vendedoras.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                          </select>
+                          <select value={peFiltroCamp} onChange={function(e){setPeFiltroCamp(e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 8px",fontFamily:"inherit"}}>
+                            <option value="">Todas las campañas</option>
+                            {campanias.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                          </select>
+                          <select value={peFiltroEst} onChange={function(e){setPeFiltroEst(e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 8px",fontFamily:"inherit",gridColumn:"span 2"}}>
+                            <option value="">Todos los estados</option>
+                            {["pendiente_lider","pendiente_empresaria","aprobado","enviado_proveedor","recibido","listo_entregar","entregado","rechazado_lider","rechazado_empresaria","cancelado"].map(function(s){return <option key={s} value={s}>{peEstadoInfo(s).lbl}</option>;})}
+                          </select>
+                        </div>
+                        {(peFiltroEmp||peFiltroLid||peFiltroVend||peFiltroCamp||peFiltroEst)&&
+                          <button className="btn btn-xs b-ghost" style={{marginTop:8}} onClick={function(){setPeFiltroEmp("");setPeFiltroLid("");setPeFiltroVend("");setPeFiltroCamp("");setPeFiltroEst("");}}>✕ Limpiar filtros</button>}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Lista de pedidos */}
                 {pedEspLoading&&<div className="empty">Cargando...</div>}
                 {!pedEspLoading&&pedEspList.length===0&&<div className="empty">No hay pedidos especiales todavía</div>}
-                {pedEspList.map(function(p){
+                {pedEspList.filter(function(p){
+                  if (peFiltroEmp && (!p.empresa||p.empresa.name!==peFiltroEmp)) return false;
+                  if (peFiltroLid && (!p.lider||p.lider.name!==peFiltroLid)) return false;
+                  if (peFiltroVend && (!p.vendedor||p.vendedor.name!==peFiltroVend)) return false;
+                  if (peFiltroCamp && p.campania!==peFiltroCamp) return false;
+                  if (peFiltroEst && p.estado!==peFiltroEst) return false;
+                  return true;
+                }).map(function(p){
                   var ei = peEstadoInfo(p.estado);
                   var busy = !!peBusy[p.id];
                   var puedeLider = me.role==="lider" && p.lider_id===me.id && p.estado==="pendiente_lider";
@@ -3782,9 +3985,11 @@ export default function App() {
                           </div>
                         )}
 
-                        <div style={{display:"flex",gap:12,marginTop:8}}>
+                        <div style={{display:"flex",gap:12,marginTop:8,flexWrap:"wrap",alignItems:"center"}}>
                           <button onClick={function(){verHistorialPedidoEsp(p.id);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{peHistOpen===p.id?"▲ Ocultar historial":"▼ Ver historial"}</button>
                           {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
+                          {p.pdf_url&&<a href={p.pdf_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontSize:11,fontWeight:700,textDecoration:"none"}}>📄 Descargar PDF</a>}
+                          {p.pdf_url&&isAdmin&&<button onClick={function(){compartirPdfPorEmail(p);}} style={{background:"none",border:"none",color:"var(--bl-d,#0369a1)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✉️ Enviar por email</button>}
                         </div>
 
                         {peHistOpen===p.id&&(
