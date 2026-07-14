@@ -657,7 +657,7 @@ export default function App() {
     function onFocusResync() { if (document.visibilityState === "visible") resyncPerfil(); }
     document.addEventListener("visibilitychange", onFocusResync);
     window.addEventListener("focus", onFocusResync);
-    var poll = setInterval(resyncPerfil, 30000);
+    var poll = setInterval(resyncPerfil, 180000);
     return function() {
       document.removeEventListener("visibilitychange", onFocusResync);
       window.removeEventListener("focus", onFocusResync);
@@ -1303,30 +1303,21 @@ export default function App() {
   async function loadJerarquia() {
     if (!me) return;
     try {
-      var tareas = [];
-      if (me.lider_id) tareas.push(sb.from("users").select("id,name").eq("id", me.lider_id).maybeSingle());
-      else tareas.push(Promise.resolve({data:null}));
-      if (me.empresa_id) tareas.push(sb.from("users").select("id,name").eq("id", me.empresa_id).maybeSingle());
-      else tareas.push(Promise.resolve({data:null}));
+      var tareas = [
+        me.lider_id   ? sb.from("users").select("id,name").eq("id", me.lider_id).maybeSingle()   : Promise.resolve({data:null}),
+        me.empresa_id ? sb.from("users").select("id,name").eq("id", me.empresa_id).maybeSingle()  : Promise.resolve({data:null}),
+        (me.role==="empresaria"||me.role==="lider"||me.role==="superadmin")
+          ? sb.from("users").select("id,name,email,role,lider_id,empresa_id,comision_lider_pct,color,avatar_url").neq("id", me.id).order("role").order("name")
+          : Promise.resolve({data:null}),
+        (me.role==="empresaria"||me.role==="superadmin")
+          ? sb.from("pending_invites").select("*").eq("invited_by", me.id).order("created_at", {ascending:false})
+          : Promise.resolve({data:null}),
+      ];
       var res = await Promise.all(tareas);
       setCtaJerInfo({ lider: res[0].data, empresa: res[1].data });
+      if (res[2].data) setMiEquipo(res[2].data);
+      if (res[3].data) setMisInvites(res[3].data);
     } catch(e) { /* noop */ }
-
-    // Mi equipo (según jerarquía; RLS ya filtra automáticamente)
-    if (me.role === "empresaria" || me.role === "lider" || me.role === "superadmin") {
-      try {
-        var eq = await sb.from("users").select("id,name,email,role,lider_id,empresa_id,comision_lider_pct,color,avatar_url")
-          .neq("id", me.id).order("role").order("name");
-        if (eq.data) setMiEquipo(eq.data);
-      } catch(e) { /* noop */ }
-    }
-    // Mis invitaciones pendientes
-    if (me.role === "empresaria" || me.role === "superadmin") {
-      try {
-        var inv = await sb.from("pending_invites").select("*").eq("invited_by", me.id).order("created_at", {ascending:false});
-        if (inv.data) setMisInvites(inv.data);
-      } catch(e) { /* noop */ }
-    }
   }
 
   // Guardar cambios de "Mi Cuenta"
