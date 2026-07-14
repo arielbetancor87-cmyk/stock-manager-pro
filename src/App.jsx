@@ -611,6 +611,12 @@ export default function App() {
   const [peFiltroVend, setPeFiltroVend] = useState("");
   const [peFiltroCamp, setPeFiltroCamp] = useState("");
   const [peFiltroEst,  setPeFiltroEst]  = useState("");
+
+  // ── FASE 5: Campañas ─────────────────────────────────────────────────────
+  const [campanias,       setCampanias]       = useState([]);
+  const [campNombre,      setCampNombre]      = useState("");
+  const [campSaving,      setCampSaving]      = useState(false);
+  const [peCampaniaId,    setPeCampaniaId]    = useState("");
   const [peSaving,     setPeSaving]     = useState(false);
   const [peObserv,     setPeObserv]     = useState({}); // {pedidoId: texto observación}
   const [peBusy,       setPeBusy]       = useState({}); // {pedidoId: true mientras procesa acción}
@@ -628,6 +634,7 @@ export default function App() {
     loadJerarquia();
     loadPedidosEspeciales();
     loadResumen();
+    loadCampanias();
   }, [me && me.id]);
 
   // Re-sincronizar mi propio perfil: al volver a la app, al navegar a
@@ -1410,7 +1417,7 @@ export default function App() {
     setPedEspLoading(true);
     try {
       var res = await sb.from("pedidos_especiales")
-        .select("*, product:product_id(id,name,sku,emoji,photo_url,price), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name)")
+        .select("*, product:product_id(id,name,sku,emoji,photo_url,price), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name), campania_rel:campania_id(id,nombre,estado)")
         .order("created_at", {ascending:false})
         .limit(200);
       if (res.data) setPedEspList(res.data);
@@ -1426,14 +1433,25 @@ export default function App() {
       var res = await sb.rpc("rpc_crear_pedido_especial", {
         p_product_id: peProdId, p_qty: peQty,
         p_cliente_nombre: peCliNom.trim(), p_cliente_telefono: peCliTel.trim(), p_nota: peNota.trim(),
-        p_campania: peCampania.trim()
+        p_campania_id: peCampaniaId || null
       });
       if (res.error) { toast("Error al crear pedido", res.error.message, "e"); setPeSaving(false); return; }
-      toast("Pedido enviado", "Queda pendiente de aprobación", "s");
-      setPeShowForm(false); setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeCliNom(""); setPeCliTel(""); setPeNota(""); setPeCampania("");
+      toast("📝 Pedido guardado", "Enviálo cuando quieras desde la lista", "s");
+      setPeShowForm(false); setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeCliNom(""); setPeCliTel(""); setPeNota(""); setPeCampaniaId("");
       await loadPedidosEspeciales();
     } catch(e) { toast("Error", e.message, "e"); }
     setPeSaving(false);
+  }
+
+  async function doEnviarPedidoEspecial(id) {
+    setPeBusy(function(prev){ return Object.assign({},prev,{[id]:true}); });
+    try {
+      var res = await sb.rpc("rpc_enviar_pedido_especial", { p_pedido_id: id });
+      if (res.error) { toast("Error al enviar", res.error.message, "e"); setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); }); return; }
+      toast("✅ Pedido enviado", "Queda pendiente de aprobación", "s");
+      await loadPedidosEspeciales();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); });
   }
 
   async function doAccionPedidoEsp(id, rpcName, extraParams) {
@@ -1468,6 +1486,7 @@ export default function App() {
 
   function peEstadoInfo(estado) {
     var map = {
+      borrador:              {lbl:"📝 Borrador",              bg:"#f1f1f1", col:"#666"},
       pendiente_lider:      {lbl:"Pendiente de líder",      bg:"#fff3e0", col:"#e07800"},
       rechazado_lider:      {lbl:"Rechazado por líder",     bg:"#ffe0e5", col:"#d32"},
       pendiente_empresaria: {lbl:"Pendiente de empresaria", bg:"#fff3e0", col:"#e07800"},
@@ -1515,7 +1534,7 @@ export default function App() {
       doc.setFontSize(9.5); doc.setFont(undefined,"normal");
       var ei = peEstadoInfo(p.estado);
       doc.text("Estado: " + ei.lbl, margin, y);
-      doc.text("Campaña: " + (p.campania||"-"), margin+90, y); y += 5;
+      doc.text("Campaña: " + (p.campania_rel?p.campania_rel.nombre:(p.campania||"-")), margin+90, y); y += 5;
       if (p.fecha_entrega_estimada) { doc.text("Entrega estimada: " + p.fecha_entrega_estimada, margin, y); y += 5; }
       y += 3;
 
@@ -1603,6 +1622,35 @@ export default function App() {
     var cuerpo = "Adjunto el pedido especial.\n\nDescargar PDF: " + p.pdf_url + "\n\nVendedora: " + (p.vendedor?p.vendedor.name:"") +
       "\nProducto: " + (p.product?p.product.name:"") + "\nCantidad: " + p.qty + "\nTotal: $" + Number(p.total).toLocaleString("es-AR");
     window.location.href = "mailto:?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo);
+  }
+
+  // ── FASE 5: Campañas ─────────────────────────────────────────────────────
+  async function loadCampanias() {
+    if (!me) return;
+    try {
+      var res = await sb.from("campanias").select("*").order("created_at",{ascending:false});
+      if (res.data) setCampanias(res.data);
+    } catch(e) { /* noop */ }
+  }
+
+  async function doCrearCampania() {
+    if (!campNombre.trim()) { toast("Falta el nombre de la campaña", "", "e"); return; }
+    setCampSaving(true);
+    try {
+      var res = await sb.rpc("rpc_crear_campania", { p_nombre: campNombre.trim() });
+      if (res.error) { toast("Error", res.error.message, "e"); setCampSaving(false); return; }
+      setCampNombre("");
+      toast("Campaña creada", "Dura 30 días", "s");
+      await loadCampanias();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCampSaving(false);
+  }
+
+  async function doCambiarEstadoCampania(id, nuevoEstado) {
+    var res = await sb.rpc("rpc_cambiar_estado_campania", { p_campania_id: id, p_estado: nuevoEstado });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setCampanias(function(prev){ return prev.map(function(c){ return c.id===id ? Object.assign({},c,{estado:nuevoEstado}) : c; }); });
+    toast(nuevoEstado==="abierta"?"Campaña reabierta":"Campaña cerrada", "", "s");
   }
 
   // ── FASE 3: Resúmenes ────────────────────────────────────────────────────
@@ -3882,7 +3930,12 @@ export default function App() {
                       </div>
                       <input value={peCliNom} onChange={function(e){setPeCliNom(e.target.value);}} placeholder="Nombre del cliente" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
                       <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
-                      <input value={peCampania} onChange={function(e){setPeCampania(e.target.value);}} placeholder="Campaña (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                      <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
+                        <option value="">Sin campaña</option>
+                        {campanias.filter(function(c){return c.empresa_id===me.empresa_id;}).map(function(c){
+                          return <option key={c.id} value={c.id}>{c.nombre}{c.estado==="cerrada"?" (cerrada)":""}</option>;
+                        })}
+                      </select>
                       <input value={peNota} onChange={function(e){setPeNota(e.target.value);}} placeholder="Nota: talle, color, etc. (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
                       <button className="cta cta-am" onClick={doCrearPedidoEspecial} disabled={peSaving}><Ic n="check" s={16}/>{peSaving?"Enviando...":"Enviar pedido"}</button>
                     </div>
@@ -3894,7 +3947,7 @@ export default function App() {
                   var empresas = Array.from(new Set(pedEspList.map(function(p){return p.empresa?p.empresa.name:null;}).filter(Boolean)));
                   var lideres  = Array.from(new Set(pedEspList.map(function(p){return p.lider?p.lider.name:null;}).filter(Boolean)));
                   var vendedoras = Array.from(new Set(pedEspList.map(function(p){return p.vendedor?p.vendedor.name:null;}).filter(Boolean)));
-                  var campanias = Array.from(new Set(pedEspList.map(function(p){return p.campania;}).filter(Boolean)));
+                  var campaniasNombres = Array.from(new Set(pedEspList.map(function(p){return p.campania_rel?p.campania_rel.nombre:p.campania;}).filter(Boolean)));
                   return (
                     <div className="card" style={{marginBottom:14}}>
                       <div style={{padding:"12px 14px"}}>
@@ -3914,7 +3967,7 @@ export default function App() {
                           </select>
                           <select value={peFiltroCamp} onChange={function(e){setPeFiltroCamp(e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 8px",fontFamily:"inherit"}}>
                             <option value="">Todas las campañas</option>
-                            {campanias.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                            {campaniasNombres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
                           </select>
                           <select value={peFiltroEst} onChange={function(e){setPeFiltroEst(e.target.value);}} style={{fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 8px",fontFamily:"inherit",gridColumn:"span 2"}}>
                             <option value="">Todos los estados</option>
@@ -3935,12 +3988,13 @@ export default function App() {
                   if (peFiltroEmp && (!p.empresa||p.empresa.name!==peFiltroEmp)) return false;
                   if (peFiltroLid && (!p.lider||p.lider.name!==peFiltroLid)) return false;
                   if (peFiltroVend && (!p.vendedor||p.vendedor.name!==peFiltroVend)) return false;
-                  if (peFiltroCamp && p.campania!==peFiltroCamp) return false;
+                  if (peFiltroCamp && (p.campania_rel?p.campania_rel.nombre:p.campania)!==peFiltroCamp) return false;
                   if (peFiltroEst && p.estado!==peFiltroEst) return false;
                   return true;
                 }).map(function(p){
                   var ei = peEstadoInfo(p.estado);
                   var busy = !!peBusy[p.id];
+                  var puedeVendEnviar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="borrador";
                   var puedeLider = me.role==="lider" && p.lider_id===me.id && p.estado==="pendiente_lider";
                   var puedeEmpAprobar   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="pendiente_empresaria";
                   var puedeEmpEnviar    = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="aprobado";
@@ -3948,7 +4002,7 @@ export default function App() {
                   var puedeEmpListo     = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="recibido";
                   var puedeVendEntregar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="listo_entregar";
                   var puedeCancelar = (p.vendedor_id===me.id||p.lider_id===me.id||p.empresa_id===me.id) && !["entregado","cancelado"].includes(p.estado);
-                  var necesitaAccion = puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeEmpListo||puedeVendEntregar;
+                  var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeEmpListo||puedeVendEntregar;
                   return (
                     <div key={p.id} className="card" style={{marginBottom:10,border:necesitaAccion?"1.5px solid var(--am-d)":undefined}}>
                       <div style={{padding:"12px 14px"}}>
@@ -3969,6 +4023,7 @@ export default function App() {
                             <input value={peObserv[p.id]||""} onChange={function(e){setPeObserv(function(prev){return Object.assign({},prev,{[p.id]:e.target.value});});}}
                               placeholder="Observación (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,marginBottom:8,fontFamily:"inherit"}}/>
                             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                              {puedeVendEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doEnviarPedidoEspecial(p.id);}}>📤 Enviar a aprobación</button>}
                               {puedeLider&&(<>
                                 <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:true});}}>✅ Aprobar</button>
                                 <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:false});}}>✕ Rechazar</button>
@@ -4100,6 +4155,34 @@ export default function App() {
             <div>
               <div className="ph"><div><div className="ph-h">{isAdmin?"🏢 Empresas":"👥 Mi Estructura"}</div><div className="ph-s">{me.role==="empresaria"?"Tus líderes y vendedoras":me.role==="lider"?"Tus vendedoras":"Empresarias del sistema"}</div></div><button className="btn btn-xs b-ghost" onClick={loadJerarquia}><Ic n="undo" s={13}/>Actualizar</button></div>
               <div className="pc">
+
+                {/* Campañas (empresaria: crear, abrir/cerrar — duran 30 días) */}
+                {me.role==="empresaria"&&(
+                  <div className="card" style={{marginBottom:14}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>📅 Campañas <span style={{fontWeight:400,color:"var(--t3)",fontSize:11}}>(duran 30 días)</span></div>
+                      <div style={{display:"flex",gap:8,marginBottom:12}}>
+                        <input value={campNombre} onChange={function(e){setCampNombre(e.target.value);}} placeholder="Nombre de la campaña" style={{flex:1,boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"9px 12px",fontSize:13,fontFamily:"inherit"}}/>
+                        <button className="btn btn-xs b-pri" style={{padding:"0 14px"}} onClick={doCrearCampania} disabled={campSaving}>{campSaving?"...":"+ Crear"}</button>
+                      </div>
+                      {campanias.filter(function(c){return c.empresa_id===me.id;}).length===0&&<div style={{fontSize:12,color:"var(--t3)"}}>Sin campañas todavía</div>}
+                      {campanias.filter(function(c){return c.empresa_id===me.id;}).map(function(c){
+                        return (
+                          <div key={c.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:700}}>{c.nombre}</div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{c.fecha_inicio} → {c.fecha_fin}</div>
+                            </div>
+                            <span style={{background:c.estado==="abierta"?"#dcfce7":"#f1f1f1",color:c.estado==="abierta"?"#15803d":"#888",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{c.estado}</span>
+                            <button className="btn btn-xs b-ghost" style={{padding:"5px 9px",fontSize:10}} onClick={function(){doCambiarEstadoCampania(c.id, c.estado==="abierta"?"cerrada":"abierta");}}>
+                              {c.estado==="abierta"?"Cerrar":"Reabrir"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Invitar (empresaria invita líder/vendedora; superadmin invita empresaria) */}
                 {(me.role==="empresaria"||isAdmin)&&(
