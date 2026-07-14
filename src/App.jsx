@@ -602,6 +602,9 @@ export default function App() {
   const [peProdSrch,   setPeProdSrch]   = useState("");
   const [peProdId,     setPeProdId]     = useState("");
   const [peQty,        setPeQty]        = useState(1);
+  const [peColor,      setPeColor]      = useState("");
+  const [peTalle,      setPeTalle]      = useState("");
+  const [peCarrito,    setPeCarrito]    = useState([]); // [{product_id,name,sku,emoji,photo_url,price,qty,color,talle}]
   const [peCliNom,     setPeCliNom]     = useState("");
   const [peCliTel,     setPeCliTel]     = useState("");
   const [peNota,       setPeNota]       = useState("");
@@ -1407,7 +1410,7 @@ export default function App() {
     setPedEspLoading(true);
     try {
       var res = await sb.from("pedidos_especiales")
-        .select("*, product:product_id(id,name,sku,emoji,photo_url,price), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name), campania_rel:campania_id(id,nombre,estado)")
+        .select("*, items:pedidos_especiales_items(id,product_id,qty,precio_unit,subtotal,color,talle,product:product_id(id,name,sku,emoji,photo_url)), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name), campania_rel:campania_id(id,nombre,estado)")
         .order("created_at", {ascending:false})
         .limit(200);
       if (res.data) setPedEspList(res.data);
@@ -1415,19 +1418,39 @@ export default function App() {
     setPedEspLoading(false);
   }
 
-  async function doCrearPedidoEspecial() {
+  function doAgregarAlCarrito() {
     if (!peProdId) { toast("Elegí un producto", "", "e"); return; }
+    var p = products.find(function(x){ return x.id===peProdId; });
+    if (!p) return;
+    setPeCarrito(function(prev){
+      return prev.concat([{
+        product_id: p.id, name: p.name, sku: p.sku, emoji: p.emoji, photo_url: p.photo_url,
+        price: p.price, qty: peQty, color: peColor.trim(), talle: peTalle.trim()
+      }]);
+    });
+    setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeColor(""); setPeTalle("");
+  }
+
+  function doQuitarDelCarrito(idx) {
+    setPeCarrito(function(prev){ return prev.filter(function(_,i){ return i!==idx; }); });
+  }
+
+  async function doCrearPedidoEspecial() {
+    if (peCarrito.length===0) { toast("Agregá al menos un producto al carrito", "", "e"); return; }
     if (!peCliNom.trim()) { toast("Falta el nombre del cliente", "", "e"); return; }
     setPeSaving(true);
     try {
+      var itemsPayload = peCarrito.map(function(it){
+        return { product_id: it.product_id, qty: it.qty, color: it.color, talle: it.talle };
+      });
       var res = await sb.rpc("rpc_crear_pedido_especial", {
-        p_product_id: peProdId, p_qty: peQty,
+        p_items: itemsPayload,
         p_cliente_nombre: peCliNom.trim(), p_cliente_telefono: peCliTel.trim(), p_nota: peNota.trim(),
         p_campania_id: peCampaniaId || null
       });
       if (res.error) { toast("Error al crear pedido", res.error.message, "e"); setPeSaving(false); return; }
       toast("📝 Pedido guardado", "Enviálo cuando quieras desde la lista", "s");
-      setPeShowForm(false); setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeCliNom(""); setPeCliTel(""); setPeNota(""); setPeCampaniaId("");
+      setPeShowForm(false); setPeCarrito([]); setPeCliNom(""); setPeCliTel(""); setPeNota(""); setPeCampaniaId("");
       await loadPedidosEspeciales();
     } catch(e) { toast("Error", e.message, "e"); }
     setPeSaving(false);
@@ -1546,17 +1569,22 @@ export default function App() {
       doc.text("Líder: " + (p.lider?p.lider.name:"— (directa)"), margin, y);
       doc.text("Empresaria: " + (p.empresa?p.empresa.name:"-"), margin+90, y); y += 8;
 
-      // Tabla de productos
+      // Tabla de productos (todos los ítems del pedido)
+      var itemsPdf = p.items||[];
       autoTable(doc, {
         startY: y,
-        head: [["Código","Descripción","Cant.","P. Unit.","Subtotal"]],
-        body: [[
-          p.product?p.product.sku||"-":"-",
-          p.product?p.product.name:"-",
-          String(p.qty),
-          "$"+Number(p.precio_unit).toLocaleString("es-AR"),
-          "$"+Number(p.total).toLocaleString("es-AR")
-        ]],
+        head: [["Código","Descripción","Color","Talle","Cant.","P. Unit.","Subtotal"]],
+        body: itemsPdf.map(function(it){
+          return [
+            it.product?it.product.sku||"-":"-",
+            it.product?it.product.name:"-",
+            it.color||"-",
+            it.talle||"-",
+            String(it.qty),
+            "$"+Number(it.precio_unit).toLocaleString("es-AR"),
+            "$"+Number(it.subtotal).toLocaleString("es-AR")
+          ];
+        }),
         theme: "grid",
         headStyles: { fillColor: [224,34,78], textColor: 255, fontSize: 9 },
         bodyStyles: { fontSize: 9 },
@@ -1609,8 +1637,9 @@ export default function App() {
   function compartirPdfPorEmail(p) {
     if (!p.pdf_url) { toast("Todavía no hay PDF generado", "", "e"); return; }
     var asunto = "Pedido #" + (p.numero_pedido||"") + " — " + (p.vendedor?p.vendedor.name:"");
+    var listaProductos = (p.items||[]).map(function(it){ return "- "+it.qty+"x "+(it.product?it.product.name:"-"); }).join("\n");
     var cuerpo = "Adjunto el pedido especial.\n\nDescargar PDF: " + p.pdf_url + "\n\nVendedora: " + (p.vendedor?p.vendedor.name:"") +
-      "\nProducto: " + (p.product?p.product.name:"") + "\nCantidad: " + p.qty + "\nTotal: $" + Number(p.total).toLocaleString("es-AR");
+      "\nProductos:\n" + listaProductos + "\n\nCantidad total: " + p.qty + " un.\nTotal: $" + Number(p.total).toLocaleString("es-AR");
     window.location.href = "mailto:?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo);
   }
 
@@ -3935,19 +3964,21 @@ export default function App() {
                 <div><div className="ph-h">📦 Pedido Especial</div><div className="ph-s">Genera la orden de compra hacia la empresa</div></div>
                 <div style={{display:"flex",gap:8}}>
                   <button className="btn btn-xs b-ghost" onClick={loadPedidosEspeciales}><Ic n="undo" s={13}/></button>
-                  {me.role==="reseller"&&<button className="btn b-pri" onClick={function(){setPeShowForm(function(v){return !v;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
+                  {me.role==="reseller"&&<button className="btn b-pri" onClick={function(){setPeShowForm(function(v){var nv=!v; if(!nv){setPeCarrito([]);setPeProdId("");setPeProdSrch("");}return nv;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
                 </div>
               </div>
               <div className="pc">
 
-                {/* Formulario nuevo pedido especial (vendedora) */}
+                {/* Formulario nuevo pedido especial (vendedora) — carrito de varios productos */}
                 {peShowForm&&me.role==="reseller"&&(
                   <div className="card" style={{marginBottom:14}}>
                     <div style={{padding:"14px 16px"}}>
                       <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>Nuevo pedido especial</div>
+
+                      {/* Buscador + agregar producto al carrito */}
                       <SearchBar value={peProdSrch} onChange={setPeProdSrch} placeholder="Buscar producto..."/>
                       {peProdSrch&&(
-                        <div style={{maxHeight:220,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:10,marginTop:8}}>
+                        <div style={{maxHeight:180,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:10,marginTop:8}}>
                           {products.filter(function(p){var q=peProdSrch.toLowerCase();return p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);}).slice(0,8).map(function(p){
                             return (
                               <div key={p.id} onClick={function(){setPeProdId(p.id);setPeProdSrch(p.name+" ["+(p.sku||"")+"]");}} style={{padding:"10px 12px",cursor:"pointer",borderBottom:"1px solid var(--brd)",display:"flex",alignItems:"center",gap:8,background:peProdId===p.id?"var(--pri-l)":"var(--card)"}}>
@@ -3961,22 +3992,57 @@ export default function App() {
                           })}
                         </div>
                       )}
-                      <div style={{display:"flex",alignItems:"center",gap:10,margin:"12px 0"}}>
-                        <span style={{fontSize:13,color:"var(--t3)"}}>Cantidad</span>
-                        <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(Math.max(1,peQty-1));}}>−</button>
-                        <span style={{fontWeight:800,minWidth:24,textAlign:"center"}}>{peQty}</span>
-                        <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(peQty+1);}}>+</button>
+                      {peProdId&&(
+                        <div style={{background:"var(--bg2)",borderRadius:10,padding:10,marginTop:8}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                            <span style={{fontSize:12,color:"var(--t3)"}}>Cantidad</span>
+                            <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(Math.max(1,peQty-1));}}>−</button>
+                            <span style={{fontWeight:800,minWidth:20,textAlign:"center"}}>{peQty}</span>
+                            <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(peQty+1);}}>+</button>
+                          </div>
+                          <div style={{display:"flex",gap:8,marginBottom:8}}>
+                            <input value={peColor} onChange={function(e){setPeColor(e.target.value);}} placeholder="Color (opcional)" style={{flex:1,boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"inherit"}}/>
+                            <input value={peTalle} onChange={function(e){setPeTalle(e.target.value);}} placeholder="Talle (opcional)" style={{flex:1,boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"inherit"}}/>
+                          </div>
+                          <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} onClick={doAgregarAlCarrito}>+ Agregar al pedido</button>
+                        </div>
+                      )}
+
+                      {/* Carrito */}
+                      {peCarrito.length>0&&(
+                        <div style={{marginTop:12,marginBottom:4}}>
+                          <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>🛒 {peCarrito.length} producto{peCarrito.length!==1?"s":""} en el pedido</div>
+                          {peCarrito.map(function(it,idx){
+                            return (
+                              <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderTop:"1px solid var(--brd)"}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:12,fontWeight:700}}>{it.qty}x {it.name}</div>
+                                  <div style={{fontSize:10,color:"var(--t3)"}}>{[it.color,it.talle].filter(Boolean).join(" · ")||it.sku}</div>
+                                </div>
+                                <div style={{fontSize:12,fontWeight:700,color:"var(--pri)"}}>{fmtARS(it.price*it.qty)}</div>
+                                <button onClick={function(){doQuitarDelCarrito(idx);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:14,cursor:"pointer",padding:"0 2px"}}>✕</button>
+                              </div>
+                            );
+                          })}
+                          <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:13,paddingTop:8,borderTop:"1.5px solid var(--brd)",marginTop:4}}>
+                            <span>Total</span>
+                            <span style={{color:"var(--pri)"}}>{fmtARS(peCarrito.reduce(function(s,it){return s+it.price*it.qty;},0))}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{marginTop:12}}>
+                        <input value={peCliNom} onChange={function(e){setPeCliNom(e.target.value);}} placeholder="Nombre del cliente" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                        <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
+                        <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
+                          <option value="">Sin campaña</option>
+                          {campanias.filter(function(c){return c.empresa_id===me.empresa_id && c.estado==="abierta";}).map(function(c){
+                            return <option key={c.id} value={c.id}>{c.nombre}</option>;
+                          })}
+                        </select>
+                        <input value={peNota} onChange={function(e){setPeNota(e.target.value);}} placeholder="Nota general (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
+                        <button className="cta cta-am" onClick={doCrearPedidoEspecial} disabled={peSaving||peCarrito.length===0}><Ic n="check" s={16}/>{peSaving?"Guardando...":"Guardar pedido ("+peCarrito.length+")"}</button>
                       </div>
-                      <input value={peCliNom} onChange={function(e){setPeCliNom(e.target.value);}} placeholder="Nombre del cliente" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
-                      <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
-                      <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
-                        <option value="">Sin campaña</option>
-                        {campanias.filter(function(c){return c.empresa_id===me.empresa_id && c.estado==="abierta";}).map(function(c){
-                          return <option key={c.id} value={c.id}>{c.nombre}</option>;
-                        })}
-                      </select>
-                      <input value={peNota} onChange={function(e){setPeNota(e.target.value);}} placeholder="Nota: talle, color, etc. (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
-                      <button className="cta cta-am" onClick={doCrearPedidoEspecial} disabled={peSaving}><Ic n="check" s={16}/>{peSaving?"Enviando...":"Enviar pedido"}</button>
                     </div>
                   </div>
                 )}
@@ -4044,18 +4110,36 @@ export default function App() {
                   var puedeVendEntregar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="listo_entregar";
                   var puedeCancelar = (p.vendedor_id===me.id||p.lider_id===me.id||p.empresa_id===me.id) && !["entregado","cancelado"].includes(p.estado);
                   var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeEmpListo||puedeVendEntregar;
+                  var items = p.items||[];
+                  var primerItem = items[0];
                   return (
                     <div key={p.id} className="card" style={{marginBottom:10,border:necesitaAccion?"1.5px solid var(--am-d)":undefined}}>
                       <div style={{padding:"12px 14px"}}>
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <ProdThumb prod={p.product} size={38}/>
+                          <ProdThumb prod={primerItem?primerItem.product:null} size={38}/>
                           <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:13,fontWeight:700}}>{p.product?p.product.name:"Producto"}</div>
-                            <div style={{fontSize:11,color:"var(--t3)"}}>{p.qty} un. · {fmtARS(p.total)} · Cliente: {p.cliente_nombre}</div>
+                            <div style={{fontSize:13,fontWeight:700}}>
+                              {primerItem?primerItem.product.name:"Pedido"}{items.length>1?" +"+(items.length-1)+" más":""}
+                            </div>
+                            <div style={{fontSize:11,color:"var(--t3)"}}>{p.qty} un. en {items.length} producto{items.length!==1?"s":""} · {fmtARS(p.total)} · Cliente: {p.cliente_nombre}</div>
                             <div style={{fontSize:10,color:"var(--t3)"}}>Vendedora: {p.vendedor?p.vendedor.name:"-"}{p.lider?" · Líder: "+p.lider.name:""}</div>
                           </div>
                           <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
                         </div>
+
+                        {/* Lista de productos del pedido */}
+                        {items.length>0&&(
+                          <div style={{marginTop:8,background:"var(--bg2)",borderRadius:9,padding:"8px 10px"}}>
+                            {items.map(function(it){
+                              return (
+                                <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",padding:"2px 0"}}>
+                                  <span>{it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}</span>
+                                  <span style={{fontWeight:700}}>{fmtARS(it.subtotal)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
 
                         {p.nota&&<div style={{fontSize:11,color:"var(--t3)",marginTop:6,fontStyle:"italic"}}>📝 {p.nota}</div>}
 
