@@ -605,7 +605,6 @@ export default function App() {
   const [peCliNom,     setPeCliNom]     = useState("");
   const [peCliTel,     setPeCliTel]     = useState("");
   const [peNota,       setPeNota]       = useState("");
-  const [peCampania,   setPeCampania]   = useState("");
   const [peFiltroEmp,  setPeFiltroEmp]  = useState("");
   const [peFiltroLid,  setPeFiltroLid]  = useState("");
   const [peFiltroVend, setPeFiltroVend] = useState("");
@@ -3932,8 +3931,8 @@ export default function App() {
                       <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
                       <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
                         <option value="">Sin campaña</option>
-                        {campanias.filter(function(c){return c.empresa_id===me.empresa_id;}).map(function(c){
-                          return <option key={c.id} value={c.id}>{c.nombre}{c.estado==="cerrada"?" (cerrada)":""}</option>;
+                        {campanias.filter(function(c){return c.empresa_id===me.empresa_id && c.estado==="abierta";}).map(function(c){
+                          return <option key={c.id} value={c.id}>{c.nombre}</option>;
                         })}
                       </select>
                       <input value={peNota} onChange={function(e){setPeNota(e.target.value);}} placeholder="Nota: talle, color, etc. (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
@@ -3985,6 +3984,8 @@ export default function App() {
                 {pedEspLoading&&<div className="empty">Cargando...</div>}
                 {!pedEspLoading&&pedEspList.length===0&&<div className="empty">No hay pedidos especiales todavía</div>}
                 {pedEspList.filter(function(p){
+                  // Los borradores son privados: solo los ve la vendedora que los creó
+                  if (p.estado==="borrador" && p.vendedor_id!==me.id) return false;
                   if (peFiltroEmp && (!p.empresa||p.empresa.name!==peFiltroEmp)) return false;
                   if (peFiltroLid && (!p.lider||p.lider.name!==peFiltroLid)) return false;
                   if (peFiltroVend && (!p.vendedor||p.vendedor.name!==peFiltroVend)) return false;
