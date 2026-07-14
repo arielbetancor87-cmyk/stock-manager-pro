@@ -605,6 +605,8 @@ export default function App() {
   const [peColor,      setPeColor]      = useState("");
   const [peTalle,      setPeTalle]      = useState("");
   const [peCarrito,    setPeCarrito]    = useState([]); // [{product_id,name,sku,emoji,photo_url,price,qty,color,talle}]
+  const [peEditando,   setPeEditando]   = useState(null); // id del pedido que se está editando (líder/empresaria)
+  const [peEditSaving, setPeEditSaving] = useState(false);
   const [peCliNom,     setPeCliNom]     = useState("");
   const [peCliTel,     setPeCliTel]     = useState("");
   const [peNota,       setPeNota]       = useState("");
@@ -1433,6 +1435,37 @@ export default function App() {
 
   function doQuitarDelCarrito(idx) {
     setPeCarrito(function(prev){ return prev.filter(function(_,i){ return i!==idx; }); });
+  }
+
+  // ── Editar un pedido ya existente (líder/empresaria con control en su etapa) ──
+  function doAbrirEdicion(p) {
+    setPeShowForm(false); // no mezclar con el form de "nuevo pedido"
+    setPeEditando(p.id);
+    setPeCarrito((p.items||[]).map(function(it){
+      return { product_id: it.product_id, name: it.product?it.product.name:"", sku: it.product?it.product.sku:"",
+        emoji: it.product?it.product.emoji:"", photo_url: it.product?it.product.photo_url:"",
+        price: it.precio_unit, qty: it.qty, color: it.color||"", talle: it.talle||"" };
+    }));
+  }
+
+  function doCancelarEdicion() {
+    setPeEditando(null); setPeCarrito([]); setPeProdId(""); setPeProdSrch("");
+  }
+
+  async function doGuardarEdicionPedido() {
+    if (peCarrito.length===0) { toast("El pedido necesita al menos un producto", "", "e"); return; }
+    setPeEditSaving(true);
+    try {
+      var itemsPayload = peCarrito.map(function(it){
+        return { product_id: it.product_id, qty: it.qty, color: it.color, talle: it.talle };
+      });
+      var res = await sb.rpc("rpc_editar_items_pedido", { p_pedido_id: peEditando, p_items: itemsPayload });
+      if (res.error) { toast("Error al guardar", res.error.message, "e"); setPeEditSaving(false); return; }
+      toast("✅ Pedido actualizado", "", "s");
+      doCancelarEdicion();
+      await loadPedidosEspeciales();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPeEditSaving(false);
   }
 
   async function doCrearPedidoEspecial() {
@@ -3964,7 +3997,7 @@ export default function App() {
                 <div><div className="ph-h">📦 Pedido Especial</div><div className="ph-s">Genera la orden de compra hacia la empresa</div></div>
                 <div style={{display:"flex",gap:8}}>
                   <button className="btn btn-xs b-ghost" onClick={loadPedidosEspeciales}><Ic n="undo" s={13}/></button>
-                  {me.role==="reseller"&&<button className="btn b-pri" onClick={function(){setPeShowForm(function(v){var nv=!v; if(!nv){setPeCarrito([]);setPeProdId("");setPeProdSrch("");}return nv;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
+                  {me.role==="reseller"&&<button className="btn b-pri" onClick={function(){setPeEditando(null); setPeShowForm(function(v){var nv=!v; if(!nv){setPeCarrito([]);setPeProdId("");setPeProdSrch("");}return nv;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
                 </div>
               </div>
               <div className="pc">
@@ -4108,7 +4141,15 @@ export default function App() {
                   var puedeEmpRecibir   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="enviado_proveedor";
                   var puedeEmpListo     = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="recibido";
                   var puedeVendEntregar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="listo_entregar";
-                  var puedeCancelar = (p.vendedor_id===me.id||p.lider_id===me.id||p.empresa_id===me.id) && !["entregado","cancelado"].includes(p.estado);
+                  // Control del pedido según su etapa: vendedora (borrador) → líder (su etapa) → empresaria (de ahí en más)
+                  var tieneControl = isAdmin || (function(){
+                    if (["entregado","cancelado"].includes(p.estado)) return false;
+                    if (p.estado==="borrador") return p.vendedor_id===me.id;
+                    if (["pendiente_lider","rechazado_lider"].includes(p.estado)) return p.lider_id===me.id || (!p.lider_id && p.empresa_id===me.id);
+                    return p.empresa_id===me.id;
+                  })();
+                  var puedeCancelar = tieneControl;
+                  var puedeEditar = tieneControl;
                   var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeEmpListo||puedeVendEntregar;
                   var items = p.items||[];
                   var primerItem = items[0];
@@ -4167,6 +4208,7 @@ export default function App() {
 
                         <div style={{display:"flex",gap:12,marginTop:8,flexWrap:"wrap",alignItems:"center"}}>
                           <button onClick={function(){verHistorialPedidoEsp(p.id);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{peHistOpen===p.id?"▲ Ocultar historial":"▼ Ver historial"}</button>
+                          {puedeEditar&&<button onClick={function(){doAbrirEdicion(p);}} style={{background:"none",border:"none",color:"var(--pri)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✏️ Editar</button>}
                           {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
                           {p.pdf_url&&<a href={p.pdf_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontSize:11,fontWeight:700,textDecoration:"none"}}>📄 Descargar PDF</a>}
                           {p.pdf_url&&isAdmin&&<button onClick={function(){compartirPdfPorEmail(p);}} style={{background:"none",border:"none",color:"var(--bl-d,#0369a1)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✉️ Enviar por email</button>}
@@ -4183,6 +4225,50 @@ export default function App() {
                                 </div>
                               );
                             })}
+                          </div>
+                        )}
+
+                        {/* Panel de edición inline (líder/empresaria/vendedora según su etapa) */}
+                        {peEditando===p.id&&(
+                          <div style={{marginTop:10,background:"var(--bg2)",borderRadius:10,padding:"12px"}}>
+                            <div style={{fontSize:12,fontWeight:800,marginBottom:8}}>✏️ Editando productos del pedido</div>
+                            <SearchBar value={peProdSrch} onChange={setPeProdSrch} placeholder="Buscar producto para agregar..."/>
+                            {peProdSrch&&(
+                              <div style={{maxHeight:160,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:9,marginTop:6}}>
+                                {products.filter(function(pr){var q=peProdSrch.toLowerCase();return pr.name.toLowerCase().includes(q)||(pr.sku||"").toLowerCase().includes(q);}).slice(0,6).map(function(pr){
+                                  return (
+                                    <div key={pr.id} onClick={function(){setPeProdId(pr.id);setPeProdSrch(pr.name+" ["+(pr.sku||"")+"]");}} style={{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--brd)",fontSize:12,background:peProdId===pr.id?"var(--pri-l)":"var(--card)"}}>
+                                      {pr.name} — {fmtARS(pr.price)}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {peProdId&&(
+                              <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
+                                <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(Math.max(1,peQty-1));}}>−</button>
+                                <span style={{fontWeight:800,minWidth:18,textAlign:"center"}}>{peQty}</span>
+                                <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(peQty+1);}}>+</button>
+                                <input value={peColor} onChange={function(e){setPeColor(e.target.value);}} placeholder="Color" style={{width:70,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                                <input value={peTalle} onChange={function(e){setPeTalle(e.target.value);}} placeholder="Talle" style={{width:60,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                                <button className="btn btn-xs b-pri" onClick={doAgregarAlCarrito}>+ Agregar</button>
+                              </div>
+                            )}
+                            <div style={{marginTop:10}}>
+                              {peCarrito.map(function(it,idx){
+                                return (
+                                  <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--brd)"}}>
+                                    <div style={{flex:1,fontSize:12}}>{it.qty}x {it.name} {[it.color,it.talle].filter(Boolean).length>0?"("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}</div>
+                                    <div style={{fontSize:12,fontWeight:700}}>{fmtARS(it.price*it.qty)}</div>
+                                    <button onClick={function(){doQuitarDelCarrito(idx);}} style={{background:"none",border:"none",color:"var(--t3)",cursor:"pointer"}}>✕</button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div style={{display:"flex",gap:8,marginTop:10}}>
+                              <button className="btn btn-xs b-pri" style={{flex:1,padding:"8px"}} onClick={doGuardarEdicionPedido} disabled={peEditSaving}>{peEditSaving?"Guardando...":"💾 Guardar cambios"}</button>
+                              <button className="btn btn-xs b-ghost" style={{padding:"8px 12px"}} onClick={doCancelarEdicion}>Cancelar</button>
+                            </div>
                           </div>
                         )}
                       </div>
