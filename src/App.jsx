@@ -2927,12 +2927,24 @@ export default function App() {
                 <div style={{marginBottom:18}}>
                   <div className="sec-hdr"><div className="sec-hdr-t">Tus secciones</div><span className="sec-hdr-a" onClick={function(){setShareM(true);setShareSel({});}}>📲 WhatsApp</span></div>
                   <div className="fav-grid">
-                    {[
-                      {ico:"📦",bg:"var(--in-l)",col:"var(--in)",lbl:"Mi Stock",sub:ownStock.reduce(function(s,i){return s+i.qty_available;},0)+" productos",tab:"stock",scroll:true},
-                      {ico:"📤",bg:"var(--bl-l)",col:"var(--bl)",lbl:"Enviados",sub:consignaEnv>0?consignaEnv+" activos":"Ver enviados",tab:"enviados",badge:consignaEnv||null},
-                      {ico:"📋",bg:"#fff3e6",col:"#e06a00",lbl:"Pedidos",sub:pedPendCount>0?pedPendCount+" pendientes":"Ver pedidos",tab:"pedidos",badge:pedPendCount||null},
-                      {ico:"💰",bg:"var(--em-l)",col:"var(--em-d)",lbl:"Ventas",sub:fmtARS(totalVal).replace("$ ","$"),tab:"ventas"},
-                    ].map(function(f,i){
+                    {(function(){
+                      var favs = [
+                        {ico:"📦",bg:"var(--in-l)",col:"var(--in)",lbl:"Mi Stock",sub:ownStock.reduce(function(s,i){return s+i.qty_available;},0)+" productos",tab:"stock",scroll:true},
+                        {ico:"🤝",bg:"var(--bl-l)",col:"var(--bl)",lbl:"Consigna",sub:consignaEnv>0?consignaEnv+" activos":"Enviados/Recibidos",tab:"consigna",badge:consignaEnv||null},
+                        {ico:"📋",bg:"#fff3e6",col:"#e06a00",lbl:"Pedidos",sub:pedPendCount>0?pedPendCount+" pendientes":"Ver pedidos",tab:"pedidos",badge:pedPendCount||null},
+                        {ico:"💰",bg:"var(--em-l)",col:"var(--em-d)",lbl:"Ventas",sub:fmtARS(totalVal).replace("$ ","$"),tab:"ventas"},
+                      ];
+                      if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
+                        var peProp = pedEspList.filter(function(p){
+                          if (me.role==="reseller")   return p.vendedor_id===me.id && ["borrador","listo_entregar"].includes(p.estado);
+                          if (me.role==="lider")      return p.lider_id===me.id && p.estado==="pendiente_lider";
+                          if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
+                          return false;
+                        }).length;
+                        favs.push({ico:"🛍️",bg:"#fdf0f7",col:"#c2185b",lbl:"Pedido Campaña",sub:peProp>0?peProp+" por revisar":"Productos por encargo",tab:"pedesp",badge:peProp||null});
+                      }
+                      return favs;
+                    })().map(function(f,i){
                       return (
                         <div key={i} className="fav-card" onClick={function(){setTab(f.tab);}} style={{position:"relative"}}>
                           <div className="fav-card-ico" style={{background:f.bg,color:f.col}}>{f.ico}</div>
@@ -3464,6 +3476,43 @@ export default function App() {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ══ CONSIGNA (hub: Enviados / Recibidos / Mi Red) ══ */}
+          {tab==="consigna"&&(
+            <div>
+              <div className="ph"><div><div className="ph-h">🤝 Consigna</div><div className="ph-s">Elegí qué querés ver</div></div></div>
+              <div className="pc">
+                <div onClick={function(){setTab("enviados");}} className="card" style={{marginBottom:12,cursor:"pointer"}}>
+                  <div style={{padding:"16px",display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{width:46,height:46,borderRadius:14,background:"var(--bl-l)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>📤</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:15,fontWeight:800}}>Enviados</div>
+                      <div style={{fontSize:12,color:"var(--t3)"}}>Productos que entregaste a otras vendedoras</div>
+                    </div>
+                    {consignaEnv>0&&<span style={{background:"var(--cr,#e0224e)",color:"#fff",borderRadius:9,minWidth:22,height:22,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 6px"}}>{consignaEnv}</span>}
+                  </div>
+                </div>
+                <div onClick={function(){setTab("recibidos");}} className="card" style={{marginBottom:12,cursor:"pointer"}}>
+                  <div style={{padding:"16px",display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{width:46,height:46,borderRadius:14,background:"#e0f2fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>📥</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:15,fontWeight:800}}>Recibidos</div>
+                      <div style={{fontSize:12,color:"var(--t3)"}}>Productos que te entregaron para vender</div>
+                    </div>
+                  </div>
+                </div>
+                <div onClick={function(){setTab("contacts");}} className="card" style={{cursor:"pointer"}}>
+                  <div style={{padding:"16px",display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{width:46,height:46,borderRadius:14,background:"var(--pu-l,#f3eafe)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🌐</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:15,fontWeight:800}}>Mi Red</div>
+                      <div style={{fontSize:12,color:"var(--t3)"}}>Personas con las que trabajás en consigna</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -4541,9 +4590,7 @@ export default function App() {
                 {(function(){
                   var items = [
                     {id:"stock",     lbl:"Stock",     ico:"box",   col:"var(--in-d)"},
-                    {id:"enviados",  lbl:"Enviados",  ico:"send",  col:"var(--in)"},
-                    {id:"recibidos", lbl:"Recibidos", ico:"users", col:"var(--bl-d)"},
-                    {id:"contacts",  lbl:"Red",       ico:"clock", col:"var(--pu)"},
+                    {id:"consigna",  lbl:"Consigna",  ico:"send",  col:"var(--in)"},
                     {id:"cuenta",    lbl:"Mi Cuenta", ico:"user",  col:"var(--pri)"},
                   ];
                   if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
