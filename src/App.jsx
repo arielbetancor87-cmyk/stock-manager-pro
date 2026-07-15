@@ -631,6 +631,10 @@ export default function App() {
   const [resumen,       setResumen]       = useState(null);
   const [resumenLoading,setResumenLoading]= useState(false);
 
+  // ── FASE 10: Deudas ──────────────────────────────────────────────────────
+  const [misDeudas,    setMisDeudas]    = useState([]);
+  const [deudasLoading,setDeudasLoading]= useState(false);
+
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
@@ -639,6 +643,7 @@ export default function App() {
     loadPedidosEspeciales();
     loadResumen();
     loadCampanias();
+    loadMisDeudas();
   }, [me && me.id]);
 
   // Re-sincronizar mi propio perfil: al volver a la app, al navegar a
@@ -1712,6 +1717,29 @@ export default function App() {
     toast(nuevoEstado==="abierta"?"Campaña reabierta":"Campaña cerrada", "", "s");
   }
 
+  // ── FASE 10: Deudas ──────────────────────────────────────────────────────
+  async function loadMisDeudas() {
+    if (!me) return;
+    setDeudasLoading(true);
+    try {
+      var res = await sb.from("pedido_deudas")
+        .select("*, pedido:pedido_id(numero_pedido,cliente_nombre), vendedor:vendedor_id(name,color), lider:lider_id(name)")
+        .order("created_at",{ascending:false}).limit(100);
+      if (res.data) setMisDeudas(res.data);
+    } catch(e) { /* noop */ }
+    setDeudasLoading(false);
+  }
+
+  async function doMarcarDeudaPagada(deudaId, cual) {
+    var res = await sb.rpc("rpc_marcar_deuda_pagada", { p_deuda_id: deudaId, p_cual: cual });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setMisDeudas(function(prev){ return prev.map(function(d){
+      if (d.id!==deudaId) return d;
+      return cual==="lider" ? Object.assign({},d,{pagada_lider:true}) : Object.assign({},d,{pagada_empresa:true});
+    }); });
+    toast("Marcado como pagado", "", "s");
+  }
+
   // ── FASE 3: Resúmenes ────────────────────────────────────────────────────
   async function loadResumen() {
     if (!me || (me.role!=="lider" && me.role!=="empresaria")) return;
@@ -1734,7 +1762,7 @@ export default function App() {
         "🔸 Pedidos en curso: "+resumen.pedidos_en_curso+"\n"+
         "💰 Ventas del mes: $"+Number(resumen.ventas_mes||0).toLocaleString("es-AR")+"\n"+
         "📦 Unidades vendidas: "+resumen.unidades_mes+"\n"+
-        "💵 Mi comisión del mes: $"+Number(resumen.comision_mes||0).toLocaleString("es-AR")+"\n"+
+        "💵 Deuda pendiente de cobrar: $"+Number(resumen.comision_mes||0).toLocaleString("es-AR")+"\n"+
         "👥 Vendedoras a mi cargo: "+resumen.equipo_count;
     } else {
       msg = "📊 Resumen de "+me.name+"\n\n"+
@@ -1742,9 +1770,9 @@ export default function App() {
         "🔸 Pedidos en curso: "+resumen.pedidos_en_curso+"\n"+
         "💰 Ventas del mes: $"+Number(resumen.ventas_mes||0).toLocaleString("es-AR")+"\n"+
         "📦 Unidades vendidas: "+resumen.unidades_mes+"\n"+
-        "💵 Comisiones a líderes: $"+Number(resumen.comision_lideres_mes||0).toLocaleString("es-AR")+"\n"+
-        "💵 Comisiones a vendedoras: $"+Number(resumen.comision_vendedoras_mes||0).toLocaleString("es-AR")+"\n"+
-        "📈 Rentabilidad del mes: $"+Number(resumen.rentabilidad_mes||0).toLocaleString("es-AR")+"\n"+
+        "💵 Deuda de líderes (su parte): $"+Number(resumen.comision_lideres_mes||0).toLocaleString("es-AR")+"\n"+
+        "💵 Deuda pendiente de cobrar (mi parte): $"+Number(resumen.comision_vendedoras_mes||0).toLocaleString("es-AR")+"\n"+
+        "📈 Total a cobrar del mes: $"+Number(resumen.rentabilidad_mes||0).toLocaleString("es-AR")+"\n"+
         "👥 Líderes: "+resumen.lideres_count+" · Vendedoras: "+resumen.vendedoras_count;
     }
     window.open("https://wa.me/?text="+encodeURIComponent(msg), "_blank");
@@ -4339,7 +4367,7 @@ export default function App() {
                     {me.role==="lider"&&(
                       <div className="card" style={{marginBottom:12}}>
                         <div style={{padding:"16px"}}>
-                          <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>💵 Mi comisión del mes</div>
+                          <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>💵 Deuda a cobrar del mes</div>
                           <div style={{fontSize:26,fontWeight:800,color:"var(--pri)"}}>${Number(resumen.comision_mes||0).toLocaleString("es-AR")}</div>
                           <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>👥 {resumen.equipo_count} vendedora(s) a tu cargo</div>
                         </div>
@@ -4351,16 +4379,16 @@ export default function App() {
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
                           <div className="card"><div style={{padding:"14px"}}>
                             <div style={{fontSize:16,fontWeight:800,color:"var(--pri)"}}>${Number(resumen.comision_lideres_mes||0).toLocaleString("es-AR")}</div>
-                            <div style={{fontSize:10,color:"var(--t3)"}}>Comisiones a líderes</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>Deuda de líderes</div>
                           </div></div>
                           <div className="card"><div style={{padding:"14px"}}>
                             <div style={{fontSize:16,fontWeight:800,color:"var(--pri)"}}>${Number(resumen.comision_vendedoras_mes||0).toLocaleString("es-AR")}</div>
-                            <div style={{fontSize:10,color:"var(--t3)"}}>Comisiones a vendedoras</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>Deuda a cobrar (mi parte)</div>
                           </div></div>
                         </div>
                         <div className="card" style={{marginBottom:12}}>
                           <div style={{padding:"16px"}}>
-                            <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>📈 Rentabilidad del mes</div>
+                            <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>📈 Total a cobrar del mes</div>
                             <div style={{fontSize:26,fontWeight:800,color:resumen.rentabilidad_mes>=0?"var(--em-d,#0a8f4d)":"var(--cr,#d32)"}}>${Number(resumen.rentabilidad_mes||0).toLocaleString("es-AR")}</div>
                             <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>⭐ {resumen.lideres_count} líder(es) · 🛍️ {resumen.vendedoras_count} vendedora(s)</div>
                           </div>
@@ -4373,6 +4401,38 @@ export default function App() {
                     </button>
                   </>
                 )}
+
+                {/* Deudas pendientes de cobrar (líder/empresaria) */}
+                {(me.role==="lider"||me.role==="empresaria")&&(function(){
+                  var propias = misDeudas.filter(function(d){
+                    if (me.role==="lider") return d.lider_id===me.id && !d.pagada_lider;
+                    return d.empresa_id===me.id && !d.pagada_empresa;
+                  });
+                  var totalPend = propias.reduce(function(s,d){ return s + (me.role==="lider"?d.monto_lider:d.monto_empresa); }, 0);
+                  if (propias.length===0) return null;
+                  return (
+                    <div className="card" style={{marginTop:14}}>
+                      <div style={{padding:"14px 16px"}}>
+                        <div style={{fontSize:13,fontWeight:800,marginBottom:4}}>💳 Deudas pendientes de cobrar</div>
+                        <div style={{fontSize:20,fontWeight:800,color:"var(--pri)",marginBottom:10}}>${totalPend.toLocaleString("es-AR")}</div>
+                        {propias.map(function(d){
+                          var monto = me.role==="lider"?d.monto_lider:d.monto_empresa;
+                          return (
+                            <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:12,fontWeight:700}}>{d.vendedor?d.vendedor.name:"-"}</div>
+                                <div style={{fontSize:10,color:"var(--t3)"}}>Pedido #{d.pedido?d.pedido.numero_pedido:"-"} · {d.pedido?d.pedido.cliente_nombre:""}</div>
+                              </div>
+                              <div style={{fontSize:13,fontWeight:800,color:"var(--pri)"}}>${Number(monto).toLocaleString("es-AR")}</div>
+                              <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontSize:10,fontWeight:700,padding:"6px 10px"}}
+                                onClick={function(){doMarcarDeudaPagada(d.id, me.role==="lider"?"lider":"empresa");}}>✓ Cobrado</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
