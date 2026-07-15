@@ -1510,6 +1510,13 @@ export default function App() {
       setPeObserv(function(prev){ return Object.assign({},prev,{[id]:""}); });
       await loadPedidosEspeciales();
 
+      // "Lo recibí" acredita stock y "Entregado" genera la venta —
+      // refrescar stock/ventas/resumen para que se vea al instante
+      if (rpcName === "rpc_pedido_listo_entregar" || rpcName === "rpc_pedido_entregado") {
+        await loadData(me.id, me.role);
+        await loadResumen();
+      }
+
       // Al quedar "Aprobado" (aprobó la empresaria), generar el PDF automáticamente
       if (rpcName === "rpc_empresaria_decidir_pedido" && extraParams && extraParams.p_aprobar) {
         var pedido = pedEspList.find(function(x){ return x.id===id; });
