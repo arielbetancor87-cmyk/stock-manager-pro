@@ -1539,8 +1539,8 @@ export default function App() {
       rechazado_empresaria: {lbl:"Rechazado por empresaria",bg:"#ffe0e5", col:"#d32"},
       aprobado:             {lbl:"Aprobado",                bg:"#e0f2ff", col:"#0369a1"},
       enviado_proveedor:    {lbl:"Enviado a proveedor",     bg:"#f3e8ff", col:"#7c3aed"},
-      recibido:             {lbl:"Recibido",                bg:"#e7f9ee", col:"#0a8f4d"},
-      listo_entregar:       {lbl:"Listo para entregar",     bg:"#dcfce7", col:"#15803d"},
+      recibido:             {lbl:"Recibido en la empresa",  bg:"#e7f9ee", col:"#0a8f4d"},
+      listo_entregar:       {lbl:"Vendedora lo recibió",    bg:"#dcfce7", col:"#15803d"},
       entregado:            {lbl:"Entregado",               bg:"#dcfce7", col:"#15803d"},
       cancelado:            {lbl:"Cancelado",               bg:"#f1f1f1", col:"#888"},
     };
@@ -2686,7 +2686,15 @@ export default function App() {
   );
 
   // ── TABS ─────────────────────────────────────────────────────────────────────
-  var pedPendCount = pedidos.filter(function(p){return p.estado==="pendiente";}).length;
+  var pedPendCount = (function(){
+    if (!me) return 0;
+    return pedEspList.filter(function(p){
+      if (me.role==="reseller")   return p.vendedor_id===me.id && ["listo_entregar"].includes(p.estado);
+      if (me.role==="lider")      return p.lider_id===me.id && p.estado==="pendiente_lider";
+      if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
+      return false;
+    }).length;
+  })();
   var TABS = [
     {id:"stock",     lbl:"Stock",     ico:"box"},
     {id:"cargar",    lbl:"Cargar",    ico:"plus"},
@@ -2975,7 +2983,7 @@ export default function App() {
                       <div className="mtop-val">{products.filter(function(p){return p.is_active!==false;}).length}</div>
                     </div>
                   </div>
-                  <div className="mtop-card" onClick={function(){setTab("pedidos");}} style={{cursor:"pointer"}}>
+                  <div className="mtop-card" onClick={function(){setTab("pedesp");}} style={{cursor:"pointer"}}>
                     <div className="mtop-ico" style={{background:"var(--em-l)",color:"var(--em-d)"}}><Ic n="list" s={18}/></div>
                     <div>
                       <div className="mtop-lbl">Pedidos pendientes</div>
@@ -2993,7 +3001,6 @@ export default function App() {
                       var favs = [
                         {ico:"📦",bg:"var(--in-l)",col:"var(--in)",lbl:"Mi Stock",sub:ownStock.reduce(function(s,i){return s+i.qty_available;},0)+" productos",tab:"stock",scroll:true},
                         {ico:"🤝",bg:"var(--bl-l)",col:"var(--bl)",lbl:"Consigna",sub:consignaEnv>0?consignaEnv+" activos":"Enviados/Recibidos",tab:"consigna",badge:consignaEnv||null},
-                        {ico:"📋",bg:"#fff3e6",col:"#e06a00",lbl:"Pedidos",sub:pedPendCount>0?pedPendCount+" pendientes":"Ver pedidos",tab:"pedidos",badge:pedPendCount||null},
                         {ico:"💰",bg:"var(--em-l)",col:"var(--em-d)",lbl:"Ventas",sub:fmtARS(totalVal).replace("$ ","$"),tab:"ventas"},
                       ];
                       if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
@@ -4139,7 +4146,7 @@ export default function App() {
                   var puedeEmpAprobar   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="pendiente_empresaria";
                   var puedeEmpEnviar    = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="aprobado";
                   var puedeEmpRecibir   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="enviado_proveedor";
-                  var puedeEmpListo     = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="recibido";
+                  var puedeVendRecibi   = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="recibido";
                   var puedeVendEntregar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="listo_entregar";
                   // Control del pedido según su etapa: vendedora (borrador) → líder (su etapa) → empresaria (de ahí en más)
                   var tieneControl = isAdmin || (function(){
@@ -4150,7 +4157,7 @@ export default function App() {
                   })();
                   var puedeCancelar = tieneControl;
                   var puedeEditar = tieneControl;
-                  var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeEmpListo||puedeVendEntregar;
+                  var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeVendRecibi||puedeVendEntregar;
                   var items = p.items||[];
                   var primerItem = items[0];
                   return (
@@ -4200,7 +4207,7 @@ export default function App() {
                               </>)}
                               {puedeEmpEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_enviado_proveedor");}}>📤 Enviar a proveedor</button>}
                               {puedeEmpRecibir&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_recibido");}}>📦 Marcar recibido</button>}
-                              {puedeEmpListo&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_listo_entregar");}}>✅ Listo para entregar</button>}
+                              {puedeVendRecibi&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_listo_entregar");}}>📦 Lo recibí (acredita mi stock)</button>}
                               {puedeVendEntregar&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_entregado");}}>🎉 Entregar al cliente</button>}
                             </div>
                           </div>
@@ -4722,7 +4729,7 @@ export default function App() {
               {id:"ventas", lbl:"Ventas", ico:"chart"},
             ];
             var der = [
-              {id:"pedidos", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
+              {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
               {id:"__mas",   lbl:"Más",     ico:"dots"},
             ];
             function TabItem(t){
