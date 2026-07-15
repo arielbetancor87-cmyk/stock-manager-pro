@@ -4144,12 +4144,12 @@ export default function App() {
                   var ei = peEstadoInfo(p.estado);
                   var busy = !!peBusy[p.id];
                   var puedeVendEnviar = p.vendedor_id===me.id && p.estado==="borrador";
-                  var puedeLider = me.role==="lider" && p.lider_id===me.id && p.estado==="pendiente_lider";
-                  var puedeEmpAprobar   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="pendiente_empresaria";
-                  var puedeEmpEnviar    = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="aprobado";
-                  var puedeEmpRecibir   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="enviado_proveedor";
-                  var puedeVendRecibi   = p.vendedor_id===me.id && p.estado==="recibido";
-                  var puedeVendEntregar = p.vendedor_id===me.id && p.estado==="listo_entregar";
+                  var puedeLider = ((isAdmin) || (me.role==="lider" && p.lider_id===me.id)) && p.estado==="pendiente_lider";
+                  var puedeEmpAprobar   = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="pendiente_empresaria";
+                  var puedeEmpEnviar    = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="aprobado";
+                  var puedeEmpRecibir   = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="enviado_proveedor";
+                  var puedeVendRecibi   = (isAdmin || p.vendedor_id===me.id) && p.estado==="recibido";
+                  var puedeVendEntregar = (isAdmin || p.vendedor_id===me.id) && p.estado==="listo_entregar";
                   // Control del pedido según su etapa: vendedora (borrador) → líder (su etapa) → empresaria (de ahí en más)
                   var tieneControl = isAdmin || (function(){
                     if (["entregado","cancelado"].includes(p.estado)) return false;
