@@ -3010,7 +3010,7 @@ export default function App() {
                           if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
                           return false;
                         }).length;
-                        favs.push({ico:"🛍️",bg:"#fdf0f7",col:"#c2185b",lbl:"Pedido Especial",sub:peProp>0?peProp+" por revisar":"Productos por encargo",tab:"pedesp",badge:peProp||null});
+                        favs.push({ico:"🛍️",bg:"#fdf0f7",col:"#c2185b",lbl:"Pedidos",sub:peProp>0?peProp+" por revisar":"Productos por encargo",tab:"pedesp",badge:peProp||null});
                       }
                       return favs;
                     })().map(function(f,i){
@@ -4001,7 +4001,7 @@ export default function App() {
           {tab==="pedesp"&&(me.role==="reseller"||me.role==="lider"||me.role==="empresaria"||isAdmin)&&(
             <div>
               <div className="ph">
-                <div><div className="ph-h">📦 Pedido Especial</div><div className="ph-s">Genera la orden de compra hacia la empresa</div></div>
+                <div><div className="ph-h">📦 Pedidos</div><div className="ph-s">Genera la orden de compra hacia la empresa</div></div>
                 <div style={{display:"flex",gap:8}}>
                   <button className="btn btn-xs b-ghost" onClick={loadPedidosEspeciales}><Ic n="undo" s={13}/></button>
                   {me.role==="reseller"&&<button className="btn b-pri" onClick={function(){setPeEditando(null); setPeShowForm(function(v){var nv=!v; if(!nv){setPeCarrito([]);setPeProdId("");setPeProdSrch("");}return nv;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
@@ -4777,7 +4777,7 @@ export default function App() {
                       if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
                       return false;
                     }).length;
-                    items.push({id:"pedesp", lbl:"Pedido Especial", ico:"send", col:"var(--am-d)", badge:pePend});
+                    items.push({id:"pedesp", lbl:"Pedidos", ico:"send", col:"var(--am-d)", badge:pePend});
                   }
                   if (me.role==="empresaria" || me.role==="lider") {
                     items.push({id:"resumen", lbl:"Resumen", ico:"chart", col:"var(--em-d,#0a8f4d)"});
