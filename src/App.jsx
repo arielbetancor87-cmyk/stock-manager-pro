@@ -2689,7 +2689,8 @@ export default function App() {
   var pedPendCount = (function(){
     if (!me) return 0;
     return pedEspList.filter(function(p){
-      if (me.role==="reseller")   return p.vendedor_id===me.id && ["listo_entregar"].includes(p.estado);
+      var propioPendiente = p.vendedor_id===me.id && ["listo_entregar"].includes(p.estado);
+      if (propioPendiente) return true;
       if (me.role==="lider")      return p.lider_id===me.id && p.estado==="pendiente_lider";
       if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
       return false;
@@ -3005,7 +3006,8 @@ export default function App() {
                       ];
                       if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
                         var peProp = pedEspList.filter(function(p){
-                          if (me.role==="reseller")   return p.vendedor_id===me.id && ["borrador","listo_entregar"].includes(p.estado);
+                          var propio = p.vendedor_id===me.id && ["borrador","listo_entregar"].includes(p.estado);
+                          if (propio) return true;
                           if (me.role==="lider")      return p.lider_id===me.id && p.estado==="pendiente_lider";
                           if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
                           return false;
@@ -4004,13 +4006,13 @@ export default function App() {
                 <div><div className="ph-h">📦 Pedidos</div><div className="ph-s">Genera la orden de compra hacia la empresa</div></div>
                 <div style={{display:"flex",gap:8}}>
                   <button className="btn btn-xs b-ghost" onClick={loadPedidosEspeciales}><Ic n="undo" s={13}/></button>
-                  {me.role==="reseller"&&<button className="btn b-pri" onClick={function(){setPeEditando(null); setPeShowForm(function(v){var nv=!v; if(!nv){setPeCarrito([]);setPeProdId("");setPeProdSrch("");}return nv;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
+                  {(me.role==="reseller"||me.role==="lider"||me.role==="empresaria")&&<button className="btn b-pri" onClick={function(){setPeEditando(null); setPeShowForm(function(v){var nv=!v; if(!nv){setPeCarrito([]);setPeProdId("");setPeProdSrch("");}return nv;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
                 </div>
               </div>
               <div className="pc">
 
                 {/* Formulario nuevo pedido especial (vendedora) — carrito de varios productos */}
-                {peShowForm&&me.role==="reseller"&&(
+                {peShowForm&&(me.role==="reseller"||me.role==="lider"||me.role==="empresaria")&&(
                   <div className="card" style={{marginBottom:14}}>
                     <div style={{padding:"14px 16px"}}>
                       <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>Nuevo pedido especial</div>
@@ -4141,13 +4143,13 @@ export default function App() {
                 }).map(function(p){
                   var ei = peEstadoInfo(p.estado);
                   var busy = !!peBusy[p.id];
-                  var puedeVendEnviar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="borrador";
+                  var puedeVendEnviar = p.vendedor_id===me.id && p.estado==="borrador";
                   var puedeLider = me.role==="lider" && p.lider_id===me.id && p.estado==="pendiente_lider";
                   var puedeEmpAprobar   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="pendiente_empresaria";
                   var puedeEmpEnviar    = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="aprobado";
                   var puedeEmpRecibir   = me.role==="empresaria" && p.empresa_id===me.id && p.estado==="enviado_proveedor";
-                  var puedeVendRecibi   = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="recibido";
-                  var puedeVendEntregar = me.role==="reseller" && p.vendedor_id===me.id && p.estado==="listo_entregar";
+                  var puedeVendRecibi   = p.vendedor_id===me.id && p.estado==="recibido";
+                  var puedeVendEntregar = p.vendedor_id===me.id && p.estado==="listo_entregar";
                   // Control del pedido según su etapa: vendedora (borrador) → líder (su etapa) → empresaria (de ahí en más)
                   var tieneControl = isAdmin || (function(){
                     if (["entregado","cancelado"].includes(p.estado)) return false;
@@ -4772,7 +4774,8 @@ export default function App() {
                   ];
                   if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
                     var pePend = pedEspList.filter(function(p){
-                      if (me.role==="reseller")   return p.vendedor_id===me.id && p.estado==="listo_entregar";
+                      var propio = p.vendedor_id===me.id && p.estado==="listo_entregar";
+                      if (propio) return true;
                       if (me.role==="lider")      return p.lider_id===me.id && p.estado==="pendiente_lider";
                       if (me.role==="empresaria") return p.empresa_id===me.id && ["pendiente_empresaria","aprobado","enviado_proveedor","recibido"].includes(p.estado);
                       return false;
