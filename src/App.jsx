@@ -4186,12 +4186,11 @@ export default function App() {
                   var puedeVendRecibi   = (isAdmin || p.vendedor_id===me.id) && p.estado==="recibido";
                   var puedeVendEntregar = (isAdmin || p.vendedor_id===me.id) && p.estado==="listo_entregar";
                   // Control del pedido según su etapa: vendedora (borrador) → líder (su etapa) → empresaria (de ahí en más)
-                  var tieneControl = isAdmin || (function(){
-                    if (["entregado","cancelado"].includes(p.estado)) return false;
+                  var tieneControl = !["entregado","cancelado"].includes(p.estado) && (isAdmin || (function(){
                     if (p.estado==="borrador") return p.vendedor_id===me.id;
                     if (["pendiente_lider","rechazado_lider"].includes(p.estado)) return p.lider_id===me.id || (!p.lider_id && p.empresa_id===me.id);
                     return p.empresa_id===me.id;
-                  })();
+                  })());
                   var puedeCancelar = tieneControl;
                   var puedeEditar = tieneControl;
                   var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeVendRecibi||puedeVendEntregar;
