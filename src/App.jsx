@@ -652,6 +652,7 @@ export default function App() {
     loadCampanias();
     loadMisDeudas();
     loadOrdenes();
+    if (me.role==="deposito") setTab("deposito");
   }, [me && me.id]);
 
   // Re-sincronizar mi propio perfil: al volver a la app, al navegar a
@@ -2812,7 +2813,7 @@ export default function App() {
             <div className="hdr-avatar" style={me.color?{background:me.color}:{}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
             <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={function(){setTab("stock");}}>
               <div className="hdr-hi">{me.role==="superadmin"?"👑 Administrador":("¡Hola, "+me.name.split(" ")[0]+"!")}</div>
-              <div className="hdr-sub">{me.role==="superadmin"?"Panel de control":(tab==="recibidos"?"Acá ves lo que te entregaron para vender":"¿Lista para vender hoy?")}</div>
+              <div className="hdr-sub">{me.role==="superadmin"?"Panel de control":me.role==="deposito"?"Panel de depósito":(tab==="recibidos"?"Acá ves lo que te entregaron para vender":"¿Lista para vender hoy?")}</div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
               <div style={{position:"relative",cursor:"pointer"}} onClick={function(){setTab("contacts");}}>
@@ -4941,11 +4942,17 @@ export default function App() {
         {/* TAB BAR */}
         <nav className="tabbar">
           {(function(){
-            var izq = [
+            var esDeposito = me.role==="deposito";
+            var izq = esDeposito ? [
+              {id:"deposito", lbl:"Depósito", ico:"box", dot: ordenes.some(function(o){return ["pendiente_produccion","en_preparacion"].includes(o.estado);})},
+            ] : [
               {id:"inicio", lbl:"Inicio", ico:"home"},
               {id:"ventas", lbl:"Ventas", ico:"chart"},
             ];
-            var der = [
+            var der = esDeposito ? [
+              {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
+              {id:"__mas",  lbl:"Más",       ico:"dots"},
+            ] : [
               {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
               {id:"__mas",   lbl:"Más",     ico:"dots"},
             ];
@@ -4964,10 +4971,12 @@ export default function App() {
             return (
               <React.Fragment>
                 {izq.map(TabItem)}
-                {/* Botón central [+] */}
-                <div className="tab-fab-wrap" onClick={function(){ setMasMenu(false); setTab("cargar"); }}>
-                  <div className="tab-fab"><Ic n="plus" s={26}/></div>
-                </div>
+                {/* Botón central [+] (no aplica para depósito) */}
+                {!esDeposito&&(
+                  <div className="tab-fab-wrap" onClick={function(){ setMasMenu(false); setTab("cargar"); }}>
+                    <div className="tab-fab"><Ic n="plus" s={26}/></div>
+                  </div>
+                )}
                 {der.map(TabItem)}
               </React.Fragment>
             );
@@ -4982,7 +4991,10 @@ export default function App() {
               <div style={{fontSize:16,fontWeight:900,color:"var(--t1)",marginBottom:14,paddingLeft:4}}>Más opciones</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                 {(function(){
-                  var items = [
+                  var items = me.role==="deposito" ? [
+                    {id:"deposito",  lbl:"Depósito",  ico:"box",  col:"var(--bl-d)"},
+                    {id:"cuenta",    lbl:"Mi Cuenta", ico:"user", col:"var(--pri)"},
+                  ] : [
                     {id:"stock",     lbl:"Stock",     ico:"box",   col:"var(--in-d)"},
                     {id:"consigna",  lbl:"Consigna",  ico:"send",  col:"var(--in)"},
                     {id:"cuenta",    lbl:"Mi Cuenta", ico:"user",  col:"var(--pri)"},
@@ -4997,7 +5009,7 @@ export default function App() {
                     }).length;
                     items.push({id:"pedesp", lbl:"Pedidos", ico:"send", col:"var(--am-d)", badge:pePend});
                   }
-                  if (me.role==="deposito" || isAdmin) {
+                  if (isAdmin) {
                     var ordPend = ordenes.filter(function(o){ return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado); }).length;
                     items.push({id:"deposito", lbl:"Depósito", ico:"box", col:"var(--bl-d)", badge:ordPend});
                   }
