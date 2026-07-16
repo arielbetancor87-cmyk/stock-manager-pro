@@ -635,6 +635,13 @@ export default function App() {
   const [misDeudas,    setMisDeudas]    = useState([]);
   const [deudasLoading,setDeudasLoading]= useState(false);
 
+  // ── FASE 11: Órdenes de producción (depósito) ────────────────────────────
+  const [ordenes,        setOrdenes]        = useState([]);
+  const [ordenesLoading, setOrdenesLoading] = useState(false);
+  const [ordenVerTodas,  setOrdenVerTodas]  = useState(false);
+  const [ordenBusy,      setOrdenBusy]      = useState({});
+  const [ordenDespacho,  setOrdenDespacho]  = useState({}); // {ordenId: {transporte, tracking}}
+
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
@@ -644,6 +651,7 @@ export default function App() {
     loadResumen();
     loadCampanias();
     loadMisDeudas();
+    loadOrdenes();
   }, [me && me.id]);
 
   // Re-sincronizar mi propio perfil: al volver a la app, al navegar a
@@ -1715,6 +1723,52 @@ export default function App() {
     if (res.error) { toast("Error", res.error.message, "e"); return; }
     setCampanias(function(prev){ return prev.map(function(c){ return c.id===id ? Object.assign({},c,{estado:nuevoEstado}) : c; }); });
     toast(nuevoEstado==="abierta"?"Campaña reabierta":"Campaña cerrada", "", "s");
+  }
+
+  // ── FASE 11: Órdenes de producción ───────────────────────────────────────
+  async function loadOrdenes() {
+    if (!me || !(me.role==="deposito" || me.role==="empresaria" || isAdmin)) return;
+    setOrdenesLoading(true);
+    try {
+      var res = await sb.from("ordenes_produccion")
+        .select("*, pedido:pedido_id(numero_pedido, cliente_nombre, total, qty, nota, items:pedidos_especiales_items(id,qty,color,talle,preparado,precio_unit,subtotal,product:product_id(name,sku)))")
+        .order("created_at", {ascending:false}).limit(150);
+      if (res.data) setOrdenes(res.data);
+    } catch(e) { /* noop */ }
+    setOrdenesLoading(false);
+  }
+
+  async function doOrdenAccion(ordenId, fn, params) {
+    setOrdenBusy(function(prev){ return Object.assign({},prev,{[ordenId]:true}); });
+    try {
+      var res = await sb.rpc(fn, params);
+      if (res.error) { toast("Error", res.error.message, "e"); }
+      else { toast("Listo", "", "s"); await loadOrdenes(); }
+    } catch(e) { toast("Error", e.message, "e"); }
+    setOrdenBusy(function(prev){ return Object.assign({},prev,{[ordenId]:false}); });
+  }
+
+  async function doItemPreparado(ordenId, itemId, val) {
+    var res = await sb.rpc("rpc_orden_item_preparado", { p_item_id: itemId, p_preparado: val });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setOrdenes(function(prev){ return prev.map(function(o){
+      if (o.id!==ordenId) return o;
+      var ped = Object.assign({}, o.pedido);
+      ped.items = (ped.items||[]).map(function(it){ return it.id===itemId ? Object.assign({},it,{preparado:val}) : it; });
+      var estado = o.estado==="pendiente_produccion"&&val ? "en_preparacion" : o.estado;
+      return Object.assign({}, o, {pedido: ped, estado: estado});
+    }); });
+  }
+
+  function ordenEstadoInfo(estado) {
+    var map = {
+      pendiente_produccion: {lbl:"Pendiente de producción", bg:"#fff3e0", col:"#e07800"},
+      en_preparacion:       {lbl:"En preparación",          bg:"#e0f2ff", col:"#0369a1"},
+      lista_despacho:       {lbl:"Lista para despacho",     bg:"#f3e8ff", col:"#7c3aed"},
+      despachada:           {lbl:"Despachada",              bg:"#dcfce7", col:"#15803d"},
+      entregada:            {lbl:"Entregada",               bg:"#dcfce7", col:"#15803d"},
+    };
+    return map[estado] || {lbl:estado, bg:"#eee", col:"#666"};
   }
 
   // ── FASE 10: Deudas ──────────────────────────────────────────────────────
@@ -4436,6 +4490,100 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ DEPÓSITO (órdenes de producción) ══ */}
+          {tab==="deposito"&&(me.role==="deposito"||me.role==="empresaria"||isAdmin)&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">🏭 Depósito</div><div className="ph-s">Órdenes de producción y despacho</div></div>
+                <div style={{display:"flex",gap:8}}>
+                  <button className="btn btn-xs b-ghost" onClick={loadOrdenes}><Ic n="undo" s={13}/></button>
+                  <button className="btn btn-xs b-ghost" onClick={function(){setOrdenVerTodas(function(v){return !v;});}}>{ordenVerTodas?"Solo pendientes":"Ver todas"}</button>
+                </div>
+              </div>
+              <div className="pc">
+                {ordenesLoading&&<div className="empty">Cargando...</div>}
+                {(function(){
+                  var lista = ordenes.filter(function(o){
+                    if (me.role==="empresaria" && o.empresa_id!==me.id) return false;
+                    if (!ordenVerTodas) return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado);
+                    return true;
+                  });
+                  if (!ordenesLoading && lista.length===0) return <div className="empty">{ordenVerTodas?"No hay órdenes":"No hay órdenes pendientes 🎉"}</div>;
+                  return lista.map(function(o){
+                    var ei = ordenEstadoInfo(o.estado);
+                    var busy = !!ordenBusy[o.id];
+                    var items = (o.pedido&&o.pedido.items)||[];
+                    var prepCount = items.filter(function(it){return it.preparado;}).length;
+                    var puedePreparar = (me.role==="deposito"||isAdmin) && ["pendiente_produccion","en_preparacion"].includes(o.estado);
+                    var puedeDespachar = (me.role==="deposito"||isAdmin) && o.estado==="lista_despacho";
+                    var puedeEntregada = o.estado==="despachada" && (me.role==="deposito"||isAdmin||o.empresa_id===me.id);
+                    var desp = ordenDespacho[o.id]||{transporte:"",tracking:""};
+                    return (
+                      <div key={o.id} className="card" style={{marginBottom:10,border:["pendiente_produccion","en_preparacion"].includes(o.estado)?"1.5px solid var(--am-d)":undefined}}>
+                        <div style={{padding:"12px 14px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:14,fontWeight:800}}>Orden #{o.numero} <span style={{fontWeight:400,fontSize:11,color:"var(--t3)"}}>· Pedido #{o.pedido?o.pedido.numero_pedido:"-"}</span></div>
+                              <div style={{fontSize:11,color:"var(--t3)"}}>🏢 {o.empresaria_nombre||"-"}{o.empresaria_localidad?" · "+o.empresaria_localidad:""}</div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(o.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} · {o.pedido?o.pedido.qty:0} u. · {fmtARS(o.pedido?o.pedido.total:0)}</div>
+                            </div>
+                            <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
+                          </div>
+
+                          {/* Checklist de productos */}
+                          <div style={{background:"var(--bg2)",borderRadius:9,padding:"8px 10px"}}>
+                            <div style={{fontSize:10,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:4}}>Productos ({prepCount}/{items.length} preparados)</div>
+                            {items.map(function(it){
+                              return (
+                                <label key={it.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",fontSize:12,cursor:puedePreparar?"pointer":"default"}}>
+                                  <input type="checkbox" checked={!!it.preparado} disabled={!puedePreparar}
+                                    onChange={function(e){doItemPreparado(o.id, it.id, e.target.checked);}}
+                                    style={{width:16,height:16,accentColor:"var(--em-d,#0a8f4d)"}}/>
+                                  <span style={{flex:1,textDecoration:it.preparado?"line-through":"none",color:it.preparado?"var(--t3)":"var(--t1)"}}>
+                                    {it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}
+                                  </span>
+                                  <span style={{fontSize:10,color:"var(--t3)",fontFamily:"var(--mf)"}}>{it.product?it.product.sku:""}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+
+                          {o.transporte&&<div style={{fontSize:11,color:"var(--t3)",marginTop:6}}>🚚 {o.transporte}{o.tracking?" · Seguimiento: "+o.tracking:""}</div>}
+
+                          {/* Acciones según estado */}
+                          {puedePreparar&&prepCount===items.length&&items.length>0&&(
+                            <button className="btn btn-xs b-pri" style={{marginTop:10,padding:"8px 14px"}} disabled={busy}
+                              onClick={function(){doOrdenAccion(o.id,"rpc_orden_confirmar_preparacion",{p_orden_id:o.id});}}>
+                              ✅ Confirmar preparación completa
+                            </button>
+                          )}
+                          {puedeDespachar&&(
+                            <div style={{marginTop:10,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                              <input value={desp.transporte} onChange={function(e){var v=e.target.value;setOrdenDespacho(function(prev){return Object.assign({},prev,{[o.id]:Object.assign({},desp,{transporte:v})});});}}
+                                placeholder="Transporte" style={{flex:1,minWidth:110,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                              <input value={desp.tracking} onChange={function(e){var v=e.target.value;setOrdenDespacho(function(prev){return Object.assign({},prev,{[o.id]:Object.assign({},desp,{tracking:v})});});}}
+                                placeholder="N° seguimiento" style={{flex:1,minWidth:110,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                              <button className="btn btn-xs b-pri" style={{padding:"8px 12px"}} disabled={busy}
+                                onClick={function(){doOrdenAccion(o.id,"rpc_orden_despachar",{p_orden_id:o.id,p_transporte:desp.transporte,p_tracking:desp.tracking});}}>
+                                🚚 Despachar
+                              </button>
+                            </div>
+                          )}
+                          {puedeEntregada&&(
+                            <button className="btn btn-xs" style={{marginTop:10,background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"8px 14px"}} disabled={busy}
+                              onClick={function(){doOrdenAccion(o.id,"rpc_orden_entregada",{p_orden_id:o.id});}}>
+                              📦 Marcar como entregada
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+
           {/* ══ MI EQUIPO ══ */}
           {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
             <div>
@@ -4543,6 +4691,7 @@ export default function App() {
                               <select value={u.role} onChange={function(e){doCambiarRol(u.id, e.target.value);}}
                                 style={{fontSize:10,fontWeight:800,textTransform:"uppercase",border:"1.5px solid var(--pri-l)",background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"3px 6px",fontFamily:"inherit",cursor:"pointer"}}>
                                 {isAdmin&&<option value="empresaria">🏢 Empresaria</option>}
+                                {isAdmin&&<option value="deposito">🏭 Depósito</option>}
                                 <option value="lider">⭐ Líder</option>
                                 <option value="reseller">🛍️ Vendedora</option>
                               </select>
@@ -4848,9 +4997,17 @@ export default function App() {
                     }).length;
                     items.push({id:"pedesp", lbl:"Pedidos", ico:"send", col:"var(--am-d)", badge:pePend});
                   }
+                  if (me.role==="deposito" || isAdmin) {
+                    var ordPend = ordenes.filter(function(o){ return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado); }).length;
+                    items.push({id:"deposito", lbl:"Depósito", ico:"box", col:"var(--bl-d)", badge:ordPend});
+                  }
                   if (me.role==="empresaria" || me.role==="lider") {
                     items.push({id:"resumen", lbl:"Resumen", ico:"chart", col:"var(--em-d,#0a8f4d)"});
                     items.push({id:"equipo", lbl:"Mi Estructura", ico:"users", col:"var(--pu)"});
+                  }
+                  if (me.role==="empresaria") {
+                    var envPend = ordenes.filter(function(o){ return o.empresa_id===me.id && o.estado==="despachada"; }).length;
+                    items.push({id:"deposito", lbl:"Envíos", ico:"send", col:"var(--bl)", badge:envPend});
                   }
                   if (isAdmin) {
                     items.push({id:"catalog", lbl:"Catálogo", ico:"list",   col:"var(--am-d)"});
