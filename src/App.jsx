@@ -1553,7 +1553,7 @@ export default function App() {
 
   function peEstadoInfo(estado) {
     var map = {
-      borrador:              {lbl:"📝 Borrador",              bg:"#f1f1f1", col:"#666"},
+      borrador:              {lbl:"📝 Pedido abierto",        bg:"#fff8e1", col:"#b8860b"},
       pendiente_lider:      {lbl:"Pendiente de líder",      bg:"#fff3e0", col:"#e07800"},
       rechazado_lider:      {lbl:"Rechazado por líder",     bg:"#ffe0e5", col:"#d32"},
       pendiente_empresaria: {lbl:"Pendiente de empresaria", bg:"#fff3e0", col:"#e07800"},
@@ -4096,7 +4096,13 @@ export default function App() {
                 <div><div className="ph-h">📦 Pedidos</div><div className="ph-s">Genera la orden de compra hacia la empresa</div></div>
                 <div style={{display:"flex",gap:8}}>
                   <button className="btn btn-xs b-ghost" onClick={loadPedidosEspeciales}><Ic n="undo" s={13}/></button>
-                  {(me.role==="reseller"||me.role==="lider"||me.role==="empresaria")&&<button className="btn b-pri" onClick={function(){setPeEditando(null); setPeShowForm(function(v){var nv=!v; if(!nv){setPeCarrito([]);setPeProdId("");setPeProdSrch("");}return nv;});}}><Ic n="plus" s={15}/>{peShowForm?"Cancelar":"Nuevo"}</button>}
+                  {(me.role==="reseller"||me.role==="lider"||me.role==="empresaria")&&<button className="btn b-pri" onClick={function(){
+                    if (peShowForm || peEditando) { setPeEditando(null); setPeShowForm(false); setPeCarrito([]); setPeProdId(""); setPeProdSrch(""); return; }
+                    // Si ya hay un pedido abierto (borrador propio), continuarlo en vez de crear otro
+                    var abierto = pedEspList.find(function(p){ return p.vendedor_id===me.id && p.estado==="borrador"; });
+                    if (abierto) { doAbrirEdicion(abierto); toast("Continuás tu pedido abierto", "Agregá los productos que quieras y después envialo", "i"); return; }
+                    setPeShowForm(true);
+                  }}><Ic n="plus" s={15}/>{(peShowForm||peEditando)?"Cancelar":"Nuevo"}</button>}
                 </div>
               </div>
               <div className="pc">
@@ -4287,7 +4293,8 @@ export default function App() {
                             <input value={peObserv[p.id]||""} onChange={function(e){setPeObserv(function(prev){return Object.assign({},prev,{[p.id]:e.target.value});});}}
                               placeholder="Observación (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,marginBottom:8,fontFamily:"inherit"}}/>
                             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                              {puedeVendEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doEnviarPedidoEspecial(p.id);}}>📤 Enviar a aprobación</button>}
+                              {puedeVendEnviar&&<button className="btn btn-xs b-ghost" style={{padding:"7px 12px",border:"1.5px solid var(--brd)"}} disabled={busy} onClick={function(){doAbrirEdicion(p);}}>➕ Agregar productos</button>}
+                              {puedeVendEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){if(window.confirm("¿Cerrar el pedido y enviarlo? Ya no vas a poder agregar productos.")) doEnviarPedidoEspecial(p.id);}}>📤 Cerrar y enviar pedido</button>}
                               {puedeLider&&(<>
                                 <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:true});}}>✅ Aprobar</button>
                                 <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:false});}}>✕ Rechazar</button>
