@@ -2793,6 +2793,7 @@ export default function App() {
   );
 
   // ── TABS ─────────────────────────────────────────────────────────────────────
+  var consignaEnv = me ? consignActivas.filter(function(c){ return c.owner_id===me.id || c.vendedora_id===me.id; }).length : 0;
   var pedPendCount = (function(){
     if (!me) return 0;
     return pedEspList.filter(function(p){
@@ -2870,7 +2871,7 @@ export default function App() {
               const p=i.products||products.find(function(x){return x.id===i.product_id;});
               return s+(p?parseFloat(p.price||0)*i.qty_available:0);
             },0);
-            const consignaEnv = consignActivas.filter(function(c){ return c.owner_id===me.id || c.vendedora_id===me.id; }).length;
+            // consignaEnv ahora se calcula una sola vez arriba, a nivel de componente
             // Ventas del mes actual (suma de sale_logs del mes)
             var _now = new Date();
             const ventasMes = logs.filter(function(l){
