@@ -20,7 +20,8 @@
     "@capacitor/splash-screen": "^5.0.7",
     "@capacitor/status-bar": "^5.0.7",
     "jspdf": "^2.5.1",
-    "jspdf-autotable": "^3.8.2"
+    "jspdf-autotable": "^3.8.2",
+    "recharts": "^2.12.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",
