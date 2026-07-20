@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 // Requiere archivo .env en la raíz:
@@ -642,6 +643,10 @@ export default function App() {
   const [ordenBusy,      setOrdenBusy]      = useState({});
   const [ordenDespacho,  setOrdenDespacho]  = useState({}); // {ordenId: {transporte, tracking}}
 
+  // ── FASE 13: Dashboard inteligente ───────────────────────────────────────
+  const [dashboard,       setDashboard]       = useState(null);
+  const [dashboardLoading,setDashboardLoading]= useState(false);
+
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
@@ -652,6 +657,7 @@ export default function App() {
     loadCampanias();
     loadMisDeudas();
     loadOrdenes();
+    loadDashboard();
     if (me.role==="deposito") setTab("deposito");
   }, [me && me.id]);
 
@@ -1724,6 +1730,17 @@ export default function App() {
     if (res.error) { toast("Error", res.error.message, "e"); return; }
     setCampanias(function(prev){ return prev.map(function(c){ return c.id===id ? Object.assign({},c,{estado:nuevoEstado}) : c; }); });
     toast(nuevoEstado==="abierta"?"Campaña reabierta":"Campaña cerrada", "", "s");
+  }
+
+  // ── FASE 13: Dashboard inteligente ───────────────────────────────────────
+  async function loadDashboard() {
+    if (!me) return;
+    setDashboardLoading(true);
+    try {
+      var res = await sb.rpc("rpc_dashboard");
+      if (res.data) setDashboard(res.data);
+    } catch(e) { /* noop */ }
+    setDashboardLoading(false);
   }
 
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
@@ -3120,7 +3137,148 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ─ ENVÍOS PENDIENTES: LOS QUE YO MANDÉ ─ */}
+                {/* ─ DASHBOARD INTELIGENTE ─ */}
+                {dashboard&&(
+                  <div style={{margin:"0 14px 18px"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"var(--t2)",marginBottom:10}}>📊 Tu panel</div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                      <div className="card"><div style={{padding:"12px"}}>
+                        <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Ventas hoy</div>
+                        <div style={{fontSize:17,fontWeight:800,color:"var(--em-d,#0a8f4d)"}}>{fmtARS(dashboard.ventas_hoy)}</div>
+                      </div></div>
+                      <div className="card"><div style={{padding:"12px"}}>
+                        <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Ventas del mes</div>
+                        <div style={{fontSize:17,fontWeight:800,color:"var(--em-d,#0a8f4d)"}}>{fmtARS(dashboard.ventas_mes)}</div>
+                      </div></div>
+                      <div className="card"><div style={{padding:"12px"}}>
+                        <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Pedidos pendientes</div>
+                        <div style={{fontSize:17,fontWeight:800,color:"var(--am-d,#e07800)"}}>{dashboard.pedidos_pendientes}</div>
+                      </div></div>
+                      <div className="card"><div style={{padding:"12px"}}>
+                        <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>En producción</div>
+                        <div style={{fontSize:17,fontWeight:800,color:"var(--bl-d)"}}>{dashboard.pedidos_en_produccion}</div>
+                      </div></div>
+                      <div className="card"><div style={{padding:"12px"}}>
+                        <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Entregados (mes)</div>
+                        <div style={{fontSize:17,fontWeight:800,color:"var(--pri)"}}>{dashboard.pedidos_entregados_mes}</div>
+                      </div></div>
+                      <div className="card"><div style={{padding:"12px"}}>
+                        <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Stock bajo</div>
+                        <div style={{fontSize:17,fontWeight:800,color:dashboard.stock_bajo_count>0?"var(--cr,#d32)":"var(--t2)"}}>{dashboard.stock_bajo_count}</div>
+                      </div></div>
+                      {(me.role==="lider"||me.role==="empresaria")&&(<>
+                        <div className="card"><div style={{padding:"12px"}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Deuda pendiente</div>
+                          <div style={{fontSize:17,fontWeight:800,color:"var(--pri)"}}>{fmtARS(dashboard.deuda_pendiente_total)}</div>
+                        </div></div>
+                        <div className="card"><div style={{padding:"12px"}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Cobrado (mes)</div>
+                          <div style={{fontSize:17,fontWeight:800,color:"var(--em-d,#0a8f4d)"}}>{fmtARS(dashboard.cobros_mes)}</div>
+                        </div></div>
+                      </>)}
+                    </div>
+
+                    {dashboard.campania_activa&&(
+                      <div className="card" style={{marginBottom:12,background:"var(--pri-l)"}}>
+                        <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:18}}>🎯</span>
+                          <div style={{flex:1}}><b>{dashboard.campania_activa.nombre}</b> — campaña activa</div>
+                          <span style={{fontSize:12,fontWeight:800,color:"var(--pri)"}}>{dashboard.campania_activa.pedidos}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gráfico: ventas por día */}
+                    {dashboard.ventas_por_dia&&dashboard.ventas_por_dia.some(function(d){return d.total>0;})&&(
+                      <div className="card" style={{marginBottom:12}}>
+                        <div style={{padding:"12px 8px 4px"}}>
+                          <div style={{fontSize:12,fontWeight:800,marginBottom:4,paddingLeft:8}}>Ventas últimos 14 días</div>
+                          <ResponsiveContainer width="100%" height={160}>
+                            <LineChart data={dashboard.ventas_por_dia}>
+                              <XAxis dataKey="fecha" tick={{fontSize:9}} interval={1}/>
+                              <YAxis tick={{fontSize:9}} width={36}/>
+                              <Tooltip formatter={function(v){return fmtARS(v);}}/>
+                              <Line type="monotone" dataKey="total" stroke="#e0224e" strokeWidth={2} dot={false}/>
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gráfico: crecimiento mensual */}
+                    {dashboard.crecimiento_mensual&&dashboard.crecimiento_mensual.some(function(d){return d.total>0;})&&(
+                      <div className="card" style={{marginBottom:12}}>
+                        <div style={{padding:"12px 8px 4px"}}>
+                          <div style={{fontSize:12,fontWeight:800,marginBottom:4,paddingLeft:8}}>Crecimiento mensual</div>
+                          <ResponsiveContainer width="100%" height={160}>
+                            <BarChart data={dashboard.crecimiento_mensual}>
+                              <XAxis dataKey="mes" tick={{fontSize:9}}/>
+                              <YAxis tick={{fontSize:9}} width={36}/>
+                              <Tooltip formatter={function(v){return fmtARS(v);}}/>
+                              <Bar dataKey="total" fill="#0369a1" radius={[4,4,0,0]}/>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gráfico: productos más vendidos */}
+                    {dashboard.productos_mas_vendidos&&dashboard.productos_mas_vendidos.length>0&&(
+                      <div className="card" style={{marginBottom:12}}>
+                        <div style={{padding:"12px 8px 4px"}}>
+                          <div style={{fontSize:12,fontWeight:800,marginBottom:4,paddingLeft:8}}>Productos más vendidos (mes)</div>
+                          <ResponsiveContainer width="100%" height={Math.max(120, dashboard.productos_mas_vendidos.length*32)}>
+                            <BarChart data={dashboard.productos_mas_vendidos} layout="vertical" margin={{left:8}}>
+                              <XAxis type="number" tick={{fontSize:9}}/>
+                              <YAxis type="category" dataKey="producto" tick={{fontSize:9}} width={110}/>
+                              <Tooltip formatter={function(v){return v+" u.";}}/>
+                              <Bar dataKey="unidades" fill="#15803d" radius={[0,4,4,0]}/>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gráfico: ventas por categoría */}
+                    {dashboard.ventas_por_categoria&&dashboard.ventas_por_categoria.length>0&&(
+                      <div className="card" style={{marginBottom:12}}>
+                        <div style={{padding:"12px 8px"}}>
+                          <div style={{fontSize:12,fontWeight:800,marginBottom:4,paddingLeft:8}}>Ventas por categoría (mes)</div>
+                          <ResponsiveContainer width="100%" height={180}>
+                            <PieChart>
+                              <Pie data={dashboard.ventas_por_categoria} dataKey="total" nameKey="categoria" cx="50%" cy="50%" outerRadius={65} label={{fontSize:9}}>
+                                {dashboard.ventas_por_categoria.map(function(_,i){
+                                  var colores=["#e0224e","#0369a1","#15803d","#7c3aed","#e07800","#0891b2","#be185d","#4d7c0f"];
+                                  return <Cell key={i} fill={colores[i%colores.length]}/>;
+                                })}
+                              </Pie>
+                              <Tooltip formatter={function(v){return fmtARS(v);}}/>
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gráfico: ventas por campaña */}
+                    {dashboard.ventas_por_campania&&dashboard.ventas_por_campania.length>0&&(
+                      <div className="card">
+                        <div style={{padding:"12px 8px 4px"}}>
+                          <div style={{fontSize:12,fontWeight:800,marginBottom:4,paddingLeft:8}}>Ventas por campaña (mes)</div>
+                          <ResponsiveContainer width="100%" height={Math.max(120, dashboard.ventas_por_campania.length*32)}>
+                            <BarChart data={dashboard.ventas_por_campania} layout="vertical" margin={{left:8}}>
+                              <XAxis type="number" tick={{fontSize:9}}/>
+                              <YAxis type="category" dataKey="campania" tick={{fontSize:9}} width={110}/>
+                              <Tooltip formatter={function(v){return fmtARS(v);}}/>
+                              <Bar dataKey="total" fill="#7c3aed" radius={[0,4,4,0]}/>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {sentTx.length>0&&(
                   <div style={{margin:"0 14px 16px"}}>
                     <div style={{background:"var(--bl-l)",border:"1.5px solid rgba(0,150,199,.25)",borderRadius:14,padding:"12px 14px"}}>
