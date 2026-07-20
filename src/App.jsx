@@ -647,6 +647,19 @@ export default function App() {
   const [dashboard,       setDashboard]       = useState(null);
   const [dashboardLoading,setDashboardLoading]= useState(false);
 
+  // ── FASE 14: Objetivos, Ranking, Gamificación ────────────────────────────
+  const [misObjetivos,   setMisObjetivos]   = useState([]);
+  const [ranking,        setRanking]        = useState([]);
+  const [rankingPeriodo, setRankingPeriodo] = useState("mes");
+  const [misLogros,      setMisLogros]      = useState([]);
+  const [objShowForm,    setObjShowForm]    = useState(false);
+  const [objNombre,      setObjNombre]      = useState("");
+  const [objUsuarioId,   setObjUsuarioId]   = useState("");
+  const [objPeriodo,     setObjPeriodo]     = useState("mes");
+  const [objMeta,        setObjMeta]        = useState("");
+  const [objSaving,      setObjSaving]      = useState(false);
+  const [logrosCalculando, setLogrosCalculando] = useState(false);
+
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
@@ -658,6 +671,9 @@ export default function App() {
     loadMisDeudas();
     loadOrdenes();
     loadDashboard();
+    loadMisObjetivos();
+    loadRanking("mes");
+    loadMisLogros();
     if (me.role==="deposito") setTab("deposito");
   }, [me && me.id]);
 
@@ -1741,6 +1757,74 @@ export default function App() {
       if (res.data) setDashboard(res.data);
     } catch(e) { /* noop */ }
     setDashboardLoading(false);
+  }
+
+  // ── FASE 14: Objetivos, Ranking, Gamificación ────────────────────────────
+  async function loadMisObjetivos() {
+    if (!me) return;
+    try {
+      var res = await sb.rpc("rpc_mis_objetivos");
+      if (res.data) setMisObjetivos(res.data);
+    } catch(e) { /* noop */ }
+  }
+
+  async function loadRanking(periodo) {
+    if (!me || !(me.role==="lider"||me.role==="empresaria"||me.role==="superadmin")) return;
+    try {
+      var res = await sb.rpc("rpc_ranking", { p_periodo: periodo||rankingPeriodo });
+      if (res.data) setRanking(res.data);
+    } catch(e) { /* noop */ }
+  }
+
+  async function loadMisLogros() {
+    if (!me) return;
+    try {
+      var res = await sb.rpc("rpc_mis_logros", { p_user_id: null });
+      if (res.data) setMisLogros(res.data);
+    } catch(e) { /* noop */ }
+  }
+
+  async function doCrearObjetivo() {
+    if (!objNombre.trim() || !objMeta || parseFloat(objMeta)<=0) { toast("Completá nombre y meta", "", "e"); return; }
+    setObjSaving(true);
+    try {
+      var hoy = new Date();
+      var inicio, fin;
+      if (objPeriodo==="semana") {
+        var dow = hoy.getDay()||7;
+        inicio = new Date(hoy); inicio.setDate(hoy.getDate()-dow+1);
+        fin = new Date(inicio); fin.setDate(inicio.getDate()+6);
+      } else {
+        inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        fin = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0);
+      }
+      var fmt = function(d){ return d.toISOString().slice(0,10); };
+      var res = await sb.rpc("rpc_crear_objetivo", {
+        p_nombre: objNombre.trim(), p_usuario_id: objUsuarioId||null, p_periodo: objPeriodo,
+        p_campania_id: null, p_fecha_inicio: fmt(inicio), p_fecha_fin: fmt(fin), p_meta_monto: parseFloat(objMeta)
+      });
+      if (res.error) { toast("Error", res.error.message, "e"); setObjSaving(false); return; }
+      toast("🎯 Objetivo creado", "", "s");
+      setObjNombre(""); setObjUsuarioId(""); setObjMeta(""); setObjShowForm(false);
+      await loadMisObjetivos();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setObjSaving(false);
+  }
+
+  async function doEliminarObjetivo(id) {
+    await sb.rpc("rpc_eliminar_objetivo", { p_objetivo_id: id });
+    setMisObjetivos(function(prev){ return prev.filter(function(o){ return o.id!==id; }); });
+    toast("Objetivo eliminado", "", "i");
+  }
+
+  async function doCalcularLogrosMensuales() {
+    setLogrosCalculando(true);
+    try {
+      var res = await sb.rpc("rpc_calcular_logros_mensuales");
+      if (res.error) { toast("Error", res.error.message, "e"); }
+      else { toast("🏅 Logros del mes actualizados", "", "s"); }
+    } catch(e) { toast("Error", e.message, "e"); }
+    setLogrosCalculando(false);
   }
 
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
@@ -4751,6 +4835,117 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ METAS (Objetivos + Ranking + Gamificación) ══ */}
+          {tab==="metas"&&(
+            <div>
+              <div className="ph"><div><div className="ph-h">🎯 Metas</div><div className="ph-s">Objetivos, ranking y logros</div></div></div>
+              <div className="pc">
+
+                {/* ─ OBJETIVOS ─ */}
+                <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🎯 Objetivos</div>
+                {(me.role==="empresaria"||isAdmin)&&(
+                  <div className="card" style={{marginBottom:12}}>
+                    <div style={{padding:"12px 14px"}}>
+                      {!objShowForm&&<button className="btn btn-xs b-pri" onClick={function(){setObjShowForm(true);}}>+ Nuevo objetivo</button>}
+                      {objShowForm&&(<>
+                        <input value={objNombre} onChange={function(e){setObjNombre(e.target.value);}} placeholder="Nombre (ej: Meta de julio)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:8,fontFamily:"inherit"}}/>
+                        <select value={objUsuarioId} onChange={function(e){setObjUsuarioId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:8,fontFamily:"inherit"}}>
+                          <option value="">🌐 Todo el equipo</option>
+                          {miEquipo.map(function(u){return <option key={u.id} value={u.id}>{u.name} ({u.role})</option>;})}
+                        </select>
+                        <div style={{display:"flex",gap:8,marginBottom:8}}>
+                          <select value={objPeriodo} onChange={function(e){setObjPeriodo(e.target.value);}} style={{flex:1,border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,fontFamily:"inherit"}}>
+                            <option value="semana">Esta semana</option>
+                            <option value="mes">Este mes</option>
+                          </select>
+                          <input value={objMeta} onChange={function(e){setObjMeta(e.target.value);}} type="number" placeholder="Meta $" style={{flex:1,border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,fontFamily:"inherit"}}/>
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <button className="btn btn-xs b-pri" style={{flex:1,padding:"8px"}} onClick={doCrearObjetivo} disabled={objSaving}>{objSaving?"...":"Guardar"}</button>
+                          <button className="btn btn-xs b-ghost" style={{padding:"8px 14px"}} onClick={function(){setObjShowForm(false);}}>Cancelar</button>
+                        </div>
+                      </>)}
+                    </div>
+                  </div>
+                )}
+                {misObjetivos.length===0&&<div className="empty" style={{marginBottom:14}}>Sin objetivos activos</div>}
+                {misObjetivos.map(function(o){
+                  var pct = Math.min(100, Math.round((o.progreso/o.meta_monto)*100));
+                  var falta = Math.max(0, o.meta_monto - o.progreso);
+                  return (
+                    <div key={o.id} className="card" style={{marginBottom:10}}>
+                      <div style={{padding:"12px 14px"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                          <div style={{fontSize:13,fontWeight:800}}>{o.nombre}</div>
+                          {(me.role==="empresaria"||isAdmin)&&<button onClick={function(){doEliminarObjetivo(o.id);}} style={{background:"none",border:"none",color:"var(--t3)",cursor:"pointer",fontSize:12}}>✕</button>}
+                        </div>
+                        <div style={{fontSize:11,color:"var(--t3)",marginBottom:8}}>{o.es_equipo?"🌐 Todo el equipo":"👤 "+o.usuario_nombre} · {o.periodo==="semana"?"esta semana":"este mes"}</div>
+                        <div style={{background:"var(--bg2)",borderRadius:8,height:10,overflow:"hidden",marginBottom:6}}>
+                          <div style={{background:pct>=100?"var(--em-d,#0a8f4d)":"var(--pri)",height:"100%",width:pct+"%",transition:"width .3s"}}/>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                          <span style={{fontWeight:800,color:pct>=100?"var(--em-d,#0a8f4d)":"var(--t2)"}}>{pct}% · {fmtARS(o.progreso)} de {fmtARS(o.meta_monto)}</span>
+                          {pct<100?<span style={{color:"var(--t3)"}}>Faltan {fmtARS(falta)}</span>:<span style={{color:"var(--em-d,#0a8f4d)"}}>🎉 ¡Cumplida!</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* ─ RANKING ─ */}
+                {(me.role==="lider"||me.role==="empresaria"||isAdmin)&&(<>
+                  <div style={{fontSize:13,fontWeight:800,margin:"18px 0 8px"}}>🏆 Ranking</div>
+                  <div style={{display:"flex",gap:8,marginBottom:10}}>
+                    <button className={"btn btn-xs "+(rankingPeriodo==="semana"?"b-pri":"b-ghost")} onClick={function(){setRankingPeriodo("semana");loadRanking("semana");}}>Semana</button>
+                    <button className={"btn btn-xs "+(rankingPeriodo==="mes"?"b-pri":"b-ghost")} onClick={function(){setRankingPeriodo("mes");loadRanking("mes");}}>Mes</button>
+                  </div>
+                  <div className="card" style={{marginBottom:14}}>
+                    <div style={{padding:"8px 14px"}}>
+                      {ranking.length===0&&<div style={{padding:"14px 0",textAlign:"center",color:"var(--t3)",fontSize:12}}>Todavía no hay ventas este período</div>}
+                      {ranking.map(function(r){
+                        var medalla = r.posicion===1?"🥇":r.posicion===2?"🥈":r.posicion===3?"🥉":null;
+                        var cambio = r.posicion_anterior ? (r.posicion_anterior - r.posicion) : null;
+                        return (
+                          <div key={r.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:ranking.indexOf(r)>0?"1px solid var(--brd)":"none"}}>
+                            <div style={{width:22,textAlign:"center",fontSize:medalla?16:12,fontWeight:800,color:"var(--t3)"}}>{medalla||r.posicion}</div>
+                            <Avatar name={r.nombre} color={r.color} size={30}/>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:700}}>{r.nombre}</div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{r.unidades} u. vendidas</div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:12,fontWeight:800,color:"var(--pri)"}}>{fmtARS(r.total)}</div>
+                              {cambio!==null&&cambio!==0&&<div style={{fontSize:10,color:cambio>0?"var(--em-d,#0a8f4d)":"var(--cr,#d32)"}}>{cambio>0?"▲":"▼"}{Math.abs(cambio)}</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>)}
+
+                {/* ─ LOGROS ─ */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"18px 0 8px"}}>
+                  <div style={{fontSize:13,fontWeight:800}}>🏅 Mis logros</div>
+                  {(me.role==="empresaria"||isAdmin)&&<button className="btn btn-xs b-ghost" onClick={doCalcularLogrosMensuales} disabled={logrosCalculando}>{logrosCalculando?"...":"🔄 Actualizar del mes"}</button>}
+                </div>
+                <div className="card">
+                  <div style={{padding:"14px",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+                    {misLogros.length===0&&<div style={{gridColumn:"span 3",textAlign:"center",color:"var(--t3)",fontSize:12,padding:"10px 0"}}>Todavía no tenés logros — ¡seguí vendiendo! 💪</div>}
+                    {misLogros.map(function(l){
+                      return (
+                        <div key={l.codigo+(l.periodo||"")} style={{textAlign:"center"}}>
+                          <div style={{fontSize:30,marginBottom:4}}>{l.icono}</div>
+                          <div style={{fontSize:10,fontWeight:700}}>{l.nombre}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ══ MI EQUIPO ══ */}
           {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
             <div>
@@ -5174,6 +5369,9 @@ export default function App() {
                       return false;
                     }).length;
                     items.push({id:"pedesp", lbl:"Pedidos", ico:"send", col:"var(--am-d)", badge:pePend});
+                  }
+                  if (me.role!=="deposito") {
+                    items.push({id:"metas", lbl:"Metas", ico:"chart", col:"#c2185b"});
                   }
                   if (isAdmin) {
                     var ordPend = ordenes.filter(function(o){ return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado); }).length;
