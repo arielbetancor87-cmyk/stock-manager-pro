@@ -636,6 +636,15 @@ export default function App() {
   const [resumen,       setResumen]       = useState(null);
   const [resumenLoading,setResumenLoading]= useState(false);
 
+  // ── FASE 18: Resumen Consolidado (4 niveles) ─────────────────────────────
+  const [rcFechaInicio, setRcFechaInicio] = useState(function(){
+    var d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10);
+  });
+  const [rcFechaFin,    setRcFechaFin]    = useState(function(){
+    return new Date().toISOString().slice(0,10);
+  });
+  const [rcGenerando,   setRcGenerando]   = useState(false);
+
   // ── FASE 10: Deudas ──────────────────────────────────────────────────────
   const [misDeudas,    setMisDeudas]    = useState([]);
   const [deudasLoading,setDeudasLoading]= useState(false);
@@ -768,6 +777,7 @@ export default function App() {
   const [quickLoadQty, setQuickLoadQty] = useState(1);
   const [fPrice,   setFPrice]   = useState("");
   const [fCat,     setFCat]     = useState("General");
+  const [fBonificable, setFBonificable] = useState(true);
   const [fEmoji,   setFEmoji]   = useState("✨");
   const [fPhoto,   setFPhoto]   = useState(null);
   const [fStock,   setFStock]   = useState("0");
@@ -1380,7 +1390,7 @@ export default function App() {
         me.lider_id   ? sb.from("users").select("id,name").eq("id", me.lider_id).maybeSingle()   : Promise.resolve({data:null}),
         me.empresa_id ? sb.from("users").select("id,name").eq("id", me.empresa_id).maybeSingle()  : Promise.resolve({data:null}),
         (me.role==="empresaria"||me.role==="lider"||me.role==="superadmin")
-          ? sb.from("users").select("id,name,email,role,lider_id,empresa_id,comision_lider_pct,color,avatar_url").neq("id", me.id).order("role").order("name")
+          ? sb.from("users").select("id,name,email,role,lider_id,empresa_id,comision_lider_pct,comision_empresaria_pct,color,avatar_url").neq("id", me.id).order("role").order("name")
           : Promise.resolve({data:null}),
         (me.role==="empresaria"||me.role==="superadmin")
           ? sb.from("pending_invites").select("*").eq("invited_by", me.id).order("created_at", {ascending:false})
@@ -1460,6 +1470,15 @@ export default function App() {
     if (res.error) { toast("Error", res.error.message, "e"); return; }
     setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{comision_lider_pct:val}) : u; }); });
     toast("Comisión actualizada", "", "s");
+  }
+
+  async function doGuardarComisionEmpresaria(userId) {
+    var val = parseFloat(equipoEditComis[userId]);
+    if (isNaN(val) || val < 0 || val > 100) { toast("Porcentaje inválido", "", "e"); return; }
+    var res = await sb.rpc("rpc_set_comision_empresaria", { p_empresaria_id: userId, p_pct: val });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{comision_empresaria_pct:val}) : u; }); });
+    toast("% actualizado", "", "s");
   }
 
   // Cambiar el rol de un usuario del equipo (superadmin: cualquiera / empresaria: los suyos)
@@ -1771,65 +1790,6 @@ export default function App() {
   // Genera el PDF de liquidación de un pedido entregado: resumen de la
   // venta, comisión de la vendedora, y lo que corresponde pagar a la
   // empresa según el % del líder (o directo si no tiene líder).
-  async function generarPdfLiquidacion(p) {
-    try {
-      var deudaRes = await sb.from("pedido_deudas").select("*").eq("pedido_id", p.id).maybeSingle();
-      var d = deudaRes.data;
-      if (!d) { toast("Todavía no hay liquidación para este pedido", "", "e"); return; }
-
-      var doc = new jsPDF({ unit: "mm", format: "a4" });
-      var pageW = doc.internal.pageSize.getWidth();
-      var margin = 14;
-
-      doc.setFillColor(224, 34, 78);
-      doc.rect(0, 0, pageW, 26, "F");
-      doc.setTextColor(255,255,255);
-      doc.setFontSize(18); doc.setFont(undefined, "bold");
-      doc.text("Venta Directa", margin, 12);
-      doc.setFontSize(10); doc.setFont(undefined, "normal");
-      doc.text("Liquidación de pedido", margin, 19);
-      doc.setFontSize(11); doc.setFont(undefined, "bold");
-      doc.text("Pedido #" + (p.numero_pedido||"-"), pageW-margin, 12, {align:"right"});
-      doc.setFontSize(9); doc.setFont(undefined, "normal");
-      doc.text(new Date().toLocaleDateString("es-AR"), pageW-margin, 19, {align:"right"});
-
-      var y = 36;
-      doc.setTextColor(30,30,30);
-      doc.setFontSize(11); doc.setFont(undefined,"bold");
-      doc.text("Vendedora: " + (p.vendedor?p.vendedor.name:"-"), margin, y); y += 7;
-      doc.setFont(undefined,"normal"); doc.setFontSize(10);
-      if (p.lider) { doc.text("Líder: " + p.lider.name + "  (comisión " + d.pct_lider + "%)", margin, y); y += 7; }
-      doc.text("Empresa: " + (p.empresa?p.empresa.name:"-"), margin, y); y += 12;
-
-      autoTable(doc, {
-        startY: y,
-        head: [["Concepto","Monto"]],
-        body: [
-          ["Total de la venta", "$"+Number(d.monto_total).toLocaleString("es-AR")],
-          ["Comisión vendedora (30%)", "$"+Number(d.monto_vendedora).toLocaleString("es-AR")],
-          ["Deuda total (70%)", "$"+Number(d.monto_total-d.monto_vendedora).toLocaleString("es-AR")],
-          d.lider_id ? ["Comisión líder ("+d.pct_lider+"% del 70%)", "$"+Number(d.monto_lider).toLocaleString("es-AR")] : ["Comisión líder", "— (sin líder asignado)"],
-          ["A PAGAR A LA EMPRESA", "$"+Number(d.monto_empresa).toLocaleString("es-AR")],
-        ],
-        theme: "grid",
-        headStyles: { fillColor: [224,34,78], textColor: 255, fontSize: 10 },
-        bodyStyles: { fontSize: 10 },
-        didParseCell: function(data){
-          if (data.row.index===4) { data.cell.styles.fontStyle="bold"; data.cell.styles.fillColor=[255,243,224]; }
-        },
-        margin: { left: margin, right: margin }
-      });
-
-      var finalY = doc.lastAutoTable.finalY + 10;
-      doc.setFontSize(9); doc.setTextColor(150,150,150);
-      doc.text("Estado del pago: " + (d.pagada_empresa ? "✓ Pagado" : "Pendiente"), margin, finalY);
-      doc.text("Emitido: " + new Date().toLocaleDateString("es-AR"), margin, 290);
-
-      doc.save("liquidacion-pedido-"+(p.numero_pedido||p.id)+".pdf");
-      toast("📄 PDF descargado", "", "s");
-    } catch(e) { toast("Error al generar el PDF", e.message, "e"); }
-  }
-
   function compartirPdfPorEmail(p) {
     if (!p.pdf_url) { toast("Todavía no hay PDF generado", "", "e"); return; }
     var asunto = "Pedido #" + (p.numero_pedido||"") + " — " + (p.vendedor?p.vendedor.name:"");
@@ -2066,6 +2026,152 @@ export default function App() {
       return cual==="lider" ? Object.assign({},d,{pagada_lider:true}) : Object.assign({},d,{pagada_empresa:true});
     }); });
     toast("Marcado como pagado", "", "s");
+  }
+
+  // ── FASE 18: Resumen Consolidado (4 niveles) ─────────────────────────────
+  async function generarResumenConsolidado() {
+    if (!me) return;
+    var empresaId = me.role==="empresaria" ? me.id : me.empresa_id;
+    if (!empresaId) { toast("No se pudo determinar la empresa", "", "e"); return; }
+    setRcGenerando(true);
+    try {
+      var res = await sb.rpc("rpc_resumen_consolidado", {
+        p_empresa_id: empresaId, p_fecha_inicio: rcFechaInicio, p_fecha_fin: rcFechaFin
+      });
+      if (res.error) { toast("Error", res.error.message, "e"); setRcGenerando(false); return; }
+      var filas = res.data || [];
+      if (filas.length === 0) { toast("Sin ventas entregadas en este período", "", "e"); setRcGenerando(false); return; }
+
+      var empRes = await sb.from("users").select("name,comision_empresaria_pct").eq("id", empresaId).single();
+      var empresaNombre = empRes.data ? empRes.data.name : "";
+      var empresaPct = empRes.data ? (empRes.data.comision_empresaria_pct||0) : 0;
+
+      // Agrupar por líder (null = directas, sin líder)
+      var grupos = {};
+      var ordenLideres = [];
+      filas.forEach(function(f){
+        var key = f.lider_id || "_directas";
+        if (!grupos[key]) { grupos[key] = { nombre: f.lider_nombre || "Directas (sin líder)", filas: [] }; ordenLideres.push(key); }
+        grupos[key].filas.push(f);
+      });
+
+      var totalNetoAsesor = filas.reduce(function(s,f){ return s+Number(f.neto_asesor); }, 0);
+      var totalNetoEquipo = filas.reduce(function(s,f){ return s+Number(f.neto_equipo); }, 0);
+      var montoComisionEmpresa = totalNetoEquipo * (empresaPct/100);
+      var pagoEmpresaPsa = totalNetoEquipo - montoComisionEmpresa;
+
+      var doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      var pageW = doc.internal.pageSize.getWidth();
+      var margin = 10;
+
+      doc.setFillColor(224, 34, 78);
+      doc.rect(0, 0, pageW, 20, "F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(15); doc.setFont(undefined,"bold");
+      doc.text("Venta Directa — Resumen Consolidado", margin, 9);
+      doc.setFontSize(9); doc.setFont(undefined,"normal");
+      doc.text(empresaNombre + " · " + rcFechaInicio + " a " + rcFechaFin, margin, 15);
+      doc.setFontSize(8);
+      doc.text("Generado: " + new Date().toLocaleString("es-AR"), pageW-margin, 15, {align:"right"});
+
+      var y = 27;
+      doc.setTextColor(30,30,30);
+
+      // 3 cajas resumen
+      var boxW = (pageW - margin*2 - 12) / 3;
+      var cajas = [
+        {lbl:"COBRO LÍDER → ASESOR", val: totalNetoAsesor},
+        {lbl:"COBRO EMPRESARIA → LÍDER", val: totalNetoEquipo},
+        {lbl:"PAGO EMPRESARIA → EMPRESA (PSA)", val: pagoEmpresaPsa},
+      ];
+      cajas.forEach(function(c,i){
+        var x = margin + i*(boxW+6);
+        doc.setFillColor(250,240,243);
+        doc.roundedRect(x, y, boxW, 18, 2, 2, "F");
+        doc.setFontSize(8); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
+        doc.text(c.lbl, x+4, y+6);
+        doc.setFontSize(13); doc.setTextColor(224,34,78);
+        doc.text("$"+c.val.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}), x+4, y+14);
+      });
+      doc.setTextColor(30,30,30);
+      y += 26;
+
+      var cols = ["Vendedor","PVP Bonif.","PVP No Bonif.","PVP Total","Bonif. Asesor","Neto Asesor","Uds.","Comisión Equipo","Neto Equipo"];
+      function filaTabla(f){
+        return [
+          f.vendedor_nombre,
+          "$"+Number(f.pvp_bonificable).toLocaleString("es-AR"),
+          "$"+Number(f.pvp_no_bonificable).toLocaleString("es-AR"),
+          "$"+Number(f.pvp_total).toLocaleString("es-AR"),
+          "$"+Number(f.bonif_asesor).toLocaleString("es-AR"),
+          "$"+Number(f.neto_asesor).toLocaleString("es-AR"),
+          String(f.unidades_total),
+          "$"+Number(f.comision_equipo).toLocaleString("es-AR"),
+          "$"+Number(f.neto_equipo).toLocaleString("es-AR"),
+        ];
+      }
+
+      ordenLideres.forEach(function(key){
+        var g = grupos[key];
+        if (y > 175) { doc.addPage(); y = 15; }
+        doc.setFontSize(10); doc.setFont(undefined,"bold");
+        doc.text("LÍDER: " + g.nombre.toUpperCase(), margin, y);
+        y += 4;
+
+        var subtotal = {
+          pvp_bonificable:0, pvp_no_bonificable:0, pvp_total:0, bonif_asesor:0,
+          neto_asesor:0, unidades_total:0, comision_equipo:0, neto_equipo:0
+        };
+        g.filas.forEach(function(f){
+          Object.keys(subtotal).forEach(function(k){ subtotal[k] += Number(f[k]); });
+        });
+
+        autoTable(doc, {
+          startY: y,
+          head: [cols],
+          body: g.filas.map(filaTabla).concat([[
+            "SUBTOTAL", "$"+subtotal.pvp_bonificable.toLocaleString("es-AR"), "$"+subtotal.pvp_no_bonificable.toLocaleString("es-AR"),
+            "$"+subtotal.pvp_total.toLocaleString("es-AR"), "$"+subtotal.bonif_asesor.toLocaleString("es-AR"),
+            "$"+subtotal.neto_asesor.toLocaleString("es-AR"), String(subtotal.unidades_total),
+            "$"+subtotal.comision_equipo.toLocaleString("es-AR"), "$"+subtotal.neto_equipo.toLocaleString("es-AR"),
+          ]]),
+          theme: "grid",
+          headStyles: { fillColor: [224,34,78], textColor: 255, fontSize: 8 },
+          bodyStyles: { fontSize: 7.5 },
+          didParseCell: function(data){
+            if (data.row.index === g.filas.length) { data.cell.styles.fontStyle="bold"; data.cell.styles.fillColor=[245,245,245]; }
+          },
+          margin: { left: margin, right: margin }
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      });
+
+      if (y > 165) { doc.addPage(); y = 15; }
+      doc.setFontSize(11); doc.setFont(undefined,"bold");
+      doc.text("RESUMEN GENERAL CONSOLIDADO", margin, y); y += 4;
+
+      var gt = { pvp_bonificable:0, pvp_no_bonificable:0, pvp_total:0, bonif_asesor:0, neto_asesor:0, unidades_total:0, comision_equipo:0, neto_equipo:0 };
+      filas.forEach(function(f){ Object.keys(gt).forEach(function(k){ gt[k] += Number(f[k]); }); });
+
+      autoTable(doc, {
+        startY: y,
+        head: [["PVP Total","PVP No Bonif.","PVP Bonif.","Bonif. Asesor","Neto Asesor","Unidades","Comisión Equipo","Neto Equipo"]],
+        body: [[
+          "$"+gt.pvp_total.toLocaleString("es-AR"), "$"+gt.pvp_no_bonificable.toLocaleString("es-AR"),
+          "$"+gt.pvp_bonificable.toLocaleString("es-AR"), "$"+gt.bonif_asesor.toLocaleString("es-AR"),
+          "$"+gt.neto_asesor.toLocaleString("es-AR"), String(gt.unidades_total),
+          "$"+gt.comision_equipo.toLocaleString("es-AR"), "$"+gt.neto_equipo.toLocaleString("es-AR"),
+        ]],
+        theme: "grid",
+        headStyles: { fillColor: [30,30,30], textColor: 255, fontSize: 8 },
+        bodyStyles: { fontSize: 9, fontStyle:"bold" },
+        margin: { left: margin, right: margin }
+      });
+
+      doc.save("resumen-consolidado-"+rcFechaInicio+"-a-"+rcFechaFin+".pdf");
+      toast("📄 PDF descargado", "", "s");
+    } catch(e) { toast("Error al generar el PDF", e.message, "e"); }
+    setRcGenerando(false);
   }
 
   // ── FASE 3: Resúmenes ────────────────────────────────────────────────────
@@ -2611,13 +2717,13 @@ export default function App() {
     if (!fSku.trim()||!fName.trim()||!fPrice){ toast("Completa SKU, nombre y precio","","e"); return; }
     var skuC=fSku.trim().toUpperCase(), pVal=parseFloat(fPrice)||0;
     if (editP) {
-      var upd = await sb.from("products").update({sku:skuC,name:fName.trim(),price:pVal,category:fCat,emoji:fEmoji,photo_url:fPhoto||editP.photo_url||null,updated_at:new Date().toISOString()}).eq("id",editP.id).select().single();
+      var upd = await sb.from("products").update({sku:skuC,name:fName.trim(),price:pVal,category:fCat,bonificable:fBonificable,emoji:fEmoji,photo_url:fPhoto||editP.photo_url||null,updated_at:new Date().toISOString()}).eq("id",editP.id).select().single();
       if (upd.error){ toast("Error",""+upd.error.message,"e"); return; }
       setProducts(function(p){ return p.map(function(x){ return x.id===editP.id?upd.data:x; }); });
       toast("Producto actualizado","","s"); setEditP(null);
     } else {
       if (products.some(function(p){ return p.sku===skuC; })){ toast("SKU ya existe","","e"); return; }
-      var ins = await sb.from("products").insert({sku:skuC,name:fName.trim(),price:pVal,category:fCat,emoji:fEmoji,photo_url:fPhoto||null,created_by:me.id}).select().single();
+      var ins = await sb.from("products").insert({sku:skuC,name:fName.trim(),price:pVal,category:fCat,bonificable:fBonificable,emoji:fEmoji,photo_url:fPhoto||null,created_by:me.id}).select().single();
       if (ins.error){ toast("Error",""+ins.error.message,"e"); return; }
       var newProd = ins.data;
       setProducts(function(p){ return [...p,newProd]; });
@@ -2629,8 +2735,8 @@ export default function App() {
     await loadData(me.id,me.role);
   }
 
-  function startEdit(p){ setEditP(p); setFSku(p.sku); setFName(p.name); setFPrice(String(p.price)); setFCat(p.category||"General"); setFEmoji(p.emoji||"✨"); setFPhoto(null); setTab("catalog"); loadProdImages(p.id); }
-  function cancelEdit(){ setEditP(null); setFSku(""); setFName(""); setFPrice(""); setFEmoji("✨"); setFStock("0"); setFPhoto(null); }
+  function startEdit(p){ setEditP(p); setFSku(p.sku); setFName(p.name); setFPrice(String(p.price)); setFCat(p.category||"General"); setFEmoji(p.emoji||"✨"); setFPhoto(null); setFBonificable(p.bonificable!==false); setTab("catalog"); loadProdImages(p.id); }
+  function cancelEdit(){ setEditP(null); setFSku(""); setFName(""); setFPrice(""); setFEmoji("✨"); setFStock("0"); setFPhoto(null); setFBonificable(true); }
 
   async function doDelProd(prodId, sku) {
     await sb.from("products").update({is_active:false}).eq("id",prodId);
@@ -3922,6 +4028,10 @@ export default function App() {
                         <div style={{flex:1}}><label className="fl">Precio ($) *</label><input className="fi" type="number" placeholder="0.00" value={fPrice} onChange={function(e){setFPrice(e.target.value);}}/></div>
                         <div style={{flex:1}}><label className="fl">Categoría</label><select className="fi fi-sel" value={fCat} onChange={function(e){setFCat(e.target.value);}}>{CATS.map(function(c){return <option key={c}>{c}</option>;})}</select></div>
                       </div>
+                      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,marginBottom:12,cursor:"pointer"}}>
+                        <input type="checkbox" checked={fBonificable} onChange={function(e){setFBonificable(e.target.checked);}} style={{width:18,height:18}}/>
+                        Bonificable (genera comisión para vendedora/líder)
+                      </label>
                       {/* Carrusel de imágenes */}
                       <div className="fld">
                         <label className="fl">Fotos del producto</label>
@@ -4746,7 +4856,6 @@ export default function App() {
                           {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
                           {p.pdf_url&&<a href={p.pdf_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontSize:11,fontWeight:700,textDecoration:"none"}}>📄 Descargar PDF</a>}
                           {p.pdf_url&&isAdmin&&<button onClick={function(){compartirPdfPorEmail(p);}} style={{background:"none",border:"none",color:"var(--bl-d,#0369a1)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✉️ Enviar por email</button>}
-                          {p.estado==="entregado"&&(p.vendedor_id===me.id||p.lider_id===me.id||p.empresa_id===me.id||isAdmin)&&<button onClick={function(){generarPdfLiquidacion(p);}} style={{background:"none",border:"none",color:"var(--em-d,#0a8f4d)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>💰 PDF de liquidación</button>}
                         </div>
 
                         {peHistOpen===p.id&&(
@@ -4897,6 +5006,29 @@ export default function App() {
                       📲 Compartir resumen por WhatsApp
                     </button>
                   </>
+                )}
+
+                {/* Resumen Consolidado en PDF (4 niveles) */}
+                {(me.role==="lider"||me.role==="empresaria")&&(
+                  <div className="card" style={{marginTop:14}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>📄 Resumen Consolidado (PDF)</div>
+                      <div style={{fontSize:11,color:"var(--t3)",marginBottom:10}}>Vendedora → Líder → Empresaria → Empresa, por período</div>
+                      <div style={{display:"flex",gap:8,marginBottom:10}}>
+                        <div style={{flex:1}}>
+                          <label style={{fontSize:10,fontWeight:700,color:"var(--t3)"}}>Desde</label>
+                          <input type="date" value={rcFechaInicio} onChange={function(e){setRcFechaInicio(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:13,marginTop:2,fontFamily:"inherit"}}/>
+                        </div>
+                        <div style={{flex:1}}>
+                          <label style={{fontSize:10,fontWeight:700,color:"var(--t3)"}}>Hasta</label>
+                          <input type="date" value={rcFechaFin} onChange={function(e){setRcFechaFin(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:13,marginTop:2,fontFamily:"inherit"}}/>
+                        </div>
+                      </div>
+                      <button className="cta cta-am" onClick={generarResumenConsolidado} disabled={rcGenerando}>
+                        {rcGenerando?"Generando...":"📄 Generar PDF"}
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {/* Deudas pendientes de cobrar (líder/empresaria) */}
@@ -5382,6 +5514,15 @@ export default function App() {
                                 style={{width:64,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
                               <span style={{fontSize:12,color:"var(--t3)"}}>% comisión</span>
                               <button className="btn btn-xs b-pri" style={{padding:"5px 10px",fontSize:10}} onClick={function(){doGuardarComisionLider(u.id);}}>Guardar</button>
+                            </div>
+                          )}
+                          {(isAdmin&&u.role==="empresaria")&&(
+                            <div style={{marginTop:8,marginLeft:44,display:"flex",gap:6,alignItems:"center"}}>
+                              <input type="number" value={equipoEditComis[u.id]!==undefined?equipoEditComis[u.id]:(u.comision_empresaria_pct||0)}
+                                onChange={function(e){setEquipoEditComis(function(prev){return Object.assign({},prev,{[u.id]:e.target.value});});}}
+                                style={{width:64,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                              <span style={{fontSize:12,color:"var(--t3)"}}>% hacia la Empresa/PSA</span>
+                              <button className="btn btn-xs b-pri" style={{padding:"5px 10px",fontSize:10}} onClick={function(){doGuardarComisionEmpresaria(u.id);}}>Guardar</button>
                             </div>
                           )}
                         </div>
