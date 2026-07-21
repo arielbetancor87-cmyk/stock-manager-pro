@@ -1760,6 +1760,68 @@ export default function App() {
     } catch(e) { console.error("Error generando PDF:", e); return null; }
   }
 
+  // Genera el PDF de liquidación de un pedido entregado: resumen de la
+  // venta, comisión de la vendedora, y lo que corresponde pagar a la
+  // empresa según el % del líder (o directo si no tiene líder).
+  async function generarPdfLiquidacion(p) {
+    try {
+      var deudaRes = await sb.from("pedido_deudas").select("*").eq("pedido_id", p.id).maybeSingle();
+      var d = deudaRes.data;
+      if (!d) { toast("Todavía no hay liquidación para este pedido", "", "e"); return; }
+
+      var doc = new jsPDF({ unit: "mm", format: "a4" });
+      var pageW = doc.internal.pageSize.getWidth();
+      var margin = 14;
+
+      doc.setFillColor(224, 34, 78);
+      doc.rect(0, 0, pageW, 26, "F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(18); doc.setFont(undefined, "bold");
+      doc.text("Venta Directa", margin, 12);
+      doc.setFontSize(10); doc.setFont(undefined, "normal");
+      doc.text("Liquidación de pedido", margin, 19);
+      doc.setFontSize(11); doc.setFont(undefined, "bold");
+      doc.text("Pedido #" + (p.numero_pedido||"-"), pageW-margin, 12, {align:"right"});
+      doc.setFontSize(9); doc.setFont(undefined, "normal");
+      doc.text(new Date().toLocaleDateString("es-AR"), pageW-margin, 19, {align:"right"});
+
+      var y = 36;
+      doc.setTextColor(30,30,30);
+      doc.setFontSize(11); doc.setFont(undefined,"bold");
+      doc.text("Vendedora: " + (p.vendedor?p.vendedor.name:"-"), margin, y); y += 7;
+      doc.setFont(undefined,"normal"); doc.setFontSize(10);
+      if (p.lider) { doc.text("Líder: " + p.lider.name + "  (comisión " + d.pct_lider + "%)", margin, y); y += 7; }
+      doc.text("Empresa: " + (p.empresa?p.empresa.name:"-"), margin, y); y += 12;
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Concepto","Monto"]],
+        body: [
+          ["Total de la venta", "$"+Number(d.monto_total).toLocaleString("es-AR")],
+          ["Comisión vendedora (30%)", "$"+Number(d.monto_vendedora).toLocaleString("es-AR")],
+          ["Deuda total (70%)", "$"+Number(d.monto_total-d.monto_vendedora).toLocaleString("es-AR")],
+          d.lider_id ? ["Comisión líder ("+d.pct_lider+"% del 70%)", "$"+Number(d.monto_lider).toLocaleString("es-AR")] : ["Comisión líder", "— (sin líder asignado)"],
+          ["A PAGAR A LA EMPRESA", "$"+Number(d.monto_empresa).toLocaleString("es-AR")],
+        ],
+        theme: "grid",
+        headStyles: { fillColor: [224,34,78], textColor: 255, fontSize: 10 },
+        bodyStyles: { fontSize: 10 },
+        didParseCell: function(data){
+          if (data.row.index===4) { data.cell.styles.fontStyle="bold"; data.cell.styles.fillColor=[255,243,224]; }
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      var finalY = doc.lastAutoTable.finalY + 10;
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text("Estado del pago: " + (d.pagada_empresa ? "✓ Pagado" : "Pendiente"), margin, finalY);
+      doc.text("Emitido: " + new Date().toLocaleDateString("es-AR"), margin, 290);
+
+      doc.save("liquidacion-pedido-"+(p.numero_pedido||p.id)+".pdf");
+      toast("📄 PDF descargado", "", "s");
+    } catch(e) { toast("Error al generar el PDF", e.message, "e"); }
+  }
+
   function compartirPdfPorEmail(p) {
     if (!p.pdf_url) { toast("Todavía no hay PDF generado", "", "e"); return; }
     var asunto = "Pedido #" + (p.numero_pedido||"") + " — " + (p.vendedor?p.vendedor.name:"");
@@ -4676,6 +4738,7 @@ export default function App() {
                           {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
                           {p.pdf_url&&<a href={p.pdf_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontSize:11,fontWeight:700,textDecoration:"none"}}>📄 Descargar PDF</a>}
                           {p.pdf_url&&isAdmin&&<button onClick={function(){compartirPdfPorEmail(p);}} style={{background:"none",border:"none",color:"var(--bl-d,#0369a1)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✉️ Enviar por email</button>}
+                          {p.estado==="entregado"&&(p.vendedor_id===me.id||p.lider_id===me.id||p.empresa_id===me.id||isAdmin)&&<button onClick={function(){generarPdfLiquidacion(p);}} style={{background:"none",border:"none",color:"var(--em-d,#0a8f4d)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>💰 PDF de liquidación</button>}
                         </div>
 
                         {peHistOpen===p.id&&(
