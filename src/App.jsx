@@ -1291,9 +1291,9 @@ export default function App() {
     setAuthErr("");
     setLoggingIn(true);
     try {
-      // Timeout de 12 segundos — si Supabase no responde, mostrar error claro
+      // Timeout de 30 segundos — si Supabase no responde, mostrar error claro
       var timeout = new Promise(function(_, rej){
-        setTimeout(function(){ rej(new Error("Tiempo de espera agotado. Verificá tu conexión a internet e intentá de nuevo."));  }, 12000);
+        setTimeout(function(){ rej(new Error("Tiempo de espera agotado. Verificá tu conexión a internet e intentá de nuevo.")); }, 30000);
       });
       var res = await Promise.race([
         sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass}),
