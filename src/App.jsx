@@ -1229,18 +1229,27 @@ export default function App() {
     // Red de seguridad: nunca quedar trabado en "Conectando..."
     var bootSafety = setTimeout(function(){ setLoading(false); }, 6000);
 
+    // Si Supabase rechaza el token guardado por vencido/inválido, borrarlo
+    // para no seguir reintentando en silencio y trabar futuros logins.
+    function limpiarSiTokenInvalido(err) {
+      var msg = (err && err.message) || "";
+      if (msg.indexOf("Refresh Token") !== -1 || msg.indexOf("refresh_token") !== -1) {
+        sb.auth.signOut().catch(function(){});
+      }
+    }
+
     // Renovar sesión SIEMPRE que la app vuelve a primer plano (fix cliente congelado en móvil)
     function onVisible() {
       if (document.visibilityState === "visible") {
         try { sb.auth.startAutoRefresh && sb.auth.startAutoRefresh(); } catch(e){}
-        sb.auth.refreshSession().catch(function(){});
+        sb.auth.refreshSession().catch(limpiarSiTokenInvalido);
       } else {
         try { sb.auth.stopAutoRefresh && sb.auth.stopAutoRefresh(); } catch(e){}
       }
     }
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
-    window.addEventListener("online", function(){ sb.auth.refreshSession().catch(function(){}); });
+    window.addEventListener("online", function(){ sb.auth.refreshSession().catch(limpiarSiTokenInvalido); });
 
     sb.auth.getSession().then(async function(res){
       var session = res.data.session;
@@ -1248,9 +1257,10 @@ export default function App() {
       clearTimeout(bootSafety);
       setLoading(false);
       if (session) { try { await ensureProfile(session); } catch(e){ /* no bloquear */ } }
-    }).catch(function(){
+    }).catch(function(err){
       clearTimeout(bootSafety);
       setLoading(false);
+      limpiarSiTokenInvalido(err);
     });
 
     var sub = sb.auth.onAuthStateChange(async function(event, session){
