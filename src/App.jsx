@@ -4417,7 +4417,7 @@ export default function App() {
                         <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
                         <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
                           <option value="">Sin campaña</option>
-                          {campanias.filter(function(c){return c.empresa_id===me.empresa_id && c.estado==="abierta";}).map(function(c){
+                          {campanias.filter(function(c){return c.empresa_id===(me.role==="empresaria"?me.id:me.empresa_id) && c.estado==="abierta";}).map(function(c){
                             return <option key={c.id} value={c.id}>{c.nombre}</option>;
                           })}
                         </select>
