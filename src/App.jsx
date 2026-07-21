@@ -664,6 +664,23 @@ export default function App() {
   const [objSaving,      setObjSaving]      = useState(false);
   const [logrosCalculando, setLogrosCalculando] = useState(false);
 
+  // ── FASE 17: CRM de Clientes ──────────────────────────────────────────
+  const [clientes,       setClientes]       = useState([]);
+  const [clientesLoading,setClientesLoading]= useState(false);
+  const [clSrch,         setClSrch]         = useState("");
+  const [clFiltro,       setClFiltro]       = useState(""); // "", "cumple", "30", "60", "90"
+  const [clShowForm,     setClShowForm]     = useState(false);
+  const [clEditId,       setClEditId]       = useState(null);
+  const [clNombre,       setClNombre]       = useState("");
+  const [clTelefono,     setClTelefono]     = useState("");
+  const [clDireccion,    setClDireccion]    = useState("");
+  const [clLocalidad,    setClLocalidad]    = useState("");
+  const [clNacimiento,   setClNacimiento]   = useState("");
+  const [clObserv,       setClObserv]       = useState("");
+  const [clRedes,        setClRedes]        = useState("");
+  const [clSaving,       setClSaving]       = useState(false);
+  const [clDetalle,      setClDetalle]      = useState(null); // cliente abierto para ver detalle
+
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
@@ -678,6 +695,7 @@ export default function App() {
     loadMisObjetivos();
     loadRanking("mes");
     loadMisLogros();
+    loadClientes();
     if (me.role==="deposito") setTab("deposito");
   }, [me && me.id]);
 
@@ -1857,6 +1875,58 @@ export default function App() {
       else { toast("🏅 Logros del mes actualizados", "", "s"); }
     } catch(e) { toast("Error", e.message, "e"); }
     setLogrosCalculando(false);
+  }
+
+  // ── FASE 17: CRM de Clientes ──────────────────────────────────────────
+  async function loadClientes() {
+    if (!me) return;
+    setClientesLoading(true);
+    try {
+      var res = await sb.rpc("rpc_mis_clientes");
+      if (res.data) setClientes(res.data);
+    } catch(e) { /* noop */ }
+    setClientesLoading(false);
+  }
+
+  function abrirNuevoCliente() {
+    setClEditId(null); setClNombre(""); setClTelefono(""); setClDireccion(""); setClLocalidad("");
+    setClNacimiento(""); setClObserv(""); setClRedes(""); setClShowForm(true); setClDetalle(null);
+  }
+
+  function abrirEditarCliente(c) {
+    setClEditId(c.id); setClNombre(c.nombre); setClTelefono(c.telefono||""); setClDireccion(c.direccion||"");
+    setClLocalidad(c.localidad||""); setClNacimiento(c.fecha_nacimiento||""); setClObserv(c.observaciones||"");
+    setClRedes(c.redes_sociales||""); setClShowForm(true); setClDetalle(null);
+  }
+
+  async function doGuardarCliente() {
+    if (!clNombre.trim()) { toast("Falta el nombre", "", "e"); return; }
+    setClSaving(true);
+    try {
+      var res = await sb.rpc("rpc_guardar_cliente", {
+        p_id: clEditId, p_nombre: clNombre.trim(), p_telefono: clTelefono.trim(), p_direccion: clDireccion.trim(),
+        p_localidad: clLocalidad.trim(), p_fecha_nacimiento: clNacimiento||null, p_observaciones: clObserv.trim(),
+        p_redes_sociales: clRedes.trim(), p_estado: "activo"
+      });
+      if (res.error) { toast("Error", res.error.message, "e"); setClSaving(false); return; }
+      toast(clEditId?"Cliente actualizado":"Cliente agregado", "", "s");
+      setClShowForm(false);
+      await loadClientes();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setClSaving(false);
+  }
+
+  async function doEliminarCliente(id) {
+    await sb.rpc("rpc_eliminar_cliente", { p_id: id });
+    setClientes(function(prev){ return prev.filter(function(c){ return c.id!==id; }); });
+    setClDetalle(null);
+    toast("Cliente eliminado", "", "i");
+  }
+
+  function whatsappCliente(c) {
+    if (!c.telefono) { toast("Este cliente no tiene teléfono cargado", "", "e"); return; }
+    var tel = c.telefono.replace(/\D/g,"");
+    window.open("https://wa.me/"+tel, "_blank");
   }
 
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
@@ -4998,6 +5068,112 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ CRM DE CLIENTES ══ */}
+          {tab==="clientes"&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">📇 Clientes</div><div className="ph-s">Tu cartera</div></div>
+                <button className="btn b-pri" onClick={abrirNuevoCliente}><Ic n="plus" s={15}/>Nuevo</button>
+              </div>
+              <div className="pc">
+                <SearchBar value={clSrch} onChange={setClSrch} placeholder="Buscar cliente..."/>
+
+                <div style={{display:"flex",gap:6,overflowX:"auto",padding:"10px 0",marginBottom:4}}>
+                  {[
+                    {v:"", lbl:"Todos"},
+                    {v:"cumple", lbl:"🎂 Cumpleaños"},
+                    {v:"30", lbl:"Sin comprar 30d+"},
+                    {v:"60", lbl:"Sin comprar 60d+"},
+                    {v:"90", lbl:"Sin comprar 90d+"},
+                  ].map(function(f){
+                    return (
+                      <button key={f.v} onClick={function(){setClFiltro(f.v);}} style={{whiteSpace:"nowrap",padding:"6px 12px",borderRadius:20,fontSize:11,fontWeight:700,border:"1.5px solid "+(clFiltro===f.v?"var(--pri)":"var(--brd)"),background:clFiltro===f.v?"var(--pri-l)":"#fff",color:clFiltro===f.v?"var(--pri)":"var(--t2)",cursor:"pointer"}}>{f.lbl}</button>
+                    );
+                  })}
+                </div>
+
+                {/* Formulario nuevo/editar cliente */}
+                {clShowForm&&(
+                  <div className="card" style={{marginBottom:14}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>{clEditId?"Editar cliente":"Nuevo cliente"}</div>
+                      <input value={clNombre} onChange={function(e){setClNombre(e.target.value);}} placeholder="Nombre *" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={clTelefono} onChange={function(e){setClTelefono(e.target.value);}} placeholder="Teléfono" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={clDireccion} onChange={function(e){setClDireccion(e.target.value);}} placeholder="Dirección" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={clLocalidad} onChange={function(e){setClLocalidad(e.target.value);}} placeholder="Localidad" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:8,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Fecha de nacimiento</label>
+                      <input type="date" value={clNacimiento} onChange={function(e){setClNacimiento(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginTop:4,marginBottom:8,fontFamily:"inherit"}}/>
+                      <input value={clRedes} onChange={function(e){setClRedes(e.target.value);}} placeholder="Redes sociales (Instagram, etc.)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:8,fontFamily:"inherit"}}/>
+                      <textarea value={clObserv} onChange={function(e){setClObserv(e.target.value);}} placeholder="Observaciones" rows={2} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"9px 10px",fontSize:13,marginBottom:12,fontFamily:"inherit",resize:"vertical"}}/>
+                      <div style={{display:"flex",gap:8}}>
+                        <button className="btn btn-xs b-pri" style={{flex:1,padding:"9px"}} onClick={doGuardarCliente} disabled={clSaving}>{clSaving?"Guardando...":"💾 Guardar"}</button>
+                        <button className="btn btn-xs b-ghost" style={{padding:"9px 16px"}} onClick={function(){setClShowForm(false);}}>Cancelar</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de clientes */}
+                {clientesLoading&&<div className="empty">Cargando...</div>}
+                {(function(){
+                  var lista = clientes.filter(function(c){
+                    if (clSrch && !c.nombre.toLowerCase().includes(clSrch.toLowerCase())) return false;
+                    if (clFiltro==="cumple") return c.cumple_proximo;
+                    if (clFiltro==="30") return c.dias_sin_comprar!==null && c.dias_sin_comprar>=30;
+                    if (clFiltro==="60") return c.dias_sin_comprar!==null && c.dias_sin_comprar>=60;
+                    if (clFiltro==="90") return c.dias_sin_comprar!==null && c.dias_sin_comprar>=90;
+                    return true;
+                  });
+                  if (!clientesLoading && lista.length===0) return <div className="empty">No hay clientes {clFiltro?"en este filtro":"todavía"}</div>;
+                  return lista.map(function(c){
+                    var abierto = clDetalle===c.id;
+                    return (
+                      <div key={c.id} className="card" style={{marginBottom:10}}>
+                        <div style={{padding:"12px 14px",cursor:"pointer"}} onClick={function(){setClDetalle(abierto?null:c.id);}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <Avatar name={c.nombre} size={38}/>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                                {c.nombre}{c.cumple_proximo&&<span title="Cumpleaños próximo">🎂</span>}
+                              </div>
+                              <div style={{fontSize:11,color:"var(--t3)"}}>
+                                {c.telefono||"Sin teléfono"}{c.dias_sin_comprar!==null?" · "+(c.dias_sin_comprar===0?"Compró hoy":c.dias_sin_comprar+"d sin comprar"):" · Sin compras"}
+                              </div>
+                            </div>
+                            {c.total_comprado>0&&<div style={{fontSize:12,fontWeight:800,color:"var(--pri)"}}>{fmtARS(c.total_comprado)}</div>}
+                          </div>
+                        </div>
+                        {abierto&&(
+                          <div style={{padding:"0 14px 14px",borderTop:"1px solid var(--brd)",marginTop:4,paddingTop:12}}>
+                            {c.direccion&&<div style={{fontSize:12,color:"var(--t2)",marginBottom:4}}>📍 {c.direccion}{c.localidad?", "+c.localidad:""}</div>}
+                            {c.fecha_nacimiento&&<div style={{fontSize:12,color:"var(--t2)",marginBottom:4}}>🎂 {new Date(c.fecha_nacimiento+"T00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"long"})}</div>}
+                            {c.redes_sociales&&<div style={{fontSize:12,color:"var(--t2)",marginBottom:4}}>📱 {c.redes_sociales}</div>}
+                            {c.observaciones&&<div style={{fontSize:12,color:"var(--t3)",fontStyle:"italic",marginBottom:8}}>"{c.observaciones}"</div>}
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                              <div style={{background:"var(--bg2)",borderRadius:8,padding:"8px"}}>
+                                <div style={{fontSize:9,color:"var(--t3)",textTransform:"uppercase"}}>Compras</div>
+                                <div style={{fontSize:14,fontWeight:800}}>{c.cantidad_compras||0}</div>
+                              </div>
+                              <div style={{background:"var(--bg2)",borderRadius:8,padding:"8px"}}>
+                                <div style={{fontSize:9,color:"var(--t3)",textTransform:"uppercase"}}>Favorito</div>
+                                <div style={{fontSize:11,fontWeight:700}}>{c.producto_favorito||"-"}</div>
+                              </div>
+                            </div>
+                            <div style={{display:"flex",gap:8}}>
+                              {c.telefono&&<button className="btn btn-xs" style={{flex:1,background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"8px",fontWeight:700}} onClick={function(){whatsappCliente(c);}}>💬 WhatsApp</button>}
+                              <button className="btn btn-xs b-ghost" style={{padding:"8px 12px"}} onClick={function(){abrirEditarCliente(c);}}>✏️</button>
+                              <button className="btn btn-xs b-cr" style={{padding:"8px 12px"}} onClick={function(){if(window.confirm("¿Eliminar "+c.nombre+"?")) doEliminarCliente(c.id);}}>🗑️</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+
           {/* ══ MI EQUIPO ══ */}
           {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
             <div>
@@ -5424,6 +5600,7 @@ export default function App() {
                   }
                   if (me.role!=="deposito") {
                     items.push({id:"metas", lbl:"Metas", ico:"chart", col:"#c2185b"});
+                    items.push({id:"clientes", lbl:"Clientes", ico:"users", col:"var(--bl-d)"});
                   }
                   if (isAdmin) {
                     var ordPend = ordenes.filter(function(o){ return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado); }).length;
