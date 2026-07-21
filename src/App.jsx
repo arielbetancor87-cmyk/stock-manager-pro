@@ -605,6 +605,8 @@ export default function App() {
   const [peQty,        setPeQty]        = useState(1);
   const [peColor,      setPeColor]      = useState("");
   const [peTalle,      setPeTalle]      = useState("");
+  const [peItemCliNom, setPeItemCliNom] = useState("");
+  const [peItemCliTel, setPeItemCliTel] = useState("");
   const [peCarrito,    setPeCarrito]    = useState([]); // [{product_id,name,sku,emoji,photo_url,price,qty,color,talle}]
   const [peEditando,   setPeEditando]   = useState(null); // id del pedido que se está editando (líder/empresaria)
   const [peEditSaving, setPeEditSaving] = useState(false);
@@ -1448,7 +1450,7 @@ export default function App() {
     setPedEspLoading(true);
     try {
       var res = await sb.from("pedidos_especiales")
-        .select("*, items:pedidos_especiales_items(id,product_id,qty,precio_unit,subtotal,color,talle,product:product_id(id,name,sku,emoji,photo_url)), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name), campania_rel:campania_id(id,nombre,estado)")
+        .select("*, items:pedidos_especiales_items(id,product_id,qty,precio_unit,subtotal,color,talle,cliente_nombre,cliente_telefono,product:product_id(id,name,sku,emoji,photo_url)), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name), campania_rel:campania_id(id,nombre,estado)")
         .order("created_at", {ascending:false})
         .limit(200);
       if (res.data) setPedEspList(res.data);
@@ -1458,15 +1460,17 @@ export default function App() {
 
   function doAgregarAlCarrito() {
     if (!peProdId) { toast("Elegí un producto", "", "e"); return; }
+    if (!peItemCliNom.trim()) { toast("Falta el nombre del cliente para este producto", "", "e"); return; }
     var p = products.find(function(x){ return x.id===peProdId; });
     if (!p) return;
     setPeCarrito(function(prev){
       return prev.concat([{
         product_id: p.id, name: p.name, sku: p.sku, emoji: p.emoji, photo_url: p.photo_url,
-        price: p.price, qty: peQty, color: peColor.trim(), talle: peTalle.trim()
+        price: p.price, qty: peQty, color: peColor.trim(), talle: peTalle.trim(),
+        cliente_nombre: peItemCliNom.trim(), cliente_telefono: peItemCliTel.trim()
       }]);
     });
-    setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeColor(""); setPeTalle("");
+    setPeProdId(""); setPeProdSrch(""); setPeQty(1); setPeColor(""); setPeTalle(""); setPeItemCliNom(""); setPeItemCliTel("");
   }
 
   function doQuitarDelCarrito(idx) {
@@ -1480,7 +1484,8 @@ export default function App() {
     setPeCarrito((p.items||[]).map(function(it){
       return { product_id: it.product_id, name: it.product?it.product.name:"", sku: it.product?it.product.sku:"",
         emoji: it.product?it.product.emoji:"", photo_url: it.product?it.product.photo_url:"",
-        price: it.precio_unit, qty: it.qty, color: it.color||"", talle: it.talle||"" };
+        price: it.precio_unit, qty: it.qty, color: it.color||"", talle: it.talle||"",
+        cliente_nombre: it.cliente_nombre||"", cliente_telefono: it.cliente_telefono||"" };
     }));
   }
 
@@ -1493,7 +1498,8 @@ export default function App() {
     setPeEditSaving(true);
     try {
       var itemsPayload = peCarrito.map(function(it){
-        return { product_id: it.product_id, qty: it.qty, color: it.color, talle: it.talle };
+        return { product_id: it.product_id, qty: it.qty, color: it.color, talle: it.talle,
+          cliente_nombre: it.cliente_nombre, cliente_telefono: it.cliente_telefono };
       });
       var res = await sb.rpc("rpc_editar_items_pedido", { p_pedido_id: peEditando, p_items: itemsPayload });
       if (res.error) { toast("Error al guardar", res.error.message, "e"); setPeEditSaving(false); return; }
@@ -1506,11 +1512,11 @@ export default function App() {
 
   async function doCrearPedidoEspecial() {
     if (peCarrito.length===0) { toast("Agregá al menos un producto al carrito", "", "e"); return; }
-    if (!peCliNom.trim()) { toast("Falta el nombre del cliente", "", "e"); return; }
     setPeSaving(true);
     try {
       var itemsPayload = peCarrito.map(function(it){
-        return { product_id: it.product_id, qty: it.qty, color: it.color, talle: it.talle };
+        return { product_id: it.product_id, qty: it.qty, color: it.color, talle: it.talle,
+          cliente_nombre: it.cliente_nombre, cliente_telefono: it.cliente_telefono };
       });
       var res = await sb.rpc("rpc_crear_pedido_especial", {
         p_items: itemsPayload,
@@ -1649,13 +1655,14 @@ export default function App() {
       var itemsPdf = p.items||[];
       autoTable(doc, {
         startY: y,
-        head: [["Código","Descripción","Color","Talle","Cant.","P. Unit.","Subtotal"]],
+        head: [["Código","Descripción","Color","Talle","Cliente","Cant.","P. Unit.","Subtotal"]],
         body: itemsPdf.map(function(it){
           return [
             it.product?it.product.sku||"-":"-",
             it.product?it.product.name:"-",
             it.color||"-",
             it.talle||"-",
+            it.cliente_nombre||"-",
             String(it.qty),
             "$"+Number(it.precio_unit).toLocaleString("es-AR"),
             "$"+Number(it.subtotal).toLocaleString("es-AR")
@@ -1713,7 +1720,7 @@ export default function App() {
   function compartirPdfPorEmail(p) {
     if (!p.pdf_url) { toast("Todavía no hay PDF generado", "", "e"); return; }
     var asunto = "Pedido #" + (p.numero_pedido||"") + " — " + (p.vendedor?p.vendedor.name:"");
-    var listaProductos = (p.items||[]).map(function(it){ return "- "+it.qty+"x "+(it.product?it.product.name:"-"); }).join("\n");
+    var listaProductos = (p.items||[]).map(function(it){ return "- "+it.qty+"x "+(it.product?it.product.name:"-")+(it.cliente_nombre?" (cliente: "+it.cliente_nombre+")":""); }).join("\n");
     var cuerpo = "Adjunto el pedido especial.\n\nDescargar PDF: " + p.pdf_url + "\n\nVendedora: " + (p.vendedor?p.vendedor.name:"") +
       "\nProductos:\n" + listaProductos + "\n\nCantidad total: " + p.qty + " un.\nTotal: $" + Number(p.total).toLocaleString("es-AR");
     window.location.href = "mailto:?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo);
@@ -1833,7 +1840,7 @@ export default function App() {
     setOrdenesLoading(true);
     try {
       var res = await sb.from("ordenes_produccion")
-        .select("*, pedido:pedido_id(numero_pedido, cliente_nombre, total, qty, nota, items:pedidos_especiales_items(id,qty,color,talle,preparado,precio_unit,subtotal,product:product_id(name,sku)))")
+        .select("*, pedido:pedido_id(numero_pedido, cliente_nombre, total, qty, nota, items:pedidos_especiales_items(id,qty,color,talle,preparado,precio_unit,subtotal,cliente_nombre,cliente_telefono,product:product_id(name,sku)))")
         .order("created_at", {ascending:false}).limit(150);
       if (res.data) setOrdenes(res.data);
     } catch(e) { /* noop */ }
@@ -4382,6 +4389,10 @@ export default function App() {
                             <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(peQty+1);}}>+</button>
                           </div>
                           <div style={{display:"flex",gap:8,marginBottom:8}}>
+                            <input value={peItemCliNom} onChange={function(e){setPeItemCliNom(e.target.value);}} placeholder="Cliente para este producto" style={{flex:1,boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"inherit"}}/>
+                            <input value={peItemCliTel} onChange={function(e){setPeItemCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{flex:1,boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"inherit"}}/>
+                          </div>
+                          <div style={{display:"flex",gap:8,marginBottom:8}}>
                             <input value={peColor} onChange={function(e){setPeColor(e.target.value);}} placeholder="Color (opcional)" style={{flex:1,boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"inherit"}}/>
                             <input value={peTalle} onChange={function(e){setPeTalle(e.target.value);}} placeholder="Talle (opcional)" style={{flex:1,boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"inherit"}}/>
                           </div>
@@ -4398,7 +4409,7 @@ export default function App() {
                               <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderTop:"1px solid var(--brd)"}}>
                                 <div style={{flex:1,minWidth:0}}>
                                   <div style={{fontSize:12,fontWeight:700}}>{it.qty}x {it.name}</div>
-                                  <div style={{fontSize:10,color:"var(--t3)"}}>{[it.color,it.talle].filter(Boolean).join(" · ")||it.sku}</div>
+                                  <div style={{fontSize:10,color:"var(--t3)"}}>👤 {it.cliente_nombre}{[it.color,it.talle].filter(Boolean).length>0?" · "+[it.color,it.talle].filter(Boolean).join(", "):""}</div>
                                 </div>
                                 <div style={{fontSize:12,fontWeight:700,color:"var(--pri)"}}>{fmtARS(it.price*it.qty)}</div>
                                 <button onClick={function(){doQuitarDelCarrito(idx);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:14,cursor:"pointer",padding:"0 2px"}}>✕</button>
@@ -4413,8 +4424,6 @@ export default function App() {
                       )}
 
                       <div style={{marginTop:12}}>
-                        <input value={peCliNom} onChange={function(e){setPeCliNom(e.target.value);}} placeholder="Nombre del cliente" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
-                        <input value={peCliTel} onChange={function(e){setPeCliTel(e.target.value);}} placeholder="Teléfono (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}/>
                         <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
                           <option value="">Sin campaña</option>
                           {campanias.filter(function(c){return c.empresa_id===(me.role==="empresaria"?me.id:me.empresa_id) && c.estado==="abierta";}).map(function(c){
@@ -4509,7 +4518,12 @@ export default function App() {
                             <div style={{fontSize:13,fontWeight:700}}>
                               {primerItem?primerItem.product.name:"Pedido"}{items.length>1?" +"+(items.length-1)+" más":""}
                             </div>
-                            <div style={{fontSize:11,color:"var(--t3)"}}>{p.qty} un. en {items.length} producto{items.length!==1?"s":""} · {fmtARS(p.total)} · Cliente: {p.cliente_nombre}</div>
+                            <div style={{fontSize:11,color:"var(--t3)"}}>{p.qty} un. en {items.length} producto{items.length!==1?"s":""} · {fmtARS(p.total)}{(function(){
+                              var clientes = Array.from(new Set(items.map(function(it){return it.cliente_nombre;}).filter(Boolean)));
+                              if (clientes.length===0) return "";
+                              if (clientes.length===1) return " · Cliente: "+clientes[0];
+                              return " · "+clientes.length+" clientes";
+                            })()}</div>
                             <div style={{fontSize:10,color:"var(--t3)"}}>Vendedora: {p.vendedor?p.vendedor.name:"-"}{p.lider?" · Líder: "+p.lider.name:""}</div>
                           </div>
                           <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
@@ -4521,7 +4535,7 @@ export default function App() {
                             {items.map(function(it){
                               return (
                                 <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",padding:"2px 0"}}>
-                                  <span>{it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}</span>
+                                  <span>{it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}{it.cliente_nombre?" — 👤 "+it.cliente_nombre:""}</span>
                                   <span style={{fontWeight:700}}>{fmtARS(it.subtotal)}</span>
                                 </div>
                               );
@@ -4593,20 +4607,26 @@ export default function App() {
                               </div>
                             )}
                             {peProdId&&(
-                              <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
-                                <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(Math.max(1,peQty-1));}}>−</button>
-                                <span style={{fontWeight:800,minWidth:18,textAlign:"center"}}>{peQty}</span>
-                                <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(peQty+1);}}>+</button>
-                                <input value={peColor} onChange={function(e){setPeColor(e.target.value);}} placeholder="Color" style={{width:70,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
-                                <input value={peTalle} onChange={function(e){setPeTalle(e.target.value);}} placeholder="Talle" style={{width:60,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
-                                <button className="btn btn-xs b-pri" onClick={doAgregarAlCarrito}>+ Agregar</button>
+                              <div style={{marginTop:6}}>
+                                <div style={{display:"flex",gap:6,marginBottom:6}}>
+                                  <input value={peItemCliNom} onChange={function(e){setPeItemCliNom(e.target.value);}} placeholder="Cliente" style={{flex:1,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                                  <input value={peItemCliTel} onChange={function(e){setPeItemCliTel(e.target.value);}} placeholder="Teléfono" style={{flex:1,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                                </div>
+                                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                                  <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(Math.max(1,peQty-1));}}>−</button>
+                                  <span style={{fontWeight:800,minWidth:18,textAlign:"center"}}>{peQty}</span>
+                                  <button className="btn btn-xs b-ghost" onClick={function(){setPeQty(peQty+1);}}>+</button>
+                                  <input value={peColor} onChange={function(e){setPeColor(e.target.value);}} placeholder="Color" style={{width:70,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                                  <input value={peTalle} onChange={function(e){setPeTalle(e.target.value);}} placeholder="Talle" style={{width:60,fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"6px 8px",fontFamily:"inherit"}}/>
+                                  <button className="btn btn-xs b-pri" onClick={doAgregarAlCarrito}>+ Agregar</button>
+                                </div>
                               </div>
                             )}
                             <div style={{marginTop:10}}>
                               {peCarrito.map(function(it,idx){
                                 return (
                                   <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--brd)"}}>
-                                    <div style={{flex:1,fontSize:12}}>{it.qty}x {it.name} {[it.color,it.talle].filter(Boolean).length>0?"("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}</div>
+                                    <div style={{flex:1,fontSize:12}}>{it.qty}x {it.name}<div style={{fontSize:10,color:"var(--t3)"}}>👤 {it.cliente_nombre}{[it.color,it.talle].filter(Boolean).length>0?" · "+[it.color,it.talle].filter(Boolean).join(", "):""}</div></div>
                                     <div style={{fontSize:12,fontWeight:700}}>{fmtARS(it.price*it.qty)}</div>
                                     <button onClick={function(){doQuitarDelCarrito(idx);}} style={{background:"none",border:"none",color:"var(--t3)",cursor:"pointer"}}>✕</button>
                                   </div>
