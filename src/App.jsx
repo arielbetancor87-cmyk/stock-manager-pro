@@ -1473,6 +1473,14 @@ export default function App() {
     toast("Rol actualizado", "", "s");
   }
 
+  async function doSacarDelEquipo(userId, nombre) {
+    if (!window.confirm("¿Sacar a "+nombre+" de tu equipo? Su cuenta sigue existiendo, pero deja de pertenecer a tu organización.")) return;
+    var res = await sb.rpc("rpc_sacar_del_equipo", { p_user_id: userId });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setMiEquipo(function(prev){ return prev.filter(function(u){ return u.id!==userId; }); });
+    toast("Listo", nombre+" ya no pertenece a tu equipo", "i");
+  }
+
   // ── FASE 2: Pedidos en cascada ──────────────────────────────────────────
 
   async function loadPedidosEspeciales() {
@@ -5352,6 +5360,9 @@ export default function App() {
                               <span style={{background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800,textTransform:"uppercase",whiteSpace:"nowrap"}}>
                                 {u.role==="empresaria"?"🏢 Empresaria":u.role==="lider"?"⭐ Líder":"🛍️ Vendedora"}
                               </span>
+                            )}
+                            {me.role==="empresaria"&&u.role!=="empresaria"&&(
+                              <button onClick={function(){doSacarDelEquipo(u.id, u.name);}} title="Sacar del equipo" style={{background:"none",border:"none",color:"var(--cr,#d32)",cursor:"pointer",fontSize:15,padding:"2px 4px"}}>🗑️</button>
                             )}
                           </div>
                           {/* Asignar líder a una vendedora (solo empresaria) */}
