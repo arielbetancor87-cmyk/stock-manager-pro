@@ -618,6 +618,8 @@ export default function App() {
   const [peFiltroVend, setPeFiltroVend] = useState("");
   const [peFiltroCamp, setPeFiltroCamp] = useState("");
   const [peFiltroEst,  setPeFiltroEst]  = useState("");
+  const [peVerEntregados, setPeVerEntregados] = useState(false);
+  const [peItemBusy,   setPeItemBusy]   = useState({});
 
   // ── FASE 5: Campañas ─────────────────────────────────────────────────────
   const [campanias,       setCampanias]       = useState([]);
@@ -1450,7 +1452,7 @@ export default function App() {
     setPedEspLoading(true);
     try {
       var res = await sb.from("pedidos_especiales")
-        .select("*, items:pedidos_especiales_items(id,product_id,qty,precio_unit,subtotal,color,talle,cliente_nombre,cliente_telefono,product:product_id(id,name,sku,emoji,photo_url)), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name), campania_rel:campania_id(id,nombre,estado)")
+        .select("*, items:pedidos_especiales_items(id,product_id,qty,precio_unit,subtotal,color,talle,cliente_nombre,cliente_telefono,entregado,entregado_at,product:product_id(id,name,sku,emoji,photo_url)), vendedor:vendedor_id(id,name,color,codigo_vendedora,dni,telefono,localidad), lider:lider_id(id,name), empresa:empresa_id(id,name), campania_rel:campania_id(id,nombre,estado)")
         .order("created_at", {ascending:false})
         .limit(200);
       if (res.data) setPedEspList(res.data);
@@ -1540,6 +1542,19 @@ export default function App() {
       await loadPedidosEspeciales();
     } catch(e) { toast("Error", e.message, "e"); }
     setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); });
+  }
+
+  async function doMarcarItemEntregado(itemId) {
+    setPeItemBusy(function(prev){ return Object.assign({},prev,{[itemId]:true}); });
+    try {
+      var res = await sb.rpc("rpc_marcar_item_entregado", { p_item_id: itemId });
+      if (res.error) { toast("Error", res.error.message, "e"); setPeItemBusy(function(prev){ return Object.assign({},prev,{[itemId]:false}); }); return; }
+      toast("✅ Producto entregado", "", "s");
+      await loadPedidosEspeciales();
+      await loadData(me.id, me.role);
+      await loadResumen();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPeItemBusy(function(prev){ return Object.assign({},prev,{[itemId]:false}); });
   }
 
   async function doAccionPedidoEsp(id, rpcName, extraParams) {
@@ -4346,6 +4361,7 @@ export default function App() {
                 <div><div className="ph-h">📦 Pedidos</div><div className="ph-s">Genera la orden de compra hacia la empresa</div></div>
                 <div style={{display:"flex",gap:8}}>
                   <button className="btn btn-xs b-ghost" onClick={loadPedidosEspeciales}><Ic n="undo" s={13}/></button>
+                  <button className="btn btn-xs b-ghost" onClick={function(){setPeVerEntregados(function(v){return !v;});}}>{peVerEntregados?"Ocultar entregados":"Ver entregados"}</button>
                   {(me.role==="reseller"||me.role==="lider"||me.role==="empresaria")&&<button className="btn b-pri" onClick={function(){
                     if (peShowForm || peEditando) { setPeEditando(null); setPeShowForm(false); setPeCarrito([]); setPeProdId(""); setPeProdSrch(""); return; }
                     // Si ya hay un pedido abierto (borrador propio), continuarlo en vez de crear otro
@@ -4482,6 +4498,8 @@ export default function App() {
                 {pedEspList.filter(function(p){
                   // Los borradores son privados: solo los ve la vendedora que los creó
                   if (p.estado==="borrador" && p.vendedor_id!==me.id) return false;
+                  // Por defecto, ocultar lo ya entregado/cancelado para no saturar el panel
+                  if (!peVerEntregados && !peFiltroEst && ["entregado","cancelado"].includes(p.estado)) return false;
                   if (peFiltroEmp && (!p.empresa||p.empresa.name!==peFiltroEmp)) return false;
                   if (peFiltroLid && (!p.lider||p.lider.name!==peFiltroLid)) return false;
                   if (peFiltroVend && (!p.vendedor||p.vendedor.name!==peFiltroVend)) return false;
@@ -4533,10 +4551,13 @@ export default function App() {
                         {items.length>0&&(
                           <div style={{marginTop:8,background:"var(--bg2)",borderRadius:9,padding:"8px 10px"}}>
                             {items.map(function(it){
+                              var itBusy = !!peItemBusy[it.id];
                               return (
-                                <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",padding:"2px 0"}}>
-                                  <span>{it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}{it.cliente_nombre?" — 👤 "+it.cliente_nombre:""}</span>
-                                  <span style={{fontWeight:700}}>{fmtARS(it.subtotal)}</span>
+                                <div key={it.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:11,color:it.entregado?"var(--t3)":"var(--t2)",padding:"4px 0",gap:8}}>
+                                  <span style={{textDecoration:it.entregado?"line-through":"none",flex:1}}>{it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}{it.cliente_nombre?" — 👤 "+it.cliente_nombre:""}</span>
+                                  <span style={{fontWeight:700,whiteSpace:"nowrap"}}>{fmtARS(it.subtotal)}</span>
+                                  {puedeVendEntregar&&!it.entregado&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:7,fontSize:9,fontWeight:700,padding:"4px 8px",whiteSpace:"nowrap"}} disabled={itBusy} onClick={function(){doMarcarItemEntregado(it.id);}}>{itBusy?"...":"Entregar"}</button>}
+                                  {it.entregado&&<span style={{color:"var(--em-d,#0a8f4d)",fontSize:9,fontWeight:800,whiteSpace:"nowrap"}}>✓ Entregado</span>}
                                 </div>
                               );
                             })}
@@ -4563,7 +4584,8 @@ export default function App() {
                               {puedeEmpEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_enviado_proveedor");}}>📤 Enviar a proveedor</button>}
                               {puedeEmpRecibir&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_recibido");}}>📦 Marcar recibido</button>}
                               {puedeVendRecibi&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_listo_entregar");}}>📦 Lo recibí (acredita mi stock)</button>}
-                              {puedeVendEntregar&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_entregado");}}>🎉 Entregar al cliente</button>}
+                              {puedeVendEntregar&&items.length>1&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_entregado");}}>🎉 Entregar todo</button>}
+                              {puedeVendEntregar&&items.length===1&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_entregado");}}>🎉 Entregar al cliente</button>}
                             </div>
                           </div>
                         )}
