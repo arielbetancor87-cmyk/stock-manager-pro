@@ -582,6 +582,7 @@ export default function App() {
   const [ctaDni,        setCtaDni]        = useState("");
   const [ctaCodVend,    setCtaCodVend]    = useState("");
   const [ctaLocalidad,  setCtaLocalidad]  = useState("");
+  const [ctaZonaEnvio,  setCtaZonaEnvio]  = useState("");
   const [ctaPass,       setCtaPass]       = useState("");
   const [ctaPass2,      setCtaPass2]      = useState("");
   const [ctaSaving,     setCtaSaving]     = useState(false);
@@ -645,6 +646,10 @@ export default function App() {
   });
   const [rcGenerando,   setRcGenerando]   = useState(false);
 
+  // ── FASE 19: Cuenta Corriente (superadmin, solo lectura) ─────────────────
+  const [cuentaCorriente,        setCuentaCorriente]        = useState([]);
+  const [cuentaCorrienteLoading, setCuentaCorrienteLoading] = useState(false);
+
   // ── FASE 10: Deudas ──────────────────────────────────────────────────────
   const [misDeudas,    setMisDeudas]    = useState([]);
   const [deudasLoading,setDeudasLoading]= useState(false);
@@ -655,6 +660,8 @@ export default function App() {
   const [ordenVerTodas,  setOrdenVerTodas]  = useState(false);
   const [ordenBusy,      setOrdenBusy]      = useState({});
   const [ordenDespacho,  setOrdenDespacho]  = useState({}); // {ordenId: {transporte, tracking}}
+  const [ordFiltroEmp,   setOrdFiltroEmp]   = useState("");
+  const [ordFiltroZona,  setOrdFiltroZona]  = useState("");
 
   // ── FASE 13: Dashboard inteligente ───────────────────────────────────────
   const [dashboard,       setDashboard]       = useState(null);
@@ -694,12 +701,14 @@ export default function App() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
     setCtaDni(me.dni||""); setCtaCodVend(me.codigo_vendedora||""); setCtaLocalidad(me.localidad||"");
+    setCtaZonaEnvio(me.zona_envio||"");
     loadJerarquia();
     loadPedidosEspeciales();
     loadResumen();
     loadCampanias();
     loadMisDeudas();
     loadOrdenes();
+    loadCuentaCorriente();
     loadDashboard();
     loadMisObjetivos();
     loadRanking("mes");
@@ -1412,7 +1421,8 @@ export default function App() {
     try {
       var upd = await sb.from("users").update({
         name: ctaName.trim(), telefono: ctaTel.trim(), direccion: ctaDir.trim(),
-        dni: ctaDni.trim(), codigo_vendedora: ctaCodVend.trim(), localidad: ctaLocalidad.trim()
+        dni: ctaDni.trim(), codigo_vendedora: ctaCodVend.trim(), localidad: ctaLocalidad.trim(),
+        zona_envio: ctaZonaEnvio.trim()
       }).eq("id", me.id).select().single();
       if (upd.error) { toast("Error al guardar", upd.error.message, "e"); setCtaSaving(false); return; }
       if (ctaPass) {
@@ -1960,6 +1970,17 @@ export default function App() {
   }
 
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
+  // ── FASE 19: Cuenta Corriente ─────────────────────────────────────────────
+  async function loadCuentaCorriente() {
+    if (!me || !isAdmin) return;
+    setCuentaCorrienteLoading(true);
+    try {
+      var res = await sb.rpc("rpc_cuenta_corriente_resumen");
+      if (res.data) setCuentaCorriente(res.data);
+    } catch(e) { /* noop */ }
+    setCuentaCorrienteLoading(false);
+  }
+
   async function loadOrdenes() {
     if (!me || !(me.role==="deposito" || me.role==="empresaria" || isAdmin)) return;
     setOrdenesLoading(true);
@@ -4597,6 +4618,10 @@ export default function App() {
                       <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad</label>
                       <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
                     </>)}
+                    {me.role==="empresaria"&&(<>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Zona de envío</label>
+                      <input value={ctaZonaEnvio} onChange={function(e){setCtaZonaEnvio(e.target.value);}} placeholder="Ej: Norte, Centro, Sur..." style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                    </>)}
 
                     <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:10,borderTop:"1px solid var(--brd)",paddingTop:14}}>Cambiar contraseña (opcional)</div>
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Nueva contraseña</label>
@@ -5077,10 +5102,30 @@ export default function App() {
                 </div>
               </div>
               <div className="pc">
+                {/* Filtros por empresaria y zona (útil para depósito/superadmin que ven varias) */}
+                {(me.role==="deposito"||isAdmin)&&ordenes.length>0&&(function(){
+                  var empresas = Array.from(new Set(ordenes.map(function(o){return o.empresaria_nombre;}).filter(Boolean)));
+                  var zonas = Array.from(new Set(ordenes.map(function(o){return o.empresaria_zona;}).filter(Boolean)));
+                  if (empresas.length===0 && zonas.length===0) return null;
+                  return (
+                    <div style={{display:"flex",gap:8,marginBottom:12}}>
+                      <select value={ordFiltroEmp} onChange={function(e){setOrdFiltroEmp(e.target.value);}} style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontFamily:"inherit"}}>
+                        <option value="">Todas las empresarias</option>
+                        {empresas.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                      </select>
+                      <select value={ordFiltroZona} onChange={function(e){setOrdFiltroZona(e.target.value);}} style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontFamily:"inherit"}}>
+                        <option value="">Todas las zonas</option>
+                        {zonas.map(function(z){return <option key={z} value={z}>{z}</option>;})}
+                      </select>
+                    </div>
+                  );
+                })()}
                 {ordenesLoading&&<div className="empty">Cargando...</div>}
                 {(function(){
                   var lista = ordenes.filter(function(o){
                     if (me.role==="empresaria" && o.empresa_id!==me.id) return false;
+                    if (ordFiltroEmp && o.empresaria_nombre!==ordFiltroEmp) return false;
+                    if (ordFiltroZona && o.empresaria_zona!==ordFiltroZona) return false;
                     if (!ordenVerTodas) return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado);
                     return true;
                   });
@@ -5373,6 +5418,42 @@ export default function App() {
                     );
                   });
                 })()}
+              </div>
+            </div>
+          )}
+
+          {/* ══ CUENTA CORRIENTE (superadmin, solo lectura) ══ */}
+          {tab==="cuentacorriente"&&isAdmin&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">💼 Cuenta Corriente</div><div className="ph-s">Saldo que cada empresaria debe pagar</div></div>
+                <button className="btn btn-xs b-ghost" onClick={loadCuentaCorriente}><Ic n="undo" s={13}/></button>
+              </div>
+              <div className="pc">
+                {cuentaCorrienteLoading&&<div className="empty">Cargando...</div>}
+                {!cuentaCorrienteLoading&&cuentaCorriente.length===0&&<div className="empty">Todavía no hay pedidos despachados</div>}
+                {cuentaCorriente.length>0&&(
+                  <div className="card" style={{marginBottom:14,background:"var(--pri-l)"}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase"}}>Total general</div>
+                      <div style={{fontSize:22,fontWeight:800,color:"var(--pri)"}}>{fmtARS(cuentaCorriente.reduce(function(s,c){return s+Number(c.saldo);},0))}</div>
+                    </div>
+                  </div>
+                )}
+                {cuentaCorriente.map(function(c){
+                  return (
+                    <div key={c.empresa_id} className="card" style={{marginBottom:10}}>
+                      <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+                        <Avatar name={c.empresa_nombre} size={36}/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:700}}>{c.empresa_nombre}</div>
+                          <div style={{fontSize:11,color:"var(--t3)"}}>{c.cantidad_ordenes} pedido{c.cantidad_ordenes!==1?"s":""} despachado{c.cantidad_ordenes!==1?"s":""}</div>
+                        </div>
+                        <div style={{fontSize:15,fontWeight:800,color:"var(--pri)"}}>{fmtARS(c.saldo)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -5820,6 +5901,7 @@ export default function App() {
                   if (isAdmin) {
                     var ordPend = ordenes.filter(function(o){ return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado); }).length;
                     items.push({id:"deposito", lbl:"Depósito", ico:"box", col:"var(--bl-d)", badge:ordPend});
+                    items.push({id:"cuentacorriente", lbl:"Cta. Corriente", ico:"chart", col:"#6d28d9"});
                   }
                   if (me.role==="empresaria" || me.role==="lider") {
                     items.push({id:"resumen", lbl:"Resumen", ico:"chart", col:"var(--em-d,#0a8f4d)"});
