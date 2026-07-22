@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
+import QRCode from "qrcode";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 // Requiere archivo .env en la raíz:
@@ -1993,12 +1994,124 @@ export default function App() {
     setOrdenesLoading(false);
   }
 
+  // Genera un PDF con la Etiqueta de Envío (con QR) + el Remito/Factura
+  // de una orden, con los datos de transporte/tracking ya cargados.
+  async function generarEtiquetaYRemito(o) {
+    try {
+      var ped = o.pedido || {};
+      var items = ped.items || [];
+      var doc = new jsPDF({ unit: "mm", format: "a4" });
+      var pageW = doc.internal.pageSize.getWidth();
+      var margin = 14;
+
+      // ── PÁGINA 1: ETIQUETA DE ENVÍO ──
+      doc.setFillColor(224,34,78);
+      doc.rect(0,0,pageW,22,"F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(16); doc.setFont(undefined,"bold");
+      doc.text("Etiqueta de Envío", margin, 14);
+      doc.setFontSize(10); doc.setFont(undefined,"normal");
+      doc.text("Orden #" + o.numero, pageW-margin, 14, {align:"right"});
+
+      var y = 34;
+      doc.setTextColor(30,30,30);
+
+      // Código QR (identifica pedido + orden)
+      var qrTexto = "ORDEN-"+o.numero+"-PEDIDO-"+(ped.numero_pedido||"");
+      var qrDataUrl = await QRCode.toDataURL(qrTexto, { margin: 1, width: 200 });
+      doc.addImage(qrDataUrl, "PNG", pageW-margin-32, y, 32, 32);
+
+      doc.setFontSize(9); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
+      doc.text("DESTINATARIO", margin, y+4);
+      doc.setFontSize(14); doc.setTextColor(30,30,30);
+      doc.text(o.empresaria_nombre || "-", margin, y+12);
+      doc.setFontSize(10); doc.setFont(undefined,"normal");
+      var y2 = y+19;
+      if (o.empresaria_codigo) { doc.text("Código: " + o.empresaria_codigo, margin, y2); y2 += 6; }
+      doc.text("Dirección: " + (o.empresaria_direccion || "-"), margin, y2); y2 += 6;
+      doc.text("Localidad: " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin, y2); y2 += 6;
+      doc.text("Teléfono: " + (o.empresaria_telefono || "-"), margin, y2); y2 += 6;
+
+      y = Math.max(y2, y+38) + 8;
+      doc.setDrawColor(220,220,220);
+      doc.line(margin, y, pageW-margin, y); y += 10;
+
+      doc.setFontSize(9); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
+      doc.text("ENVÍO", margin, y); y += 7;
+      doc.setFontSize(11); doc.setTextColor(30,30,30); doc.setFont(undefined,"normal");
+      doc.text("Transporte: " + (o.transporte || "A coordinar"), margin, y); y += 7;
+      doc.text("N° de seguimiento: " + (o.tracking || "-"), margin, y); y += 7;
+      doc.text("N° de Orden: " + o.numero + "   ·   N° de Pedido: " + (ped.numero_pedido||"-"), margin, y); y += 7;
+      doc.text("Cantidad de bultos: " + (ped.qty || items.reduce(function(s,it){return s+it.qty;},0)) + " unidad(es)", margin, y);
+
+      doc.setFontSize(8); doc.setTextColor(150,150,150);
+      doc.text("Emitido: " + new Date().toLocaleString("es-AR"), margin, 285);
+
+      // ── PÁGINA 2: REMITO / FACTURA ──
+      doc.addPage();
+      doc.setFillColor(224,34,78);
+      doc.rect(0,0,pageW,22,"F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(16); doc.setFont(undefined,"bold");
+      doc.text("Remito", margin, 14);
+      doc.setFontSize(10); doc.setFont(undefined,"normal");
+      doc.text("Pedido #" + (ped.numero_pedido||"-"), pageW-margin, 14, {align:"right"});
+
+      y = 32;
+      doc.setTextColor(30,30,30);
+      doc.setFontSize(10);
+      doc.text("Empresaria: " + (o.empresaria_nombre||"-") + (o.empresaria_codigo?" (Cód. "+o.empresaria_codigo+")":""), margin, y); y += 6;
+      doc.text("Fecha: " + new Date().toLocaleDateString("es-AR"), margin, y); y += 10;
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Código","Descripción","Color","Talle","Cant.","P. Unit.","Subtotal"]],
+        body: items.map(function(it){
+          return [
+            it.product?it.product.sku||"-":"-", it.product?it.product.name:"-",
+            it.color||"-", it.talle||"-", String(it.qty),
+            "$"+Number(it.precio_unit).toLocaleString("es-AR"),
+            "$"+Number(it.subtotal).toLocaleString("es-AR"),
+          ];
+        }),
+        theme: "grid",
+        headStyles: { fillColor: [224,34,78], textColor: 255, fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+        margin: { left: margin, right: margin }
+      });
+
+      var finalY = doc.lastAutoTable.finalY + 8;
+      doc.setFillColor(245,245,245);
+      doc.rect(margin, finalY, pageW-margin*2, 16, "F");
+      doc.setFontSize(12); doc.setFont(undefined,"bold"); doc.setTextColor(224,34,78);
+      doc.text("Total: $" + Number(ped.total||0).toLocaleString("es-AR"), pageW-margin-4, finalY+10, {align:"right"});
+      doc.setTextColor(30,30,30);
+
+      doc.setFontSize(8); doc.setTextColor(150,150,150);
+      doc.text("Página 2 de 2 · Emitido: " + new Date().toLocaleDateString("es-AR"), margin, 285);
+
+      doc.save("etiqueta-remito-orden-"+o.numero+".pdf");
+      toast("📄 PDF descargado", "Etiqueta + Remito", "s");
+    } catch(e) { toast("Error al generar el PDF", e.message, "e"); }
+  }
+
   async function doOrdenAccion(ordenId, fn, params) {
     setOrdenBusy(function(prev){ return Object.assign({},prev,{[ordenId]:true}); });
     try {
       var res = await sb.rpc(fn, params);
       if (res.error) { toast("Error", res.error.message, "e"); }
-      else { toast("Listo", "", "s"); await loadOrdenes(); }
+      else {
+        toast("Listo", "", "s");
+        await loadOrdenes();
+        if (fn === "rpc_orden_despachar") {
+          var ordenActual = ordenes.find(function(o){ return o.id===ordenId; });
+          if (ordenActual) {
+            await generarEtiquetaYRemito(Object.assign({}, ordenActual, {
+              estado: "despachada", transporte: params.p_transporte, tracking: params.p_tracking
+            }));
+          }
+        }
+      }
     } catch(e) { toast("Error", e.message, "e"); }
     setOrdenBusy(function(prev){ return Object.assign({},prev,{[ordenId]:false}); });
   }
@@ -5195,6 +5308,12 @@ export default function App() {
                             <button className="btn btn-xs" style={{marginTop:10,background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"8px 14px"}} disabled={busy}
                               onClick={function(){doOrdenAccion(o.id,"rpc_orden_entregada",{p_orden_id:o.id});}}>
                               📦 Marcar como entregada
+                            </button>
+                          )}
+                          {["despachada","entregada"].includes(o.estado)&&(
+                            <button className="btn btn-xs b-ghost" style={{marginTop:10,marginLeft:8,padding:"8px 14px"}}
+                              onClick={function(){generarEtiquetaYRemito(o);}}>
+                              📄 Volver a descargar etiqueta/remito
                             </button>
                           )}
                         </div>
