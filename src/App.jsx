@@ -650,6 +650,8 @@ export default function App() {
   // ── FASE 19: Cuenta Corriente (superadmin, solo lectura) ─────────────────
   const [cuentaCorriente,        setCuentaCorriente]        = useState([]);
   const [cuentaCorrienteLoading, setCuentaCorrienteLoading] = useState(false);
+  const [ccDetalle,              setCcDetalle]              = useState([]);
+  const [ccDetalleLoading,       setCcDetalleLoading]       = useState(false);
 
   // ── FASE 10: Deudas ──────────────────────────────────────────────────────
   const [misDeudas,    setMisDeudas]    = useState([]);
@@ -1973,13 +1975,22 @@ export default function App() {
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
   // ── FASE 19: Cuenta Corriente ─────────────────────────────────────────────
   async function loadCuentaCorriente() {
-    if (!me || !isAdmin) return;
+    if (!me || !(isAdmin || me.role==="empresaria")) return;
     setCuentaCorrienteLoading(true);
     try {
       var res = await sb.rpc("rpc_cuenta_corriente_resumen");
       if (res.data) setCuentaCorriente(res.data);
     } catch(e) { /* noop */ }
     setCuentaCorrienteLoading(false);
+
+    if (me.role==="empresaria") {
+      setCcDetalleLoading(true);
+      try {
+        var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle");
+        if (det.data) setCcDetalle(det.data);
+      } catch(e) { /* noop */ }
+      setCcDetalleLoading(false);
+    }
   }
 
   async function loadOrdenes() {
@@ -5543,10 +5554,10 @@ export default function App() {
           )}
 
           {/* ══ CUENTA CORRIENTE (superadmin, solo lectura) ══ */}
-          {tab==="cuentacorriente"&&isAdmin&&(
+          {tab==="cuentacorriente"&&(isAdmin||me.role==="empresaria")&&(
             <div>
               <div className="ph">
-                <div><div className="ph-h">💼 Cuenta Corriente</div><div className="ph-s">Saldo que cada empresaria debe pagar</div></div>
+                <div><div className="ph-h">💼 Cuenta Corriente</div><div className="ph-s">{isAdmin?"Saldo que cada empresaria debe pagar":"Lo que debés a la Empresa"}</div></div>
                 <button className="btn btn-xs b-ghost" onClick={loadCuentaCorriente}><Ic n="undo" s={13}/></button>
               </div>
               <div className="pc">
@@ -5555,12 +5566,12 @@ export default function App() {
                 {cuentaCorriente.length>0&&(
                   <div className="card" style={{marginBottom:14,background:"var(--pri-l)"}}>
                     <div style={{padding:"14px 16px"}}>
-                      <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase"}}>Total general</div>
+                      <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase"}}>{isAdmin?"Total general":"Mi saldo"}</div>
                       <div style={{fontSize:22,fontWeight:800,color:"var(--pri)"}}>{fmtARS(cuentaCorriente.reduce(function(s,c){return s+Number(c.saldo);},0))}</div>
                     </div>
                   </div>
                 )}
-                {cuentaCorriente.map(function(c){
+                {isAdmin&&cuentaCorriente.map(function(c){
                   return (
                     <div key={c.empresa_id} className="card" style={{marginBottom:10}}>
                       <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
@@ -5574,6 +5585,26 @@ export default function App() {
                     </div>
                   );
                 })}
+                {!isAdmin&&me.role==="empresaria"&&(
+                  <>
+                    <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Detalle por pedido</div>
+                    {ccDetalleLoading&&<div className="empty">Cargando...</div>}
+                    {!ccDetalleLoading&&ccDetalle.length===0&&<div className="empty">Sin movimientos todavía</div>}
+                    {ccDetalle.map(function(d){
+                      return (
+                        <div key={d.id} className="card" style={{marginBottom:8}}>
+                          <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:700}}>Orden #{d.numero_orden} · Pedido #{d.numero_pedido}</div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{d.cliente_nombre?"Cliente: "+d.cliente_nombre+" · ":""}{new Date(d.created_at).toLocaleDateString("es-AR")}</div>
+                            </div>
+                            <div style={{fontSize:13,fontWeight:800,color:"var(--pri)"}}>{fmtARS(d.monto)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -6021,6 +6052,8 @@ export default function App() {
                   if (isAdmin) {
                     var ordPend = ordenes.filter(function(o){ return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado); }).length;
                     items.push({id:"deposito", lbl:"Depósito", ico:"box", col:"var(--bl-d)", badge:ordPend});
+                  }
+                  if (isAdmin || me.role==="empresaria") {
                     items.push({id:"cuentacorriente", lbl:"Cta. Corriente", ico:"chart", col:"#6d28d9"});
                   }
                   if (me.role==="empresaria" || me.role==="lider") {
