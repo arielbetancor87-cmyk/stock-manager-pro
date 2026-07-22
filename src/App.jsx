@@ -4798,7 +4798,8 @@ export default function App() {
                   var puedeLider = ((isAdmin) || (me.role==="lider" && p.lider_id===me.id)) && p.estado==="pendiente_lider";
                   var puedeEmpAprobar   = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="pendiente_empresaria";
                   var puedeEmpEnviar    = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="aprobado";
-                  var puedeEmpRecibir   = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="enviado_proveedor";
+                  // "Marcar recibido" ya NO es manual — solo pasa a "recibido" cuando
+                  // el depósito confirma la entrega (módulo de Producción).
                   var puedeVendRecibi   = (isAdmin || p.vendedor_id===me.id) && p.estado==="recibido";
                   var puedeVendEntregar = (isAdmin || p.vendedor_id===me.id) && p.estado==="listo_entregar";
                   // Control del pedido según su etapa: vendedora (borrador) → líder (su etapa) → empresaria (de ahí en más)
@@ -4809,7 +4810,7 @@ export default function App() {
                   })());
                   var puedeCancelar = tieneControl;
                   var puedeEditar = tieneControl;
-                  var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeEmpRecibir||puedeVendRecibi||puedeVendEntregar;
+                  var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeVendRecibi||puedeVendEntregar;
                   var items = p.items||[];
                   var primerItem = items[0];
                   return (
@@ -4867,7 +4868,7 @@ export default function App() {
                                 <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_empresaria_decidir_pedido",{p_aprobar:false});}}>✕ Rechazar</button>
                               </>)}
                               {puedeEmpEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_enviado_proveedor");}}>📤 Enviar a proveedor</button>}
-                              {puedeEmpRecibir&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_recibido");}}>📦 Marcar recibido</button>}
+                              {/* "Marcar recibido" se saca de acá: ahora depende de que el Depósito prepare y despache el pedido (ver panel Depósito / Envíos) */}
                               {puedeVendRecibi&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_listo_entregar");}}>📦 Lo recibí (acredita mi stock)</button>}
                               {puedeVendEntregar&&items.length>1&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_entregado");}}>🎉 Entregar todo</button>}
                               {puedeVendEntregar&&items.length===1&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_entregado");}}>🎉 Entregar al cliente</button>}
