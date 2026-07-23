@@ -2106,6 +2106,18 @@ export default function App() {
     } catch(e) { toast("Error al generar el PDF", e.message, "e"); }
   }
 
+  // Ver/descargar la factura-remito de un pedido desde la pantalla de
+  // Pedidos (vendedora, líder o empresaria) — busca su orden de producción.
+  async function verFacturaPedido(p) {
+    try {
+      var res = await sb.from("ordenes_produccion")
+        .select("*, pedido:pedido_id(numero_pedido, cliente_nombre, total, qty, nota, items:pedidos_especiales_items(id,qty,color,talle,preparado,precio_unit,subtotal,cliente_nombre,cliente_telefono,product:product_id(name,sku)))")
+        .eq("pedido_id", p.id).maybeSingle();
+      if (!res.data) { toast("Todavía no hay factura generada", "Se genera al aprobar el pedido", "e"); return; }
+      await generarEtiquetaYRemito(res.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+  }
+
   async function doOrdenAccion(ordenId, fn, params) {
     setOrdenBusy(function(prev){ return Object.assign({},prev,{[ordenId]:true}); });
     try {
@@ -5006,6 +5018,7 @@ export default function App() {
                           {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
                           {p.pdf_url&&<a href={p.pdf_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontSize:11,fontWeight:700,textDecoration:"none"}}>📄 Descargar PDF</a>}
                           {p.pdf_url&&isAdmin&&<button onClick={function(){compartirPdfPorEmail(p);}} style={{background:"none",border:"none",color:"var(--bl-d,#0369a1)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✉️ Enviar por email</button>}
+                          {!["borrador","pendiente_lider","rechazado_lider","pendiente_empresaria","rechazado_empresaria"].includes(p.estado)&&(p.vendedor_id===me.id||p.lider_id===me.id||p.empresa_id===me.id||isAdmin)&&<button onClick={function(){verFacturaPedido(p);}} style={{background:"none",border:"none",color:"var(--em-d,#0a8f4d)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>🧾 Factura/Remito</button>}
                         </div>
 
                         {peHistOpen===p.id&&(
