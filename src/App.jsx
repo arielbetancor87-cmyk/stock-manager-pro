@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import ConsignacionModule from "./ConsignacionModule";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
@@ -547,6 +547,7 @@ export default function App() {
   const [showPass,  setShowPass]  = useState(false);
   const [authErr,   setAuthErr]   = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
+  const loginAttemptRef = useRef(0); // evita que un timeout viejo pise una respuesta exitosa más reciente
   const [authOk,    setAuthOk]    = useState(false);  // login exitoso, cargando perfil
 
   // Seguridad: si el perfil no carga en 10s, volver al login con mensaje
@@ -1340,6 +1341,7 @@ export default function App() {
     if (loggingIn) return;
     setAuthErr("");
     setLoggingIn(true);
+    var miIntento = ++loginAttemptRef.current; // marca este intento como "el actual"
     try {
       // Timeout de 30 segundos — si Supabase no responde, mostrar error claro
       var timeout = new Promise(function(_, rej){
@@ -1349,17 +1351,22 @@ export default function App() {
         sb.auth.signInWithPassword({email:aEmail.trim().toLowerCase(), password:aPass}),
         timeout
       ]);
+      // Si mientras esperábamos ya se disparó otro intento más nuevo (o uno
+      // anterior recién ahora resuelve tarde), ignorar este resultado.
+      if (loginAttemptRef.current !== miIntento) return;
       if (res.error) {
         setAuthErr(res.error.message==="Invalid login credentials"?"Email o contraseña incorrectos.":res.error.message);
         shake();
       } else {
+        setAuthErr("");
         setAuthOk(true);  // cambiar pantalla de inmediato
       }
     } catch(e) {
+      if (loginAttemptRef.current !== miIntento) return; // resultado de un intento viejo, no importa ya
       setAuthErr((e&&e.message)||"No se pudo conectar. Revisá tu internet.");
       shake();
     } finally {
-      setLoggingIn(false);
+      if (loginAttemptRef.current === miIntento) setLoggingIn(false);
     }
   }
 
