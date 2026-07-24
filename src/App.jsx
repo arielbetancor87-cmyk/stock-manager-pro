@@ -653,6 +653,11 @@ export default function App() {
   const [cuentaCorrienteLoading, setCuentaCorrienteLoading] = useState(false);
   const [ccDetalle,              setCcDetalle]              = useState([]);
   const [ccDetalleLoading,       setCcDetalleLoading]       = useState(false);
+  const [ccPagoAbierto,          setCcPagoAbierto]          = useState(null); // empresa_id con form de pago abierto
+  const [ccPagoMonto,            setCcPagoMonto]            = useState("");
+  const [ccPagoNota,             setCcPagoNota]             = useState("");
+  const [ccPagoSaving,           setCcPagoSaving]           = useState(false);
+  const [ccPdfGenerando,         setCcPdfGenerando]         = useState(false);
 
   // ── FASE 10: Deudas ──────────────────────────────────────────────────────
   const [misDeudas,    setMisDeudas]    = useState([]);
@@ -1998,6 +2003,90 @@ export default function App() {
       } catch(e) { /* noop */ }
       setCcDetalleLoading(false);
     }
+  }
+
+  async function verDetalleCuentaCorriente(empresaId) {
+    if (ccPagoAbierto===empresaId) { setCcPagoAbierto(null); return; }
+    setCcPagoAbierto(empresaId); setCcPagoMonto(""); setCcPagoNota("");
+    setCcDetalleLoading(true);
+    try {
+      var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle", { p_empresa_id: empresaId });
+      if (det.data) setCcDetalle(det.data);
+    } catch(e) { /* noop */ }
+    setCcDetalleLoading(false);
+  }
+
+  async function doRegistrarPago(empresaId) {
+    var val = parseFloat(ccPagoMonto);
+    if (isNaN(val) || val<=0) { toast("Monto inválido", "", "e"); return; }
+    setCcPagoSaving(true);
+    try {
+      var res = await sb.rpc("rpc_registrar_pago_cuenta_corriente", { p_empresa_id: empresaId, p_monto: val, p_nota: ccPagoNota.trim() });
+      if (res.error) { toast("Error", res.error.message, "e"); setCcPagoSaving(false); return; }
+      toast("💰 Pago registrado", "", "s");
+      setCcPagoMonto(""); setCcPagoNota("");
+      await loadCuentaCorriente();
+      var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle", { p_empresa_id: empresaId });
+      if (det.data) setCcDetalle(det.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCcPagoSaving(false);
+  }
+
+  async function generarPdfCuentaCorriente(empresaId, empresaNombre) {
+    setCcPdfGenerando(true);
+    try {
+      var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle", { p_empresa_id: empresaId });
+      var movs = (det.data || []).slice().sort(function(a,b){ return new Date(a.created_at)-new Date(b.created_at); });
+      if (movs.length===0) { toast("Sin movimientos para esta empresaria", "", "e"); setCcPdfGenerando(false); return; }
+
+      var doc = new jsPDF({ unit:"mm", format:"a4" });
+      var pageW = doc.internal.pageSize.getWidth();
+      var margin = 14;
+
+      doc.setFillColor(224,34,78); doc.rect(0,0,pageW,22,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(16); doc.setFont(undefined,"bold");
+      doc.text("Estado de Cuenta Corriente", margin, 14);
+      doc.setFontSize(10); doc.setFont(undefined,"normal");
+      doc.text(empresaNombre||"-", pageW-margin, 14, {align:"right"});
+
+      var y = 30;
+      doc.setTextColor(30,30,30); doc.setFontSize(9);
+      doc.text("Emitido: " + new Date().toLocaleDateString("es-AR"), margin, y); y += 8;
+
+      var saldo = 0;
+      var body = movs.map(function(m){
+        saldo += (m.tipo==="cargo" ? Number(m.monto) : -Number(m.monto));
+        var detalle = m.tipo==="cargo"
+          ? ("Pedido #"+(m.numero_pedido||"-")+(m.cliente_nombre?" — "+m.cliente_nombre:""))
+          : ("Pago registrado"+(m.nota?" — "+m.nota:""));
+        return [
+          new Date(m.created_at).toLocaleDateString("es-AR"),
+          m.tipo==="cargo"?"Cargo":"Pago",
+          detalle,
+          m.tipo==="cargo" ? "$"+Number(m.monto).toLocaleString("es-AR") : "-$"+Number(m.monto).toLocaleString("es-AR"),
+          "$"+saldo.toLocaleString("es-AR"),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Fecha","Tipo","Detalle","Monto","Saldo"]],
+        body: body,
+        theme: "grid",
+        headStyles: { fillColor: [224,34,78], textColor: 255, fontSize: 9 },
+        bodyStyles: { fontSize: 8.5 },
+        margin: { left: margin, right: margin }
+      });
+
+      var finalY = doc.lastAutoTable.finalY + 10;
+      doc.setFillColor(245,245,245); doc.rect(margin, finalY, pageW-margin*2, 16, "F");
+      doc.setFontSize(12); doc.setFont(undefined,"bold"); doc.setTextColor(224,34,78);
+      doc.text("Saldo actual: $" + saldo.toLocaleString("es-AR"), pageW-margin-4, finalY+10, {align:"right"});
+
+      doc.save("cuenta-corriente-"+(empresaNombre||"empresaria").replace(/\s+/g,"-")+".pdf");
+      toast("📄 PDF descargado", "", "s");
+    } catch(e) { toast("Error al generar el PDF", e.message, "e"); }
+    setCcPdfGenerando(false);
   }
 
   async function loadOrdenes() {
@@ -5592,9 +5681,10 @@ export default function App() {
                   </div>
                 )}
                 {isAdmin&&cuentaCorriente.map(function(c){
+                  var abierto = ccPagoAbierto===c.empresa_id;
                   return (
                     <div key={c.empresa_id} className="card" style={{marginBottom:10}}>
-                      <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={function(){verDetalleCuentaCorriente(c.empresa_id);}}>
                         <Avatar name={c.empresa_nombre} size={36}/>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:13,fontWeight:700}}>{c.empresa_nombre}</div>
@@ -5602,12 +5692,41 @@ export default function App() {
                         </div>
                         <div style={{fontSize:15,fontWeight:800,color:"var(--pri)"}}>{fmtARS(c.saldo)}</div>
                       </div>
+                      {abierto&&(
+                        <div style={{padding:"0 14px 14px",borderTop:"1px solid var(--brd)",paddingTop:12}}>
+                          <div style={{display:"flex",gap:8,marginBottom:10}}>
+                            <button className="btn btn-xs b-ghost" style={{flex:1,padding:"8px"}} disabled={ccPdfGenerando} onClick={function(){generarPdfCuentaCorriente(c.empresa_id, c.empresa_nombre);}}>{ccPdfGenerando?"Generando...":"📄 Descargar PDF"}</button>
+                          </div>
+                          <div style={{background:"var(--bg2)",borderRadius:9,padding:"10px",marginBottom:10}}>
+                            <div style={{fontSize:11,fontWeight:800,marginBottom:6}}>💰 Registrar pago</div>
+                            <div style={{display:"flex",gap:6,marginBottom:6}}>
+                              <input type="number" value={ccPagoMonto} onChange={function(e){setCcPagoMonto(e.target.value);}} placeholder="Monto" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                              <input value={ccPagoNota} onChange={function(e){setCcPagoNota(e.target.value);}} placeholder="Nota (opcional)" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                            </div>
+                            <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={ccPagoSaving} onClick={function(){doRegistrarPago(c.empresa_id);}}>{ccPagoSaving?"Guardando...":"Confirmar pago"}</button>
+                          </div>
+                          <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>Movimientos</div>
+                          {ccDetalleLoading&&<div style={{fontSize:12,color:"var(--t3)"}}>Cargando...</div>}
+                          {!ccDetalleLoading&&ccDetalle.map(function(d){
+                            return (
+                              <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--brd)"}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:11,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" · "+d.cliente_nombre:"")):("Pago"+(d.nota?" · "+d.nota:""))}</div>
+                                  <div style={{fontSize:9,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}</div>
+                                </div>
+                                <div style={{fontSize:12,fontWeight:800,color:d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)"}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
                 {!isAdmin&&me.role==="empresaria"&&(
                   <>
-                    <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Detalle por pedido</div>
+                    <button className="cta cta-am" style={{marginBottom:14}} disabled={ccPdfGenerando} onClick={function(){generarPdfCuentaCorriente(me.id, me.name);}}>{ccPdfGenerando?"Generando...":"📄 Descargar estado de cuenta (PDF)"}</button>
+                    <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Movimientos</div>
                     {ccDetalleLoading&&<div className="empty">Cargando...</div>}
                     {!ccDetalleLoading&&ccDetalle.length===0&&<div className="empty">Sin movimientos todavía</div>}
                     {ccDetalle.map(function(d){
@@ -5615,10 +5734,10 @@ export default function App() {
                         <div key={d.id} className="card" style={{marginBottom:8}}>
                           <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:12,fontWeight:700}}>Orden #{d.numero_orden} · Pedido #{d.numero_pedido}</div>
-                              <div style={{fontSize:10,color:"var(--t3)"}}>{d.cliente_nombre?"Cliente: "+d.cliente_nombre+" · ":""}{new Date(d.created_at).toLocaleDateString("es-AR")}</div>
+                              <div style={{fontSize:12,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" — "+d.cliente_nombre:"")):("Pago registrado"+(d.nota?" — "+d.nota:""))}</div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}</div>
                             </div>
-                            <div style={{fontSize:13,fontWeight:800,color:"var(--pri)"}}>{fmtARS(d.monto)}</div>
+                            <div style={{fontSize:13,fontWeight:800,color:d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)"}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
                           </div>
                         </div>
                       );
