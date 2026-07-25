@@ -673,6 +673,9 @@ export default function App() {
   const [ordenDespacho,  setOrdenDespacho]  = useState({}); // {ordenId: {transporte, tracking}}
   const [ordFiltroEmp,   setOrdFiltroEmp]   = useState("");
   const [ordFiltroZona,  setOrdFiltroZona]  = useState("");
+  const [pedidosAbiertos,        setPedidosAbiertos]        = useState([]);
+  const [pedidosAbiertosLoading, setPedidosAbiertosLoading] = useState(false);
+  const [verPedidosAbiertos,     setVerPedidosAbiertos]     = useState(false);
 
   // ── FASE 13: Dashboard inteligente ───────────────────────────────────────
   const [dashboard,       setDashboard]       = useState(null);
@@ -719,6 +722,7 @@ export default function App() {
     loadCampanias();
     loadMisDeudas();
     loadOrdenes();
+    loadPedidosAbiertos();
     loadCuentaCorriente();
     loadDashboard();
     loadMisObjetivos();
@@ -2082,6 +2086,21 @@ export default function App() {
       toast("📄 PDF descargado", "", "s");
     } catch(e) { toast("Error al generar el PDF", e.message, "e"); }
     setCcPdfGenerando(false);
+  }
+
+  // ── Pedidos abiertos (borrador, sin cerrar) — visibilidad para Depósito
+  async function loadPedidosAbiertos() {
+    if (!me || !(me.role==="deposito" || isAdmin)) return;
+    setPedidosAbiertosLoading(true);
+    try {
+      var res = await sb.from("pedidos_especiales")
+        .select("*, vendedor:vendedor_id(id,name,codigo_vendedora), empresa:empresa_id(id,name,zona_envio), items:pedidos_especiales_items(id,qty,color,talle,product:product_id(name,sku))")
+        .eq("estado","borrador")
+        .order("created_at",{ascending:false})
+        .limit(150);
+      if (res.data) setPedidosAbiertos(res.data);
+    } catch(e) { /* noop */ }
+    setPedidosAbiertosLoading(false);
   }
 
   async function loadOrdenes() {
@@ -5338,6 +5357,36 @@ export default function App() {
                     </div>
                   );
                 })()}
+                {/* Pedidos abiertos (borrador, sin cerrar) — para anticiparse, sin tocar stock */}
+                {pedidosAbiertos.length>0&&(
+                  <div className="card" style={{marginBottom:14,background:"#fff8e1"}}>
+                    <div style={{padding:"12px 14px",cursor:"pointer"}} onClick={function(){setVerPedidosAbiertos(function(v){return !v;});}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div style={{fontSize:13,fontWeight:800,color:"#b8860b"}}>📝 Pedidos abiertos sin cerrar ({pedidosAbiertos.length})</div>
+                        <span style={{fontSize:11,color:"#b8860b"}}>{verPedidosAbiertos?"▲ Ocultar":"▼ Ver"}</span>
+                      </div>
+                      <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>Para anticiparte — todavía no fueron enviados a aprobación</div>
+                    </div>
+                    {verPedidosAbiertos&&(
+                      <div style={{padding:"0 14px 12px"}}>
+                        {pedidosAbiertosLoading&&<div style={{fontSize:12,color:"var(--t3)"}}>Cargando...</div>}
+                        {pedidosAbiertos.map(function(p){
+                          var items = p.items||[];
+                          return (
+                            <div key={p.id} style={{background:"#fff",borderRadius:9,padding:"10px 12px",marginBottom:8,border:"1px solid #f0e0b0"}}>
+                              <div style={{fontSize:12,fontWeight:700}}>{p.vendedor?p.vendedor.name:"-"} <span style={{fontWeight:400,color:"var(--t3)"}}>· {p.empresa?p.empresa.name:"-"}{p.empresa&&p.empresa.zona_envio?" · "+p.empresa.zona_envio:""}</span></div>
+                              <div style={{fontSize:10,color:"var(--t3)",marginBottom:6}}>{items.reduce(function(s,it){return s+it.qty;},0)} u. en {items.length} producto{items.length!==1?"s":""} · desde {new Date(p.created_at).toLocaleDateString("es-AR")}</div>
+                              {items.map(function(it){
+                                return <div key={it.id} style={{fontSize:11,color:"var(--t2)",padding:"2px 0"}}>{it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}</div>;
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {ordenesLoading&&<div className="empty">Cargando...</div>}
                 {(function(){
                   var lista = ordenes.filter(function(o){
