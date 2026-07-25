@@ -1678,6 +1678,23 @@ export default function App() {
     setPeHist(res.data || []);
   }
 
+  // Semáforo visual: un vistazo rápido del momento del pedido, sin
+  // reemplazar la etiqueta de estado detallada que ya existe.
+  function peSemaforo(p) {
+    if (["cancelado","rechazado_lider","rechazado_empresaria"].includes(p.estado)) {
+      return { emoji:"🔴", lbl:"Rechazado/Cancelado" };
+    }
+    if (p.estado === "entregado") return { emoji:"⚫", lbl:"Entregado" };
+    if (["aprobado","enviado_proveedor","recibido","listo_entregar"].includes(p.estado)) {
+      return { emoji:"🟣", lbl:"En producción" };
+    }
+    if (["pendiente_lider","pendiente_empresaria"].includes(p.estado)) {
+      return { emoji:"🔵", lbl:"Esperando aprobación" };
+    }
+    // borrador
+    return { emoji:"🟡", lbl:"En construcción" };
+  }
+
   function peEstadoInfo(estado) {
     var map = {
       borrador:              {lbl:"📝 Pedido abierto",        bg:"#fff8e1", col:"#b8860b"},
@@ -5084,7 +5101,10 @@ export default function App() {
                             })()}</div>
                             <div style={{fontSize:10,color:"var(--t3)"}}>Vendedora: {p.vendedor?p.vendedor.name:"-"}{p.lider?" · Líder: "+p.lider.name:""}</div>
                           </div>
-                          <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
+                          <span style={{display:"flex",alignItems:"center",gap:5}}>
+                            <span title={peSemaforo(p).lbl} style={{fontSize:13}}>{peSemaforo(p).emoji}</span>
+                            <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
+                          </span>
                         </div>
 
                         {/* Lista de productos del pedido */}
