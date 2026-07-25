@@ -732,6 +732,23 @@ export default function App() {
     if (me.role==="deposito") setTab("deposito");
   }, [me && me.id]);
 
+  // ── FASE 22: Pedidos en tiempo real ──────────────────────────────────────
+  // Si cualquier vendedora agrega/quita/modifica un producto en su pedido
+  // abierto (o cambia de estado), lo vuelve a cargar solo — sin recargar
+  // la página. RLS filtra qué eventos le llegan a cada usuario.
+  useEffect(function() {
+    if (!me || !(me.role==="lider" || me.role==="empresaria" || isAdmin)) return;
+    var canal = sb.channel("pedidos-live-"+me.id)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_especiales" }, function(){
+        loadPedidosEspeciales();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_especiales_items" }, function(){
+        loadPedidosEspeciales();
+      })
+      .subscribe();
+    return function(){ sb.removeChannel(canal); };
+  }, [me && me.id]);
+
   // Re-sincronizar mi propio perfil: al volver a la app, al navegar a
   // secciones sensibles al rol, y cada 30s de respaldo — así si un
   // superadmin/empresaria me cambia el rol, se refleja solo sin relogin.
@@ -5018,7 +5035,7 @@ export default function App() {
                 {pedEspList.filter(function(p){
                   // Los borradores son privados, salvo para la empresaria (ve toda su
                   // estructura) y el superadmin — así puede anticiparse y cerrar/enviar.
-                  if (p.estado==="borrador" && p.vendedor_id!==me.id && !(me.role==="empresaria" && p.empresa_id===me.id) && !isAdmin) return false;
+                  if (p.estado==="borrador" && p.vendedor_id!==me.id && !(me.role==="empresaria" && p.empresa_id===me.id) && !(me.role==="lider" && p.lider_id===me.id) && !isAdmin) return false;
                   // Por defecto, ocultar lo ya entregado/cancelado para no saturar el panel
                   if (!peVerEntregados && !peFiltroEst && ["entregado","cancelado"].includes(p.estado)) return false;
                   if (peFiltroEmp && (!p.empresa||p.empresa.name!==peFiltroEmp)) return false;
@@ -5792,6 +5809,47 @@ export default function App() {
             <div>
               <div className="ph"><div><div className="ph-h">{isAdmin?"🏢 Empresas":"👥 Mi Estructura"}</div><div className="ph-s">{me.role==="empresaria"?"Tus líderes y vendedoras":me.role==="lider"?"Tus vendedoras":"Empresarias del sistema"}</div></div><button className="btn btn-xs b-ghost" onClick={loadJerarquia}><Ic n="undo" s={13}/>Actualizar</button></div>
               <div className="pc">
+
+                {/* Tablero en vivo — actividad de cada vendedora, incluso mientras
+                    todavía está armando su pedido (sin necesidad de enviarlo) */}
+                {(me.role==="lider"||me.role==="empresaria")&&(function(){
+                  var scope = miEquipo.filter(function(u){
+                    return u.role==="reseller" && (me.role==="empresaria" || u.lider_id===me.id);
+                  });
+                  if (scope.length===0) return null;
+                  return (
+                    <div className="card" style={{marginBottom:14}}>
+                      <div style={{padding:"14px 16px"}}>
+                        <div style={{fontSize:13,fontWeight:800,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
+                          📡 Actividad en vivo <span style={{width:7,height:7,borderRadius:"50%",background:"#22c55e",display:"inline-block"}}/>
+                        </div>
+                        <div style={{fontSize:11,color:"var(--t3)",marginBottom:10}}>Se actualiza sola, sin necesidad de recargar</div>
+                        {scope.map(function(v){
+                          var pedidosDeElla = pedEspList.filter(function(p){ return p.vendedor_id===v.id; });
+                          var abierto = pedidosDeElla.find(function(p){ return p.estado==="borrador"; });
+                          var otro = pedidosDeElla.filter(function(p){ return p.estado!=="borrador" && p.estado!=="cancelado"; })
+                            .sort(function(a,b){ return new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at); })[0];
+                          var pedidoRef = abierto || otro;
+                          var items = pedidoRef ? (pedidoRef.items||[]) : [];
+                          var estadoTxt, estadoColor;
+                          if (!pedidoRef) { estadoTxt="Sin actividad"; estadoColor="var(--t3)"; }
+                          else if (abierto) { estadoTxt = items.length>0 ? "Armando pedido" : "Pedido abierto"; estadoColor="#e0930a"; }
+                          else { var ei2=peEstadoInfo(pedidoRef.estado); estadoTxt=ei2.lbl; estadoColor=ei2.col; }
+                          return (
+                            <div key={v.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
+                              <Avatar name={v.name} color={v.color} size={32}/>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:12,fontWeight:700}}>{v.name}</div>
+                                {pedidoRef&&<div style={{fontSize:10,color:"var(--t3)"}}>{items.length} producto{items.length!==1?"s":""} · {fmtARS(pedidoRef.total)} · {new Date(pedidoRef.updated_at||pedidoRef.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</div>}
+                              </div>
+                              <span style={{fontSize:10,fontWeight:800,color:estadoColor,whiteSpace:"nowrap"}}>{estadoTxt}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Campañas (empresaria: crear, abrir/cerrar — duran 30 días) */}
                 {me.role==="empresaria"&&(
