@@ -5016,8 +5016,9 @@ export default function App() {
                 {pedEspLoading&&<div className="empty">Cargando...</div>}
                 {!pedEspLoading&&pedEspList.length===0&&<div className="empty">No hay pedidos especiales todavía</div>}
                 {pedEspList.filter(function(p){
-                  // Los borradores son privados: solo los ve la vendedora que los creó
-                  if (p.estado==="borrador" && p.vendedor_id!==me.id) return false;
+                  // Los borradores son privados, salvo para la empresaria (ve toda su
+                  // estructura) y el superadmin — así puede anticiparse y cerrar/enviar.
+                  if (p.estado==="borrador" && p.vendedor_id!==me.id && !(me.role==="empresaria" && p.empresa_id===me.id) && !isAdmin) return false;
                   // Por defecto, ocultar lo ya entregado/cancelado para no saturar el panel
                   if (!peVerEntregados && !peFiltroEst && ["entregado","cancelado"].includes(p.estado)) return false;
                   if (peFiltroEmp && (!p.empresa||p.empresa.name!==peFiltroEmp)) return false;
@@ -5029,7 +5030,8 @@ export default function App() {
                 }).map(function(p){
                   var ei = peEstadoInfo(p.estado);
                   var busy = !!peBusy[p.id];
-                  var puedeVendEnviar = p.vendedor_id===me.id && p.estado==="borrador";
+                  var puedeVendEditar = p.vendedor_id===me.id && p.estado==="borrador";
+                  var puedeVendEnviar = (p.vendedor_id===me.id || (me.role==="empresaria" && p.empresa_id===me.id) || isAdmin) && p.estado==="borrador";
                   var puedeLider = ((isAdmin) || (me.role==="lider" && p.lider_id===me.id)) && p.estado==="pendiente_lider";
                   var puedeEmpAprobar   = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="pendiente_empresaria";
                   var puedeEmpEnviar    = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="aprobado";
@@ -5092,7 +5094,7 @@ export default function App() {
                             <input value={peObserv[p.id]||""} onChange={function(e){setPeObserv(function(prev){return Object.assign({},prev,{[p.id]:e.target.value});});}}
                               placeholder="Observación (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,marginBottom:8,fontFamily:"inherit"}}/>
                             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                              {puedeVendEnviar&&<button className="btn btn-xs b-ghost" style={{padding:"7px 12px",border:"1.5px solid var(--brd)"}} disabled={busy} onClick={function(){doAbrirEdicion(p);}}>➕ Agregar productos</button>}
+                              {puedeVendEditar&&<button className="btn btn-xs b-ghost" style={{padding:"7px 12px",border:"1.5px solid var(--brd)"}} disabled={busy} onClick={function(){doAbrirEdicion(p);}}>➕ Agregar productos</button>}
                               {puedeVendEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){if(window.confirm("¿Cerrar el pedido y enviarlo? Ya no vas a poder agregar productos.")) doEnviarPedidoEspecial(p.id);}}>📤 Cerrar y enviar pedido</button>}
                               {puedeLider&&(<>
                                 <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:true});}}>✅ Aprobar</button>
