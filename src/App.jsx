@@ -548,7 +548,6 @@ export default function App() {
   const [authErr,   setAuthErr]   = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const loginAttemptRef = useRef(0); // evita que un timeout viejo pise una respuesta exitosa más reciente
-  const ensureProfileEnCurso = useRef(null); // evita cargar el perfil dos veces en simultáneo
   const [authOk,    setAuthOk]    = useState(false);  // login exitoso, cargando perfil
 
   // Seguridad: si el perfil no carga en 10s, volver al login con mensaje
@@ -1223,14 +1222,11 @@ export default function App() {
     // El trigger de Supabase crea la fila en `users`; reintentamos por si tarda.
     async function ensureProfile(session, intentos){
       intentos = intentos || 0;
-      if (ensureProfileEnCurso.current === session.user.id && intentos === 0) return; // ya hay una carga en curso para este usuario
-      ensureProfileEnCurso.current = session.user.id;
       var pr = await sb.from("users").select("*").eq("id", session.user.id).maybeSingle();
       if (pr.data) {
         setMe(pr.data);
         loadData(pr.data.id, pr.data.role);  // no await — no bloquear
         loadCarousels();
-        ensureProfileEnCurso.current = null;
         return true;
       }
       // No existe la fila todavía. Reintentar varias veces (el trigger de
@@ -1262,10 +1258,8 @@ export default function App() {
         setMe(perfilFinal);
         loadData(perfilFinal.id, perfilFinal.role);
         loadCarousels();
-        ensureProfileEnCurso.current = null;
         return true;
       }
-      ensureProfileEnCurso.current = null;
       return false;
     }
 
