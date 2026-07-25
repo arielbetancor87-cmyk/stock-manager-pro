@@ -657,6 +657,8 @@ export default function App() {
   const [ccPagoMonto,            setCcPagoMonto]            = useState("");
   const [ccPagoNota,             setCcPagoNota]             = useState("");
   const [ccPagoSaving,           setCcPagoSaving]           = useState(false);
+  const [ccPagoArchivo,          setCcPagoArchivo]          = useState(null);
+  const [ccPagoSubiendo,         setCcPagoSubiendo]         = useState(false);
   const [ccPdfGenerando,         setCcPdfGenerando]         = useState(false);
 
   // ── FASE 10: Deudas ──────────────────────────────────────────────────────
@@ -2002,10 +2004,22 @@ export default function App() {
     if (isNaN(val) || val<=0) { toast("Monto inválido", "", "e"); return; }
     setCcPagoSaving(true);
     try {
-      var res = await sb.rpc("rpc_registrar_pago_cuenta_corriente", { p_empresa_id: empresaId, p_monto: val, p_nota: ccPagoNota.trim() });
+      var comprobanteUrl = null;
+      if (ccPagoArchivo) {
+        setCcPagoSubiendo(true);
+        var ext = ccPagoArchivo.name.split(".").pop();
+        var fileName = "pago-"+empresaId+"-"+Date.now()+"."+ext;
+        var up = await sb.storage.from("comprobantes-pago").upload(fileName, ccPagoArchivo, { contentType: ccPagoArchivo.type, upsert: true });
+        setCcPagoSubiendo(false);
+        if (up.error) { toast("Error al subir el comprobante", up.error.message, "e"); setCcPagoSaving(false); return; }
+        var pub = sb.storage.from("comprobantes-pago").getPublicUrl(fileName);
+        comprobanteUrl = pub.data.publicUrl;
+      }
+
+      var res = await sb.rpc("rpc_registrar_pago_cuenta_corriente", { p_empresa_id: empresaId, p_monto: val, p_nota: ccPagoNota.trim(), p_comprobante_url: comprobanteUrl });
       if (res.error) { toast("Error", res.error.message, "e"); setCcPagoSaving(false); return; }
       toast("💰 Pago registrado", "", "s");
-      setCcPagoMonto(""); setCcPagoNota("");
+      setCcPagoMonto(""); setCcPagoNota(""); setCcPagoArchivo(null);
       await loadCuentaCorriente();
       var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle", { p_empresa_id: empresaId });
       if (det.data) setCcDetalle(det.data);
@@ -5673,7 +5687,11 @@ export default function App() {
                               <input type="number" value={ccPagoMonto} onChange={function(e){setCcPagoMonto(e.target.value);}} placeholder="Monto" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
                               <input value={ccPagoNota} onChange={function(e){setCcPagoNota(e.target.value);}} placeholder="Nota (opcional)" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
                             </div>
-                            <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={ccPagoSaving} onClick={function(){doRegistrarPago(c.empresa_id);}}>{ccPagoSaving?"Guardando...":"Confirmar pago"}</button>
+                            <label style={{display:"block",fontSize:11,color:"var(--t3)",marginBottom:6,cursor:"pointer"}}>
+                              📎 {ccPagoArchivo?ccPagoArchivo.name:"Adjuntar comprobante (foto o PDF, opcional)"}
+                              <input type="file" accept="image/*,.pdf" onChange={function(e){setCcPagoArchivo(e.target.files[0]||null);}} style={{display:"none"}}/>
+                            </label>
+                            <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={ccPagoSaving} onClick={function(){doRegistrarPago(c.empresa_id);}}>{ccPagoSubiendo?"Subiendo comprobante...":ccPagoSaving?"Guardando...":"Confirmar pago"}</button>
                           </div>
                           <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>Movimientos</div>
                           {ccDetalleLoading&&<div style={{fontSize:12,color:"var(--t3)"}}>Cargando...</div>}
@@ -5682,7 +5700,7 @@ export default function App() {
                               <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--brd)"}}>
                                 <div style={{flex:1,minWidth:0}}>
                                   <div style={{fontSize:11,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" · "+d.cliente_nombre:"")):("Pago"+(d.nota?" · "+d.nota:""))}</div>
-                                  <div style={{fontSize:9,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}</div>
+                                  <div style={{fontSize:9,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}{d.comprobante_url&&<> · <a href={d.comprobante_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontWeight:700}}>📎 Ver comprobante</a></>}</div>
                                 </div>
                                 <div style={{fontSize:12,fontWeight:800,color:d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)"}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
                               </div>
@@ -5705,7 +5723,7 @@ export default function App() {
                           <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontSize:12,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" — "+d.cliente_nombre:"")):("Pago registrado"+(d.nota?" — "+d.nota:""))}</div>
-                              <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}</div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}{d.comprobante_url&&<> · <a href={d.comprobante_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontWeight:700}}>📎 Ver comprobante</a></>}</div>
                             </div>
                             <div style={{fontSize:13,fontWeight:800,color:d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)"}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
                           </div>
