@@ -1628,6 +1628,22 @@ export default function App() {
     setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); });
   }
 
+  async function doReenviarPedidoObservado(id) {
+    setPeBusy(function(prev){ return Object.assign({},prev,{[id]:true}); });
+    try {
+      var res = await sb.rpc("rpc_reenviar_pedido_observado", { p_pedido_id: id });
+      if (res.error) { toast("Error al reenviar", res.error.message, "e"); setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); }); return; }
+      toast("✅ Pedido reenviado", "Vuelve a estar en revisión", "s");
+      await loadPedidosEspeciales();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); });
+  }
+
+  function doObservarPedido(id, rpcName) {
+    if (!peObserv[id] || !peObserv[id].trim()) { toast("Falta el comentario", "Escribí qué hay que corregir antes de observar", "e"); return; }
+    doAccionPedidoEsp(id, rpcName, {p_decision:"observar"});
+  }
+
   async function doMarcarItemEntregado(itemId) {
     setPeItemBusy(function(prev){ return Object.assign({},prev,{[itemId]:true}); });
     try {
@@ -1659,7 +1675,7 @@ export default function App() {
       }
 
       // Al quedar "Aprobado" (aprobó la empresaria), generar el PDF automáticamente
-      if (rpcName === "rpc_empresaria_decidir_pedido" && extraParams && extraParams.p_aprobar) {
+      if (rpcName === "rpc_empresaria_decidir_pedido" && extraParams && extraParams.p_decision === "aprobar") {
         var pedido = pedEspList.find(function(x){ return x.id===id; });
         if (pedido) {
           toast("Generando PDF...", "", "i");
@@ -1685,6 +1701,9 @@ export default function App() {
       return { emoji:"🔴", lbl:"Rechazado/Cancelado" };
     }
     if (p.estado === "entregado") return { emoji:"⚫", lbl:"Entregado" };
+    if (["observado_lider","observado_empresaria"].includes(p.estado)) {
+      return { emoji:"🟠", lbl:"Observado — necesita corrección" };
+    }
     if (["aprobado","enviado_proveedor","recibido","listo_entregar"].includes(p.estado)) {
       return { emoji:"🟣", lbl:"En producción" };
     }
@@ -1700,8 +1719,10 @@ export default function App() {
       borrador:              {lbl:"📝 Pedido abierto",        bg:"#fff8e1", col:"#b8860b"},
       pendiente_lider:      {lbl:"Pendiente de líder",      bg:"#fff3e0", col:"#e07800"},
       rechazado_lider:      {lbl:"Rechazado por líder",     bg:"#ffe0e5", col:"#d32"},
+      observado_lider:      {lbl:"Observado por líder",     bg:"#fff0db", col:"#c2650a"},
       pendiente_empresaria: {lbl:"Pendiente de empresaria", bg:"#fff3e0", col:"#e07800"},
       rechazado_empresaria: {lbl:"Rechazado por empresaria",bg:"#ffe0e5", col:"#d32"},
+      observado_empresaria: {lbl:"Observado por empresaria",bg:"#fff0db", col:"#c2650a"},
       aprobado:             {lbl:"Aprobado",                bg:"#e0f2ff", col:"#0369a1"},
       enviado_proveedor:    {lbl:"Enviado a proveedor",     bg:"#f3e8ff", col:"#7c3aed"},
       recibido:             {lbl:"Recibido en la empresa",  bg:"#e7f9ee", col:"#0a8f4d"},
@@ -5064,7 +5085,8 @@ export default function App() {
                 }).map(function(p){
                   var ei = peEstadoInfo(p.estado);
                   var busy = !!peBusy[p.id];
-                  var puedeVendEditar = p.vendedor_id===me.id && p.estado==="borrador";
+                  var puedeVendEditar = p.vendedor_id===me.id && (p.estado==="borrador" || p.estado==="observado_lider" || p.estado==="observado_empresaria");
+                  var puedeVendReenviar = (isAdmin || p.vendedor_id===me.id) && (p.estado==="observado_lider" || p.estado==="observado_empresaria");
                   var puedeVendEnviar = (p.vendedor_id===me.id || (me.role==="empresaria" && p.empresa_id===me.id) || isAdmin) && p.estado==="borrador";
                   var puedeLider = ((isAdmin) || (me.role==="lider" && p.lider_id===me.id)) && p.estado==="pendiente_lider";
                   var puedeEmpAprobar   = ((isAdmin) || (me.role==="empresaria" && p.empresa_id===me.id)) && p.estado==="pendiente_empresaria";
@@ -5076,12 +5098,13 @@ export default function App() {
                   // Control del pedido según su etapa: vendedora (borrador) → líder (su etapa) → empresaria (de ahí en más)
                   var tieneControl = !["entregado","cancelado"].includes(p.estado) && (isAdmin || (function(){
                     if (p.estado==="borrador") return p.vendedor_id===me.id;
+                    if (["observado_lider","observado_empresaria"].includes(p.estado)) return p.vendedor_id===me.id;
                     if (["pendiente_lider","rechazado_lider"].includes(p.estado)) return p.lider_id===me.id || (!p.lider_id && p.empresa_id===me.id);
                     return p.empresa_id===me.id;
                   })());
                   var puedeCancelar = tieneControl;
                   var puedeEditar = tieneControl;
-                  var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeVendRecibi||puedeVendEntregar;
+                  var necesitaAccion = puedeVendEnviar||puedeLider||puedeEmpAprobar||puedeEmpEnviar||puedeVendRecibi||puedeVendEntregar||puedeVendReenviar;
                   var items = p.items||[];
                   var primerItem = items[0];
                   return (
@@ -5129,18 +5152,21 @@ export default function App() {
                         {necesitaAccion&&(
                           <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--brd)"}}>
                             <input value={peObserv[p.id]||""} onChange={function(e){setPeObserv(function(prev){return Object.assign({},prev,{[p.id]:e.target.value});});}}
-                              placeholder="Observación (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,marginBottom:8,fontFamily:"inherit"}}/>
+                              placeholder={(puedeLider||puedeEmpAprobar)?"Comentario (obligatorio si elegís Observar)":"Observación (opcional)"} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,marginBottom:8,fontFamily:"inherit"}}/>
                             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                               {puedeVendEditar&&<button className="btn btn-xs b-ghost" style={{padding:"7px 12px",border:"1.5px solid var(--brd)"}} disabled={busy} onClick={function(){doAbrirEdicion(p);}}>➕ Agregar productos</button>}
                               {puedeVendEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){if(window.confirm("¿Cerrar el pedido y enviarlo? Ya no vas a poder agregar productos.")) doEnviarPedidoEspecial(p.id);}}>📤 Cerrar y enviar pedido</button>}
                               {puedeLider&&(<>
-                                <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:true});}}>✅ Aprobar</button>
-                                <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_aprobar:false});}}>✕ Rechazar</button>
+                                <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_decision:"aprobar"});}}>✅ Aprobar</button>
+                                <button className="btn btn-xs" style={{background:"#fff0db",color:"#c2650a",border:"1px solid #ffd8a8",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doObservarPedido(p.id,"rpc_lider_decidir_pedido");}}>📝 Observar</button>
+                                <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_decision:"rechazar"});}}>✕ Rechazar</button>
                               </>)}
                               {puedeEmpAprobar&&(<>
-                                <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_empresaria_decidir_pedido",{p_aprobar:true});}}>✅ Aprobar</button>
-                                <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_empresaria_decidir_pedido",{p_aprobar:false});}}>✕ Rechazar</button>
+                                <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_empresaria_decidir_pedido",{p_decision:"aprobar"});}}>✅ Aprobar</button>
+                                <button className="btn btn-xs" style={{background:"#fff0db",color:"#c2650a",border:"1px solid #ffd8a8",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doObservarPedido(p.id,"rpc_empresaria_decidir_pedido");}}>📝 Observar</button>
+                                <button className="btn btn-xs b-cr" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_empresaria_decidir_pedido",{p_decision:"rechazar"});}}>✕ Rechazar</button>
                               </>)}
+                              {puedeVendReenviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doReenviarPedidoObservado(p.id);}}>📤 Reenviar pedido corregido</button>}
                               {puedeEmpEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_enviado_proveedor");}}>📤 Enviar a proveedor</button>}
                               {/* "Marcar recibido" se saca de acá: ahora depende de que el Depósito prepare y despache el pedido (ver panel Depósito / Envíos) */}
                               {puedeVendRecibi&&<button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_listo_entregar");}}>📦 Lo recibí (acredita mi stock)</button>}
@@ -6245,6 +6271,7 @@ export default function App() {
               {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
               {id:"__mas",  lbl:"Más",       ico:"dots"},
             ] : [
+              {id:"stock",  lbl:"Mi Stock", ico:"box"},
               {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
               {id:"__mas",   lbl:"Más",     ico:"dots"},
             ];
