@@ -1644,6 +1644,13 @@ export default function App() {
     doAccionPedidoEsp(id, rpcName, {p_decision:"observar"});
   }
 
+  function doIniciarPedidoEspecial() {
+    setTab("pedesp");
+    var abierto = pedEspList.find(function(p){ return p.vendedor_id===me.id && p.estado==="borrador"; });
+    if (abierto) { doAbrirEdicion(abierto); toast("Continuás tu pedido abierto", "Agregá los productos que quieras y después envialo", "i"); return; }
+    setPeShowForm(true);
+  }
+
   async function doMarcarItemEntregado(itemId) {
     setPeItemBusy(function(prev){ return Object.assign({},prev,{[itemId]:true}); });
     try {
@@ -3502,7 +3509,7 @@ export default function App() {
         <div className="hdr">
           <div className="hdr-top">
             <div className="hdr-avatar" style={me.color?{background:me.color}:{}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
-            <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={function(){setTab("stock");}}>
+            <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={function(){setTab("inicio");}}>
               <div className="hdr-hi">{me.role==="superadmin"?"👑 Administrador":("¡Hola, "+me.name.split(" ")[0]+"!")}</div>
               <div className="hdr-sub">{me.role==="superadmin"?"Panel de control":me.role==="deposito"?"Panel de depósito":(tab==="recibidos"?"Acá ves lo que te entregaron para vender":"¿Lista para vender hoy?")}</div>
             </div>
@@ -3514,7 +3521,7 @@ export default function App() {
               <button className="hdr-btn" onClick={doLogout}><Ic n="logout" s={18}/></button>
             </div>
           </div>
-          {(tab==="stock"||tab==="inicio")&&(
+          {tab==="stock"&&(
           <HeaderSearch value={srchStock} onChange={setSrchStock} placeholder="Buscar productos, marcas o categorías..."/>
           )}
         </div>
@@ -3682,6 +3689,8 @@ export default function App() {
 
             return (
               <div style={{paddingBottom:24}}>
+
+                {tab==="inicio"&&(<React.Fragment>
 
                 {/* ─ BUSCADOR RÁPIDO DE PRECIOS ─ */}
                 <div className="card" style={{marginTop:10,marginBottom:14}}>
@@ -4029,7 +4038,12 @@ export default function App() {
                 )}
 
                 {/* ─ STOCK ─ */}
+                </React.Fragment>)}
+
+                {tab==="stock"&&(
                 <div style={{padding:"0 14px 8px"}}>
+
+                  <button className="cta cta-am" style={{marginBottom:14}} onClick={function(){setTab("cargar");}}><Ic n="plus" s={18}/>Cargar stock propio</button>
 
                   {/* Stock Propio */}
                   <div className="sec-hdr" style={{padding:"0 0 10px"}}>
@@ -4069,6 +4083,7 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                )}
               </div>
             );
           })()}
@@ -6292,7 +6307,11 @@ export default function App() {
                 {izq.map(TabItem)}
                 {/* Botón central [+] (no aplica para depósito) */}
                 {!esDeposito&&(
-                  <div className="tab-fab-wrap" onClick={function(){ setMasMenu(false); setTab("cargar"); }}>
+                  <div className="tab-fab-wrap" onClick={function(){
+                    setMasMenu(false);
+                    if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") { doIniciarPedidoEspecial(); }
+                    else { setTab("cargar"); }
+                  }}>
                     <div className="tab-fab"><Ic n="plus" s={26}/></div>
                   </div>
                 )}
