@@ -611,6 +611,7 @@ export default function App() {
   const [peItemCliNom, setPeItemCliNom] = useState("");
   const [peItemCliTel, setPeItemCliTel] = useState("");
   const [peCarrito,    setPeCarrito]    = useState([]); // [{product_id,name,sku,emoji,photo_url,price,qty,color,talle}]
+  const [campProductos, setCampProductos] = useState([]); // productos/precios de la campaña elegida en el pedido actual
   const [peEditando,   setPeEditando]   = useState(null); // id del pedido que se está editando (líder/empresaria)
   const [peEditSaving, setPeEditSaving] = useState(false);
   const [peCliNom,     setPeCliNom]     = useState("");
@@ -627,6 +628,13 @@ export default function App() {
   // ── FASE 5: Campañas ─────────────────────────────────────────────────────
   const [campanias,       setCampanias]       = useState([]);
   const [campNombre,      setCampNombre]      = useState("");
+  const [campExpandida,     setCampExpandida]     = useState(null);
+  const [campGestProductos, setCampGestProductos] = useState([]);
+  const [campGestLoading,   setCampGestLoading]   = useState(false);
+  const [campGestProdId,    setCampGestProdId]    = useState("");
+  const [campGestProdSrch,  setCampGestProdSrch]  = useState("");
+  const [campGestPrecio,    setCampGestPrecio]    = useState("");
+  const [campGestSaving,    setCampGestSaving]    = useState(false);
   const [campSaving,      setCampSaving]      = useState(false);
   const [peCampaniaId,    setPeCampaniaId]    = useState("");
   const [peSaving,     setPeSaving]     = useState(false);
@@ -673,6 +681,9 @@ export default function App() {
   const [ordenDespacho,  setOrdenDespacho]  = useState({}); // {ordenId: {transporte, tracking}}
   const [ordFiltroEmp,   setOrdFiltroEmp]   = useState("");
   const [ordFiltroZona,  setOrdFiltroZona]  = useState("");
+  const [ordFiltroCamp,      setOrdFiltroCamp]      = useState("");
+  const [ordFiltroFechaIni,  setOrdFiltroFechaIni]  = useState("");
+  const [ordFiltroFechaFin,  setOrdFiltroFechaFin]  = useState("");
   const [pedidosAbiertos,        setPedidosAbiertos]        = useState([]);
   const [pedidosAbiertosLoading, setPedidosAbiertosLoading] = useState(false);
   const [verPedidosAbiertos,     setVerPedidosAbiertos]     = useState(false);
@@ -1544,15 +1555,55 @@ export default function App() {
     setPedEspLoading(false);
   }
 
+  useEffect(function() {
+    var activo = true;
+    (async function(){
+      if (!peCampaniaId) {
+        setCampProductos([]);
+        setPeCarrito(function(prev){ return prev.map(function(it){
+          var prod = products.find(function(p){return p.id===it.product_id;});
+          return prod ? Object.assign({},it,{price:prod.price}) : it;
+        }); });
+        return;
+      }
+      var res = await sb.from("campania_productos").select("*").eq("campania_id", peCampaniaId);
+      if (!activo) return;
+      var rows = res.data || [];
+      setCampProductos(rows);
+      if (rows.length>0) {
+        var permitidos = {};
+        rows.forEach(function(r){ if (r.activo) permitidos[r.product_id]=r.precio; });
+        var removidos = 0;
+        setPeCarrito(function(prev){
+          var nuevo = [];
+          prev.forEach(function(it){
+            if (Object.prototype.hasOwnProperty.call(permitidos, it.product_id)) {
+              nuevo.push(Object.assign({},it,{price:permitidos[it.product_id]}));
+            } else { removidos++; }
+          });
+          return nuevo;
+        });
+        if (removidos>0) toast("Algunos productos no participan de esta campaña", removidos+" producto(s) se sacaron del carrito", "e");
+      }
+    })();
+    return function(){ activo=false; };
+  }, [peCampaniaId]);
+
   function doAgregarAlCarrito() {
     if (!peProdId) { toast("Elegí un producto", "", "e"); return; }
     if (!peItemCliNom.trim()) { toast("Falta el nombre del cliente para este producto", "", "e"); return; }
     var p = products.find(function(x){ return x.id===peProdId; });
     if (!p) return;
+    var precioFinal = p.price;
+    if (peCampaniaId && campProductos.length>0) {
+      var cp = campProductos.find(function(c){ return c.product_id===p.id && c.activo; });
+      if (!cp) { toast("Este producto no participa de la campaña elegida", "", "e"); return; }
+      precioFinal = cp.precio;
+    }
     setPeCarrito(function(prev){
       return prev.concat([{
         product_id: p.id, name: p.name, sku: p.sku, emoji: p.emoji, photo_url: p.photo_url,
-        price: p.price, qty: peQty, color: peColor.trim(), talle: peTalle.trim(),
+        price: precioFinal, qty: peQty, color: peColor.trim(), talle: peTalle.trim(),
         cliente_nombre: peItemCliNom.trim(), cliente_telefono: peItemCliTel.trim()
       }]);
     });
@@ -1567,6 +1618,7 @@ export default function App() {
   function doAbrirEdicion(p) {
     setPeShowForm(false); // no mezclar con el form de "nuevo pedido"
     setPeEditando(p.id);
+    setPeCampaniaId(p.campania_id || "");
     setPeCarrito((p.items||[]).map(function(it){
       return { product_id: it.product_id, name: it.product?it.product.name:"", sku: it.product?it.product.sku:"",
         emoji: it.product?it.product.emoji:"", photo_url: it.product?it.product.photo_url:"",
@@ -1576,7 +1628,7 @@ export default function App() {
   }
 
   function doCancelarEdicion() {
-    setPeEditando(null); setPeCarrito([]); setPeProdId(""); setPeProdSrch("");
+    setPeEditando(null); setPeCarrito([]); setPeProdId(""); setPeProdSrch(""); setPeCampaniaId("");
   }
 
   async function doGuardarEdicionPedido() {
@@ -1902,6 +1954,44 @@ export default function App() {
     toast(nuevoEstado==="abierta"?"Campaña reabierta":"Campaña cerrada", "", "s");
   }
 
+  async function doExpandirCampania(c) {
+    if (campExpandida===c.id) { setCampExpandida(null); return; }
+    setCampExpandida(c.id); setCampGestProductos([]); setCampGestProdId(""); setCampGestProdSrch(""); setCampGestPrecio("");
+    setCampGestLoading(true);
+    try {
+      var res = await sb.from("campania_productos")
+        .select("id, product_id, precio, activo, product:product_id(id,name,sku,price,emoji)")
+        .eq("campania_id", c.id).order("created_at",{ascending:true});
+      if (res.data) setCampGestProductos(res.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCampGestLoading(false);
+  }
+
+  async function doGuardarPrecioCampania(campaniaId) {
+    if (!campGestProdId) { toast("Elegí un producto", "", "e"); return; }
+    var precioNum = parseFloat(campGestPrecio);
+    if (isNaN(precioNum) || precioNum < 0) { toast("Precio inválido", "", "e"); return; }
+    setCampGestSaving(true);
+    try {
+      var res = await sb.rpc("rpc_set_precio_campania", { p_campania_id: campaniaId, p_product_id: campGestProdId, p_precio: precioNum, p_activo: true });
+      if (res.error) { toast("Error", res.error.message, "e"); setCampGestSaving(false); return; }
+      toast("✅ Precio guardado", "", "s");
+      setCampGestProdId(""); setCampGestProdSrch(""); setCampGestPrecio("");
+      var res2 = await sb.from("campania_productos")
+        .select("id, product_id, precio, activo, product:product_id(id,name,sku,price,emoji)")
+        .eq("campania_id", campaniaId).order("created_at",{ascending:true});
+      if (res2.data) setCampGestProductos(res2.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCampGestSaving(false);
+  }
+
+  async function doQuitarProductoCampania(campaniaId, productId) {
+    var res = await sb.rpc("rpc_quitar_producto_campania", { p_campania_id: campaniaId, p_product_id: productId });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setCampGestProductos(function(prev){ return prev.filter(function(x){ return x.product_id!==productId; }); });
+    toast("Producto sacado de la campaña", "", "s");
+  }
+
   // ── FASE 13: Dashboard inteligente ───────────────────────────────────────
   async function loadDashboard() {
     if (!me) return;
@@ -2170,11 +2260,66 @@ export default function App() {
     setOrdenesLoading(true);
     try {
       var res = await sb.from("ordenes_produccion")
-        .select("*, pedido:pedido_id(numero_pedido, cliente_nombre, total, qty, nota, items:pedidos_especiales_items(id,qty,color,talle,preparado,precio_unit,subtotal,cliente_nombre,cliente_telefono,product:product_id(name,sku)))")
+        .select("*, pedido:pedido_id(numero_pedido, cliente_nombre, total, qty, nota, campania, campania_rel:campania_id(id,nombre), items:pedidos_especiales_items(id,qty,color,talle,preparado,precio_unit,subtotal,cliente_nombre,cliente_telefono,product:product_id(name,sku)))")
         .order("created_at", {ascending:false}).limit(150);
       if (res.data) setOrdenes(res.data);
     } catch(e) { /* noop */ }
     setOrdenesLoading(false);
+  }
+
+  // Genera SOLO la etiqueta de envío (1 página, con QR) — para llevar al correo,
+  // sin mezclarla con el remito/factura. Reutiliza los mismos datos snapshot.
+  async function generarEtiquetaSola(o) {
+    try {
+      var ped = o.pedido || {};
+      var doc = new jsPDF({ unit: "mm", format: "a4" });
+      var pageW = doc.internal.pageSize.getWidth();
+      var margin = 14;
+
+      doc.setFillColor(224,34,78);
+      doc.rect(0,0,pageW,22,"F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(16); doc.setFont(undefined,"bold");
+      doc.text("Etiqueta de Envío", margin, 14);
+      doc.setFontSize(10); doc.setFont(undefined,"normal");
+      doc.text("Orden #" + o.numero, pageW-margin, 14, {align:"right"});
+
+      var y = 34;
+      doc.setTextColor(30,30,30);
+
+      var qrTexto = "ORDEN-"+o.numero+"-PEDIDO-"+(ped.numero_pedido||"");
+      var qrDataUrl = await QRCode.toDataURL(qrTexto, { margin: 1, width: 200 });
+      doc.addImage(qrDataUrl, "PNG", pageW-margin-32, y, 32, 32);
+
+      doc.setFontSize(9); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
+      doc.text("DESTINATARIO", margin, y+4);
+      doc.setFontSize(14); doc.setTextColor(30,30,30);
+      doc.text(o.empresaria_nombre || "-", margin, y+12);
+      doc.setFontSize(10); doc.setFont(undefined,"normal");
+      var y2 = y+19;
+      if (o.empresaria_codigo) { doc.text("Código: " + o.empresaria_codigo, margin, y2); y2 += 6; }
+      doc.text("Dirección: " + (o.empresaria_direccion || "-"), margin, y2); y2 += 6;
+      doc.text("Localidad: " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin, y2); y2 += 6;
+      doc.text("Teléfono: " + (o.empresaria_telefono || "-"), margin, y2); y2 += 6;
+
+      y = Math.max(y2, y+38) + 8;
+      doc.setDrawColor(220,220,220);
+      doc.line(margin, y, pageW-margin, y); y += 10;
+
+      doc.setFontSize(9); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
+      doc.text("ENVÍO", margin, y); y += 7;
+      doc.setFontSize(11); doc.setTextColor(30,30,30); doc.setFont(undefined,"normal");
+      doc.text("Transporte: " + (o.transporte || "A coordinar"), margin, y); y += 7;
+      doc.text("N° de seguimiento: " + (o.tracking || "-"), margin, y); y += 7;
+      doc.text("N° de Orden: " + o.numero + "   ·   N° de Pedido: " + (ped.numero_pedido||"-"), margin, y); y += 7;
+      doc.text("Cantidad de bultos: " + (ped.qty || (ped.items||[]).reduce(function(s,it){return s+it.qty;},0)) + " unidad(es)", margin, y);
+
+      doc.setFontSize(8); doc.setTextColor(150,150,150);
+      doc.text("Emitido: " + new Date().toLocaleString("es-AR"), margin, 285);
+
+      doc.save("etiqueta-correo-orden-"+o.numero+".pdf");
+      toast("🏷️ Etiqueta descargada", "Lista para llevar al correo", "s");
+    } catch(e) { toast("Error al generar la etiqueta", e.message, "e"); }
   }
 
   // Genera un PDF con la Etiqueta de Envío (con QR) + el Remito/Factura
@@ -4969,17 +5114,35 @@ export default function App() {
                     <div style={{padding:"14px 16px"}}>
                       <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>Nuevo pedido especial</div>
 
+                      <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:10,fontFamily:"inherit"}}>
+                        <option value="">Sin campaña</option>
+                        {campanias.filter(function(c){return c.empresa_id===(me.role==="empresaria"?me.id:me.empresa_id) && c.estado==="abierta";}).map(function(c){
+                          return <option key={c.id} value={c.id}>{c.nombre}</option>;
+                        })}
+                      </select>
+
                       {/* Buscador + agregar producto al carrito */}
                       <SearchBar value={peProdSrch} onChange={setPeProdSrch} placeholder="Buscar producto..."/>
                       {peProdSrch&&(
                         <div style={{maxHeight:180,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:10,marginTop:8}}>
-                          {products.filter(function(p){var q=peProdSrch.toLowerCase();return p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);}).slice(0,8).map(function(p){
+                          {products.filter(function(p){
+                              var q=peProdSrch.toLowerCase();
+                              var coincide = p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);
+                              if (!coincide) return false;
+                              if (peCampaniaId && campProductos.length>0) { return campProductos.some(function(c){return c.product_id===p.id && c.activo;}); }
+                              return true;
+                            }).slice(0,8).map(function(p){
+                            var precioMostrar = p.price;
+                            if (peCampaniaId && campProductos.length>0) {
+                              var cp = campProductos.find(function(c){return c.product_id===p.id;});
+                              if (cp) precioMostrar = cp.precio;
+                            }
                             return (
                               <div key={p.id} onClick={function(){setPeProdId(p.id);setPeProdSrch(p.name+" ["+(p.sku||"")+"]");}} style={{padding:"10px 12px",cursor:"pointer",borderBottom:"1px solid var(--brd)",display:"flex",alignItems:"center",gap:8,background:peProdId===p.id?"var(--pri-l)":"var(--card)"}}>
                                 <ProdThumb prod={p} size={32}/>
                                 <div>
                                   <div style={{fontSize:13,fontWeight:700}}>{p.name}</div>
-                                  <div style={{fontSize:11,color:"var(--t3)"}}><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--pri)",background:"var(--pri-l)",borderRadius:5,padding:"1px 6px",marginRight:6}}>{p.sku||"s/c"}</span>{fmtARS(p.price)}</div>
+                                  <div style={{fontSize:11,color:"var(--t3)"}}><span style={{fontFamily:"var(--mf)",fontWeight:800,color:"var(--pri)",background:"var(--pri-l)",borderRadius:5,padding:"1px 6px",marginRight:6}}>{p.sku||"s/c"}</span>{fmtARS(precioMostrar)}{peCampaniaId&&campProductos.length>0&&<span style={{marginLeft:6,color:"#6d28d9",fontWeight:700}}>· precio de campaña</span>}</div>
                                 </div>
                               </div>
                             );
@@ -5030,12 +5193,6 @@ export default function App() {
                       )}
 
                       <div style={{marginTop:12}}>
-                        <select value={peCampaniaId} onChange={function(e){setPeCampaniaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:8,fontFamily:"inherit"}}>
-                          <option value="">Sin campaña</option>
-                          {campanias.filter(function(c){return c.empresa_id===(me.role==="empresaria"?me.id:me.empresa_id) && c.estado==="abierta";}).map(function(c){
-                            return <option key={c.id} value={c.id}>{c.nombre}</option>;
-                          })}
-                        </select>
                         <input value={peNota} onChange={function(e){setPeNota(e.target.value);}} placeholder="Nota general (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
                         <button className="cta cta-am" onClick={doCrearPedidoEspecial} disabled={peSaving||peCarrito.length===0}><Ic n="check" s={16}/>{peSaving?"Guardando...":"Guardar pedido ("+peCarrito.length+")"}</button>
                       </div>
@@ -5221,10 +5378,21 @@ export default function App() {
                             <SearchBar value={peProdSrch} onChange={setPeProdSrch} placeholder="Buscar producto para agregar..."/>
                             {peProdSrch&&(
                               <div style={{maxHeight:160,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:9,marginTop:6}}>
-                                {products.filter(function(pr){var q=peProdSrch.toLowerCase();return pr.name.toLowerCase().includes(q)||(pr.sku||"").toLowerCase().includes(q);}).slice(0,6).map(function(pr){
+                                {products.filter(function(pr){
+                                    var q=peProdSrch.toLowerCase();
+                                    var coincide = pr.name.toLowerCase().includes(q)||(pr.sku||"").toLowerCase().includes(q);
+                                    if (!coincide) return false;
+                                    if (peCampaniaId && campProductos.length>0) { return campProductos.some(function(c){return c.product_id===pr.id && c.activo;}); }
+                                    return true;
+                                  }).slice(0,6).map(function(pr){
+                                  var precioMostrar = pr.price;
+                                  if (peCampaniaId && campProductos.length>0) {
+                                    var cp = campProductos.find(function(c){return c.product_id===pr.id;});
+                                    if (cp) precioMostrar = cp.precio;
+                                  }
                                   return (
                                     <div key={pr.id} onClick={function(){setPeProdId(pr.id);setPeProdSrch(pr.name+" ["+(pr.sku||"")+"]");}} style={{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid var(--brd)",fontSize:12,background:peProdId===pr.id?"var(--pri-l)":"var(--card)"}}>
-                                      {pr.name} — {fmtARS(pr.price)}
+                                      {pr.name} — {fmtARS(precioMostrar)}
                                     </div>
                                   );
                                 })}
@@ -5437,6 +5605,28 @@ export default function App() {
                     </div>
                   );
                 })()}
+                {/* Filtros por campaña y fecha — sirve sobre todo para el historial (Ver todas) */}
+                {ordenVerTodas&&ordenes.length>0&&(function(){
+                  var camps = Array.from(new Set(ordenes.map(function(o){
+                    return o.pedido && (o.pedido.campania_rel?o.pedido.campania_rel.nombre:o.pedido.campania);
+                  }).filter(Boolean)));
+                  return (
+                    <div style={{marginBottom:12}}>
+                      {camps.length>0&&(
+                        <select value={ordFiltroCamp} onChange={function(e){setOrdFiltroCamp(e.target.value);}} style={{width:"100%",fontSize:12,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontFamily:"inherit",marginBottom:8}}>
+                          <option value="">Todas las campañas</option>
+                          {camps.map(function(c){return <option key={c} value={c}>{c}</option>;})}
+                        </select>
+                      )}
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <input type="date" value={ordFiltroFechaIni} onChange={function(e){setOrdFiltroFechaIni(e.target.value);}} style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontFamily:"inherit"}}/>
+                        <span style={{fontSize:11,color:"var(--t3)"}}>a</span>
+                        <input type="date" value={ordFiltroFechaFin} onChange={function(e){setOrdFiltroFechaFin(e.target.value);}} style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontFamily:"inherit"}}/>
+                        {(ordFiltroFechaIni||ordFiltroFechaFin||ordFiltroCamp)&&<button className="btn btn-xs b-ghost" onClick={function(){setOrdFiltroFechaIni("");setOrdFiltroFechaFin("");setOrdFiltroCamp("");}}>✕</button>}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* Pedidos abiertos (borrador, sin cerrar) — para anticiparse, sin tocar stock */}
                 {pedidosAbiertos.length>0&&(
                   <div className="card" style={{marginBottom:14,background:"#fff8e1"}}>
@@ -5473,6 +5663,12 @@ export default function App() {
                     if (me.role==="empresaria" && o.empresa_id!==me.id) return false;
                     if (ordFiltroEmp && o.empresaria_nombre!==ordFiltroEmp) return false;
                     if (ordFiltroZona && o.empresaria_zona!==ordFiltroZona) return false;
+                    if (ordFiltroCamp) {
+                      var camp = o.pedido && (o.pedido.campania_rel?o.pedido.campania_rel.nombre:o.pedido.campania);
+                      if (camp !== ordFiltroCamp) return false;
+                    }
+                    if (ordFiltroFechaIni && new Date(o.created_at) < new Date(ordFiltroFechaIni)) return false;
+                    if (ordFiltroFechaFin && new Date(o.created_at) > new Date(ordFiltroFechaFin+"T23:59:59")) return false;
                     if (!ordenVerTodas) return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado);
                     return true;
                   });
@@ -5541,6 +5737,12 @@ export default function App() {
                             <button className="btn btn-xs" style={{marginTop:10,background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"8px 14px"}} disabled={busy}
                               onClick={function(){doOrdenAccion(o.id,"rpc_orden_entregada",{p_orden_id:o.id});}}>
                               📦 Marcar como entregada
+                            </button>
+                          )}
+                          {["lista_despacho","despachada","entregada"].includes(o.estado)&&(
+                            <button className="btn btn-xs" style={{marginTop:10,background:"#fff0db",color:"#c2650a",border:"1px solid #ffd8a8",borderRadius:8,fontWeight:700,padding:"8px 14px"}}
+                              onClick={function(){generarEtiquetaSola(o);}}>
+                              🏷️ Imprimir etiqueta (correo)
                             </button>
                           )}
                           {["despachada","entregada"].includes(o.estado)&&(
@@ -5924,15 +6126,59 @@ export default function App() {
                       {campanias.filter(function(c){return c.empresa_id===me.id;}).length===0&&<div style={{fontSize:12,color:"var(--t3)"}}>Sin campañas todavía</div>}
                       {campanias.filter(function(c){return c.empresa_id===me.id;}).map(function(c){
                         return (
-                          <div key={c.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:13,fontWeight:700}}>{c.nombre}</div>
-                              <div style={{fontSize:10,color:"var(--t3)"}}>{c.fecha_inicio} → {c.fecha_fin}</div>
+                          <div key={c.id} style={{borderTop:"1px solid var(--brd)"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0"}}>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:700}}>{c.nombre}</div>
+                                <div style={{fontSize:10,color:"var(--t3)"}}>{c.fecha_inicio} → {c.fecha_fin}</div>
+                              </div>
+                              <span style={{background:c.estado==="abierta"?"#dcfce7":"#f1f1f1",color:c.estado==="abierta"?"#15803d":"#888",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{c.estado}</span>
+                              <button className="btn btn-xs b-ghost" style={{padding:"5px 9px",fontSize:10}} onClick={function(){doCambiarEstadoCampania(c.id, c.estado==="abierta"?"cerrada":"abierta");}}>
+                                {c.estado==="abierta"?"Cerrar":"Reabrir"}
+                              </button>
                             </div>
-                            <span style={{background:c.estado==="abierta"?"#dcfce7":"#f1f1f1",color:c.estado==="abierta"?"#15803d":"#888",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{c.estado}</span>
-                            <button className="btn btn-xs b-ghost" style={{padding:"5px 9px",fontSize:10}} onClick={function(){doCambiarEstadoCampania(c.id, c.estado==="abierta"?"cerrada":"abierta");}}>
-                              {c.estado==="abierta"?"Cerrar":"Reabrir"}
+                            <button className="btn btn-xs" style={{background:"#f3e8ff",color:"#6d28d9",border:"1px solid #e0c8fb",borderRadius:8,fontWeight:700,padding:"5px 10px",fontSize:10,marginBottom:8}} onClick={function(){doExpandirCampania(c);}}>
+                              🏷️ {campExpandida===c.id?"Ocultar productos y precios":"Productos y precios de esta campaña"}
                             </button>
+                            {campExpandida===c.id&&(
+                              <div style={{background:"var(--bg2)",borderRadius:10,padding:10,marginBottom:10}}>
+                                {campGestProductos.length===0&&!campGestLoading&&(
+                                  <div style={{fontSize:11,color:"var(--t3)",marginBottom:8}}>Sin productos cargados todavía — mientras tanto, esta campaña deja usar <b>todo el catálogo a precio normal</b>. Apenas cargues el primero, la campaña queda limitada a los productos que vayas agregando acá.</div>
+                                )}
+                                {campGestLoading&&<div style={{fontSize:11,color:"var(--t3)"}}>Cargando...</div>}
+                                {campGestProductos.map(function(cp){
+                                  return (
+                                    <div key={cp.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid var(--brd)"}}>
+                                      <div style={{flex:1,minWidth:0,fontSize:12}}>
+                                        {cp.product?cp.product.name:"-"} <span style={{color:"var(--t3)",fontSize:10}}>(catálogo: {fmtARS(cp.product?cp.product.price:0)})</span>
+                                      </div>
+                                      <div style={{fontWeight:800,fontSize:12,color:"#6d28d9"}}>{fmtARS(cp.precio)}</div>
+                                      <button className="btn btn-xs b-ghost" style={{padding:"3px 7px",fontSize:10}} onClick={function(){doQuitarProductoCampania(c.id, cp.product_id);}}>✕</button>
+                                    </div>
+                                  );
+                                })}
+                                <div style={{marginTop:8}}>
+                                  <SearchBar value={campGestProdSrch} onChange={setCampGestProdSrch} placeholder="Buscar producto para agregar..."/>
+                                  {campGestProdSrch&&(
+                                    <div style={{maxHeight:140,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:9,marginTop:6}}>
+                                      {products.filter(function(p){var q=campGestProdSrch.toLowerCase();return p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);}).slice(0,6).map(function(p){
+                                        return (
+                                          <div key={p.id} onClick={function(){setCampGestProdId(p.id);setCampGestProdSrch(p.name);setCampGestPrecio(String(p.price));}} style={{padding:"7px 9px",cursor:"pointer",borderBottom:"1px solid var(--brd)",fontSize:12,background:campGestProdId===p.id?"var(--pri-l)":"var(--card)"}}>
+                                            {p.name} — {fmtARS(p.price)}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {campGestProdId&&(
+                                    <div style={{display:"flex",gap:6,marginTop:6}}>
+                                      <input type="number" value={campGestPrecio} onChange={function(e){setCampGestPrecio(e.target.value);}} placeholder="Precio de campaña" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                                      <button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={campGestSaving} onClick={function(){doGuardarPrecioCampania(c.id);}}>{campGestSaving?"...":"Guardar"}</button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
