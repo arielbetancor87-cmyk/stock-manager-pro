@@ -693,6 +693,7 @@ export default function App() {
   const [ccReporteSaving,  setCcReporteSaving]  = useState(false);
   const [ccReporteSubiendo,setCcReporteSubiendo]= useState(false);
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
+  const ccReporteFileRef = useRef(null);
   const [ccPagoSubiendo,         setCcPagoSubiendo]         = useState(false);
   const [ccPdfGenerando,         setCcPdfGenerando]         = useState(false);
 
@@ -6561,10 +6562,10 @@ export default function App() {
                           <input type="number" value={ccReporteMonto} onChange={function(e){setCcReporteMonto(e.target.value);}} placeholder="Monto" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
                           <input value={ccReporteNota} onChange={function(e){setCcReporteNota(e.target.value);}} placeholder="Nota (opcional)" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
                         </div>
-                        <label style={{display:"block",fontSize:11,color:"var(--t3)",marginBottom:8,cursor:"pointer"}}>
-                          📎 {ccReporteArchivo?ccReporteArchivo.name:"Adjuntar comprobante (obligatorio)"}
-                          <input type="file" accept="image/*,.pdf" onChange={function(e){setCcReporteArchivo(e.target.files[0]||null);}} style={{display:"none"}}/>
-                        </label>
+                        <div onClick={function(){ ccReporteFileRef.current && ccReporteFileRef.current.click(); }} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:ccReporteArchivo?"var(--t2)":"var(--t3)",marginBottom:8,cursor:"pointer",border:"1.5px dashed var(--brd)",borderRadius:8,padding:"10px 12px",background:"var(--card)"}}>
+                          📎 {ccReporteArchivo?ccReporteArchivo.name:"Toca acá para adjuntar el comprobante (obligatorio)"}
+                        </div>
+                        <input ref={ccReporteFileRef} type="file" accept="image/*,.pdf" onChange={function(e){setCcReporteArchivo(e.target.files[0]||null);}} style={{display:"none"}}/>
                         <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={ccReporteSaving} onClick={doReportarPagoPropio}>{ccReporteSubiendo?"Subiendo comprobante...":ccReporteSaving?"Guardando...":"Reportar pago"}</button>
                       </div>
                     </div>
