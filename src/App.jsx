@@ -633,6 +633,9 @@ export default function App() {
   // ── FASE 5: Campañas ─────────────────────────────────────────────────────
   const [campanias,       setCampanias]       = useState([]);
   const [campNombre,      setCampNombre]      = useState("");
+  const [abcOpen,      setAbcOpen]      = useState(false);
+  const [abcData,      setAbcData]      = useState(null);
+  const [abcLoading,   setAbcLoading]   = useState(false);
   const [campResumenId,      setCampResumenId]      = useState(null);
   const [campResumen,        setCampResumen]        = useState(null);
   const [campResumenLoading, setCampResumenLoading] = useState(false);
@@ -2035,6 +2038,17 @@ export default function App() {
       else setCampResumen(res.data);
     } catch(e) { toast("Error", e.message, "e"); }
     setCampResumenLoading(false);
+  }
+
+  async function doVerAnalisisAbc() {
+    if (abcOpen) { setAbcOpen(false); return; }
+    setAbcOpen(true); setAbcData(null); setAbcLoading(true);
+    try {
+      var res = await sb.rpc("rpc_analisis_abc");
+      if (res.error) { toast("Error", res.error.message, "e"); }
+      else setAbcData(res.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setAbcLoading(false);
   }
 
   async function doCambiarEstadoCampania(id, nuevoEstado) {
@@ -4379,6 +4393,46 @@ export default function App() {
                 <div style={{padding:"0 14px 8px"}}>
 
                   <button className="cta cta-am" style={{marginBottom:14}} onClick={function(){setTab("cargar");}}><Ic n="plus" s={18}/>Cargar stock propio</button>
+
+                  {(me.role==="lider"||me.role==="empresaria"||isAdmin)&&(<>
+                    <button className="btn btn-xs" style={{background:"#f3e8ff",color:"#6d28d9",border:"1px solid #e0c8fb",borderRadius:8,fontWeight:700,padding:"8px 14px",marginBottom:14}} onClick={doVerAnalisisAbc}>
+                      📊 {abcOpen?"Ocultar análisis ABC":"Ver análisis ABC y productos inmovilizados"}
+                    </button>
+                    {abcOpen&&(
+                      <div className="card" style={{marginBottom:14,background:"#f5f3ff"}}>
+                        <div style={{padding:"14px 16px"}}>
+                          {abcLoading&&<div style={{fontSize:12,color:"var(--t3)"}}>Calculando (últimos 90 días)...</div>}
+                          {abcData&&(<>
+                            <div style={{fontSize:11,color:"var(--t3)",marginBottom:10}}>Facturado últimos 90 días: <b>{fmtARS(abcData.total_facturado_90d)}</b></div>
+                            {abcData.abc.length===0&&<div style={{fontSize:12,color:"var(--t3)"}}>Sin ventas registradas en los últimos 90 días.</div>}
+                            {abcData.abc.length>0&&(<>
+                              <div style={{fontSize:10,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:6}}>
+                                Clasificación ABC <span style={{fontWeight:400,textTransform:"none"}}>(A = el 80% de la facturación, B = siguiente 15%, C = el resto)</span>
+                              </div>
+                              {abcData.abc.map(function(p,idx){
+                                var colores = {A:{bg:"#dcfce7",col:"#15803d"},B:{bg:"#fff3e0",col:"#e07800"},C:{bg:"#f1f1f1",col:"#888"}};
+                                var cc = colores[p.categoria];
+                                return (
+                                  <div key={idx} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                                    <span style={{background:cc.bg,color:cc.col,borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:800}}>{p.categoria}</span>
+                                    <div style={{flex:1,minWidth:0,fontSize:12}}>{p.producto}</div>
+                                    <div style={{fontSize:11,color:"var(--t3)"}}>{p.unidades} u.</div>
+                                    <div style={{fontSize:12,fontWeight:800}}>{fmtARS(p.total)}</div>
+                                  </div>
+                                );
+                              })}
+                            </>)}
+                            {abcData.inmovilizados.length>0&&(<>
+                              <div style={{fontSize:10,fontWeight:800,color:"#a16207",textTransform:"uppercase",marginTop:14,marginBottom:6}}>⚠️ Sin ventas hace 60+ días (con stock)</div>
+                              {abcData.inmovilizados.map(function(p,idx){
+                                return <div key={idx} style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span>{p.producto}</span><b>{p.stock_disponible} u.</b></div>;
+                              })}
+                            </>)}
+                          </>)}
+                        </div>
+                      </div>
+                    )}
+                  </>)}
 
                   {/* Stock Propio */}
                   <div className="sec-hdr" style={{padding:"0 0 10px"}}>
