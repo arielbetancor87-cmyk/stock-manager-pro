@@ -835,6 +835,7 @@ export default function App() {
   const [quickLoadId,  setQuickLoadId]  = useState(null);  // inventory item.id abierto
   const [quickLoadQty, setQuickLoadQty] = useState(1);
   const [fPrice,   setFPrice]   = useState("");
+  const [fStockMinimo, setFStockMinimo] = useState("");
   const [fCat,     setFCat]     = useState("General");
   const [fBonificable, setFBonificable] = useState(true);
   const [fEmoji,   setFEmoji]   = useState("✨");
@@ -3281,14 +3282,15 @@ export default function App() {
     e.preventDefault();
     if (!fSku.trim()||!fName.trim()||!fPrice){ toast("Completa SKU, nombre y precio","","e"); return; }
     var skuC=fSku.trim().toUpperCase(), pVal=parseFloat(fPrice)||0;
+    var stockMinVal = fStockMinimo.trim()===""? null : (parseInt(fStockMinimo)||0);
     if (editP) {
-      var upd = await sb.from("products").update({sku:skuC,name:fName.trim(),price:pVal,category:fCat,bonificable:fBonificable,emoji:fEmoji,photo_url:fPhoto||editP.photo_url||null,updated_at:new Date().toISOString()}).eq("id",editP.id).select().single();
+      var upd = await sb.from("products").update({sku:skuC,name:fName.trim(),price:pVal,category:fCat,bonificable:fBonificable,emoji:fEmoji,photo_url:fPhoto||editP.photo_url||null,stock_minimo:stockMinVal,updated_at:new Date().toISOString()}).eq("id",editP.id).select().single();
       if (upd.error){ toast("Error",""+upd.error.message,"e"); return; }
       setProducts(function(p){ return p.map(function(x){ return x.id===editP.id?upd.data:x; }); });
       toast("Producto actualizado","","s"); setEditP(null);
     } else {
       if (products.some(function(p){ return p.sku===skuC; })){ toast("SKU ya existe","","e"); return; }
-      var ins = await sb.from("products").insert({sku:skuC,name:fName.trim(),price:pVal,category:fCat,bonificable:fBonificable,emoji:fEmoji,photo_url:fPhoto||null,created_by:me.id}).select().single();
+      var ins = await sb.from("products").insert({sku:skuC,name:fName.trim(),price:pVal,category:fCat,bonificable:fBonificable,emoji:fEmoji,photo_url:fPhoto||null,stock_minimo:stockMinVal,created_by:me.id}).select().single();
       if (ins.error){ toast("Error",""+ins.error.message,"e"); return; }
       var newProd = ins.data;
       setProducts(function(p){ return [...p,newProd]; });
@@ -3296,12 +3298,12 @@ export default function App() {
       if (qty>0){ await sb.from("inventory").insert({user_id:me.id,product_id:newProd.id,qty_available:qty,qty_sold:0,source:'own'}); }
       toast("Producto creado!",fName.trim(),"s");
     }
-    setFSku(""); setFName(""); setFPrice(""); setFEmoji("✨"); setFStock("0"); setFPhoto(null);
+    setFSku(""); setFName(""); setFPrice(""); setFEmoji("✨"); setFStock("0"); setFPhoto(null); setFStockMinimo("");
     await loadData(me.id,me.role);
   }
 
-  function startEdit(p){ setEditP(p); setFSku(p.sku); setFName(p.name); setFPrice(String(p.price)); setFCat(p.category||"General"); setFEmoji(p.emoji||"✨"); setFPhoto(null); setFBonificable(p.bonificable!==false); setTab("catalog"); loadProdImages(p.id); }
-  function cancelEdit(){ setEditP(null); setFSku(""); setFName(""); setFPrice(""); setFEmoji("✨"); setFStock("0"); setFPhoto(null); setFBonificable(true); }
+  function startEdit(p){ setEditP(p); setFSku(p.sku); setFName(p.name); setFPrice(String(p.price)); setFCat(p.category||"General"); setFEmoji(p.emoji||"✨"); setFPhoto(null); setFBonificable(p.bonificable!==false); setFStockMinimo(p.stock_minimo!=null?String(p.stock_minimo):""); setTab("catalog"); loadProdImages(p.id); }
+  function cancelEdit(){ setEditP(null); setFSku(""); setFName(""); setFPrice(""); setFEmoji("✨"); setFStock("0"); setFPhoto(null); setFBonificable(true); setFStockMinimo(""); }
 
   async function doDelProd(prodId, sku) {
     await sb.from("products").update({is_active:false}).eq("id",prodId);
@@ -4098,6 +4100,22 @@ export default function App() {
                       </>)}
                     </div>
 
+                    {dashboard.stock_alertas&&dashboard.stock_alertas.length>0&&(
+                      <div className="card" style={{marginBottom:12,background:"#fff8e6"}}>
+                        <div style={{padding:"12px 14px"}}>
+                          <div style={{fontSize:12,fontWeight:800,color:"#a16207",marginBottom:8}}>⚠️ Riesgo de quiebre de stock</div>
+                          {dashboard.stock_alertas.map(function(s,idx){
+                            return (
+                              <div key={idx} style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:idx<dashboard.stock_alertas.length-1?6:0}}>
+                                <span>{s.producto} <span style={{color:"var(--t3)"}}>({s.stock_disponible} u.)</span></span>
+                                <span style={{fontWeight:800,color:s.dias_restantes<=4?"#d32":"#a16207"}}>Quedan ventas para {s.dias_restantes} días</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {dashboard.campania_activa&&(
                       <div className="card" style={{marginBottom:12,background:"var(--pri-l)"}}>
                         <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
@@ -4589,6 +4607,7 @@ export default function App() {
                       <div className="row g8" style={{marginBottom:12}}>
                         <div style={{flex:1}}><label className="fl">Precio ($) *</label><input className="fi" type="number" placeholder="0.00" value={fPrice} onChange={function(e){setFPrice(e.target.value);}}/></div>
                         <div style={{flex:1}}><label className="fl">Categoría</label><select className="fi fi-sel" value={fCat} onChange={function(e){setFCat(e.target.value);}}>{CATS.map(function(c){return <option key={c}>{c}</option>;})}</select></div>
+                        <div style={{flex:1}}><label className="fl">Stock mínimo</label><input className="fi" type="number" placeholder="5 (por defecto)" value={fStockMinimo} onChange={function(e){setFStockMinimo(e.target.value);}}/></div>
                       </div>
                       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,marginBottom:12,cursor:"pointer"}}>
                         <input type="checkbox" checked={fBonificable} onChange={function(e){setFBonificable(e.target.checked);}} style={{width:18,height:18}}/>
