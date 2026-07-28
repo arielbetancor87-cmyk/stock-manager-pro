@@ -633,6 +633,8 @@ export default function App() {
   // ── FASE 5: Campañas ─────────────────────────────────────────────────────
   const [campanias,       setCampanias]       = useState([]);
   const [campNombre,      setCampNombre]      = useState("");
+  const [reglasForm,      setReglasForm]      = useState({stock_dias_alerta:14,pedido_detenido_dias:5,cobranza_vencida_dias:15,vendedora_inactiva_dias:7,activa_stock:true,activa_pedidos_detenidos:true,activa_cobranzas:true,activa_vendedoras_inactivas:true});
+  const [reglasSaving,    setReglasSaving]    = useState(false);
   const [campExpandida,     setCampExpandida]     = useState(null);
   const [campGestProductos, setCampGestProductos] = useState([]);
   const [campGestLoading,   setCampGestLoading]   = useState(false);
@@ -1997,6 +1999,30 @@ export default function App() {
     setCampSaving(false);
   }
 
+  useEffect(function(){
+    if (dashboard && dashboard.reglas) setReglasForm(dashboard.reglas);
+  }, [dashboard]);
+
+  async function doGuardarReglas() {
+    setReglasSaving(true);
+    try {
+      var res = await sb.rpc("rpc_set_reglas_automaticas", {
+        p_stock_dias: parseInt(reglasForm.stock_dias_alerta)||14,
+        p_pedido_dias: parseInt(reglasForm.pedido_detenido_dias)||5,
+        p_cobranza_dias: parseInt(reglasForm.cobranza_vencida_dias)||15,
+        p_vendedora_dias: parseInt(reglasForm.vendedora_inactiva_dias)||7,
+        p_activa_stock: !!reglasForm.activa_stock,
+        p_activa_pedidos: !!reglasForm.activa_pedidos_detenidos,
+        p_activa_cobranzas: !!reglasForm.activa_cobranzas,
+        p_activa_vendedoras: !!reglasForm.activa_vendedoras_inactivas
+      });
+      if (res.error) { toast("Error", res.error.message, "e"); setReglasSaving(false); return; }
+      toast("✅ Reglas guardadas", "", "s");
+      await loadDashboard();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setReglasSaving(false);
+  }
+
   async function doCambiarEstadoCampania(id, nuevoEstado) {
     var res = await sb.rpc("rpc_cambiar_estado_campania", { p_campania_id: id, p_estado: nuevoEstado });
     if (res.error) { toast("Error", res.error.message, "e"); return; }
@@ -2171,6 +2197,24 @@ export default function App() {
     if (!c.telefono) { toast("Este cliente no tiene teléfono cargado", "", "e"); return; }
     var tel = c.telefono.replace(/\D/g,"");
     window.open("https://wa.me/"+tel, "_blank");
+  }
+
+  function clEstadoAutoInfo(estado) {
+    var map = {
+      vip:         {lbl:"VIP",               emoji:"👑", bg:"#fef3c7", col:"#92400e"},
+      riesgo:      {lbl:"Riesgo de abandono",emoji:"🟠", bg:"#fff0db", col:"#c2650a"},
+      activo:      {lbl:"Activo",            emoji:"🟢", bg:"#dcfce7", col:"#15803d"},
+      sin_compras: {lbl:"Sin compras",       emoji:"⚪", bg:"#f1f1f1", col:"#888"},
+    };
+    return map[estado] || map.sin_compras;
+  }
+
+  function whatsappRecompra(c) {
+    if (!c.telefono) { toast("Este cliente no tiene teléfono cargado", "", "e"); return; }
+    var tel = c.telefono.replace(/\D/g,"");
+    var msg = "¡Hola "+c.nombre+"! 😊 Hace un tiempo que no te veo por acá" +
+      (c.producto_favorito ? ", ¿te gustaría reponer tu "+c.producto_favorito+"?" : ", ¿te muestro las novedades?");
+    window.open("https://wa.me/"+tel+"?text="+encodeURIComponent(msg), "_blank");
   }
 
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
@@ -4116,6 +4160,29 @@ export default function App() {
                       </div>
                     )}
 
+                    {(me.role==="lider"||me.role==="empresaria"||me.role==="superadmin")&&(function(){
+                      var detenidos = dashboard.pedidos_detenidos||[];
+                      var vencidas = dashboard.cobranzas_vencidas||[];
+                      var inactivas = dashboard.vendedoras_inactivas||[];
+                      if (detenidos.length===0 && vencidas.length===0 && inactivas.length===0) return null;
+                      return (
+                        <div className="card" style={{marginBottom:12,background:"#fdf2f8"}}>
+                          <div style={{padding:"12px 14px"}}>
+                            <div style={{fontSize:12,fontWeight:800,color:"#be185d",marginBottom:8}}>🔔 Automatizaciones — cosas para revisar</div>
+                            {detenidos.map(function(p,idx){
+                              return <div key={"d"+idx} style={{fontSize:12,marginBottom:5}}>⏸️ Pedido #{p.numero_pedido} de <b>{p.vendedora}</b> lleva {p.dias_detenido} días sin moverse ({peEstadoInfo(p.estado).lbl})</div>;
+                            })}
+                            {vencidas.map(function(v,idx){
+                              return <div key={"v"+idx} style={{fontSize:12,marginBottom:5}}>💸 <b>{v.vendedora}</b> te debe {fmtARS(v.monto)} hace {v.dias_vencido} días</div>;
+                            })}
+                            {inactivas.map(function(i,idx){
+                              return <div key={"i"+idx} style={{fontSize:12,marginBottom:5}}>😴 <b>{i.vendedora}</b> no vende hace {i.dias_sin_vender>=999?"mucho tiempo":i.dias_sin_vender+" días"}</div>;
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {dashboard.campania_activa&&(
                       <div className="card" style={{marginBottom:12,background:"var(--pri-l)"}}>
                         <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
@@ -6020,6 +6087,8 @@ export default function App() {
                   {[
                     {v:"", lbl:"Todos"},
                     {v:"cumple", lbl:"🎂 Cumpleaños"},
+                    {v:"vip", lbl:"👑 VIP"},
+                    {v:"riesgo", lbl:"🟠 Riesgo de abandono"},
                     {v:"30", lbl:"Sin comprar 30d+"},
                     {v:"60", lbl:"Sin comprar 60d+"},
                     {v:"90", lbl:"Sin comprar 90d+"},
@@ -6053,10 +6122,33 @@ export default function App() {
 
                 {/* Lista de clientes */}
                 {clientesLoading&&<div className="empty">Cargando...</div>}
+                {!clientesLoading&&!clFiltro&&!clSrch&&(function(){
+                  var paraHoy = clientes.filter(function(c){ return c.cumple_proximo || c.estado_auto==="riesgo"; }).slice(0,5);
+                  if (paraHoy.length===0) return null;
+                  return (
+                    <div className="card" style={{marginBottom:14,background:"#fff8e6"}}>
+                      <div style={{padding:"12px 14px"}}>
+                        <div style={{fontSize:12,fontWeight:800,color:"#a16207",marginBottom:8}}>📞 Para contactar hoy</div>
+                        {paraHoy.map(function(c){
+                          return (
+                            <div key={c.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                              <div style={{flex:1,minWidth:0,fontSize:12}}>
+                                <b>{c.nombre}</b> — {c.cumple_proximo?"🎂 cumple pronto":"🟠 hace "+c.dias_sin_comprar+"d sin comprar"}
+                              </div>
+                              <button className="btn btn-xs" style={{background:"#dcfce7",color:"#15803d",border:"1px solid #bbf7d0",borderRadius:8,padding:"5px 10px",fontSize:10,fontWeight:700}} onClick={function(){whatsappRecompra(c);}}>📱 Escribir</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {(function(){
                   var lista = clientes.filter(function(c){
                     if (clSrch && !c.nombre.toLowerCase().includes(clSrch.toLowerCase())) return false;
                     if (clFiltro==="cumple") return c.cumple_proximo;
+                    if (clFiltro==="vip") return c.estado_auto==="vip";
+                    if (clFiltro==="riesgo") return c.estado_auto==="riesgo";
                     if (clFiltro==="30") return c.dias_sin_comprar!==null && c.dias_sin_comprar>=30;
                     if (clFiltro==="60") return c.dias_sin_comprar!==null && c.dias_sin_comprar>=60;
                     if (clFiltro==="90") return c.dias_sin_comprar!==null && c.dias_sin_comprar>=90;
@@ -6073,6 +6165,7 @@ export default function App() {
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
                                 {c.nombre}{c.cumple_proximo&&<span title="Cumpleaños próximo">🎂</span>}
+                                <span style={{fontSize:9,fontWeight:800,background:clEstadoAutoInfo(c.estado_auto).bg,color:clEstadoAutoInfo(c.estado_auto).col,borderRadius:6,padding:"1px 6px"}}>{clEstadoAutoInfo(c.estado_auto).emoji} {clEstadoAutoInfo(c.estado_auto).lbl}</span>
                               </div>
                               <div style={{fontSize:11,color:"var(--t3)"}}>
                                 {c.telefono||"Sin teléfono"}{c.dias_sin_comprar!==null?" · "+(c.dias_sin_comprar===0?"Compró hoy":c.dias_sin_comprar+"d sin comprar"):" · Sin compras"}
@@ -6113,6 +6206,74 @@ export default function App() {
           )}
 
           {/* ══ CUENTA CORRIENTE (superadmin, solo lectura) ══ */}
+          {tab==="reglas"&&(isAdmin||me.role==="empresaria")&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">🔔 Reglas automáticas</div><div className="ph-s">Umbrales de las alertas del dashboard, sin tocar código</div></div>
+              </div>
+              <div className="pc">
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:13,fontWeight:700}}>⚠️ Riesgo de quiebre de stock</label>
+                      <input type="checkbox" checked={reglasForm.activa_stock} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{activa_stock:e.target.checked}));}} style={{width:20,height:20}}/>
+                    </div>
+                    <label style={{fontSize:11,color:"var(--t3)"}}>Avisar cuando queden menos de</label>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                      <input type="number" value={reglasForm.stock_dias_alerta} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{stock_dias_alerta:e.target.value}));}} style={{width:70,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
+                      <span style={{fontSize:12,color:"var(--t3)"}}>días de venta de stock (según el ritmo de los últimos 30 días)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:13,fontWeight:700}}>⏸️ Pedidos detenidos</label>
+                      <input type="checkbox" checked={reglasForm.activa_pedidos_detenidos} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{activa_pedidos_detenidos:e.target.checked}));}} style={{width:20,height:20}}/>
+                    </div>
+                    <label style={{fontSize:11,color:"var(--t3)"}}>Avisar cuando un pedido no cambia de estado hace más de</label>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                      <input type="number" value={reglasForm.pedido_detenido_dias} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{pedido_detenido_dias:e.target.value}));}} style={{width:70,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
+                      <span style={{fontSize:12,color:"var(--t3)"}}>días</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:13,fontWeight:700}}>💸 Cobranzas vencidas</label>
+                      <input type="checkbox" checked={reglasForm.activa_cobranzas} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{activa_cobranzas:e.target.checked}));}} style={{width:20,height:20}}/>
+                    </div>
+                    <label style={{fontSize:11,color:"var(--t3)"}}>Avisar cuando una deuda sigue sin cobrarse hace más de</label>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                      <input type="number" value={reglasForm.cobranza_vencida_dias} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{cobranza_vencida_dias:e.target.value}));}} style={{width:70,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
+                      <span style={{fontSize:12,color:"var(--t3)"}}>días</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:13,fontWeight:700}}>😴 Vendedoras inactivas</label>
+                      <input type="checkbox" checked={reglasForm.activa_vendedoras_inactivas} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{activa_vendedoras_inactivas:e.target.checked}));}} style={{width:20,height:20}}/>
+                    </div>
+                    <label style={{fontSize:11,color:"var(--t3)"}}>Avisar cuando una vendedora no vende hace más de</label>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                      <input type="number" value={reglasForm.vendedora_inactiva_dias} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{vendedora_inactiva_dias:e.target.value}));}} style={{width:70,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
+                      <span style={{fontSize:12,color:"var(--t3)"}}>días</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button className="cta cta-am" onClick={doGuardarReglas} disabled={reglasSaving}><Ic n="check" s={16}/>{reglasSaving?"Guardando...":"Guardar reglas"}</button>
+                <div style={{fontSize:10,color:"var(--t3)",marginTop:10,textAlign:"center"}}>Estas alertas se recalculan cada vez que se abre el dashboard, no son notificaciones push automáticas.</div>
+              </div>
+            </div>
+          )}
+
           {tab==="cuentacorriente"&&(isAdmin||me.role==="empresaria")&&(
             <div>
               <div className="ph">
@@ -6738,6 +6899,7 @@ export default function App() {
                   }
                   if (isAdmin || me.role==="empresaria") {
                     items.push({id:"cuentacorriente", lbl:"Cta. Corriente", ico:"chart", col:"#6d28d9"});
+                    items.push({id:"reglas", lbl:"Reglas automáticas", ico:"shield", col:"#be185d"});
                   }
                   if (me.role==="empresaria" || me.role==="lider") {
                     items.push({id:"resumen", lbl:"Resumen", ico:"chart", col:"var(--em-d,#0a8f4d)"});
