@@ -693,6 +693,8 @@ export default function App() {
   const [ccReporteSaving,  setCcReporteSaving]  = useState(false);
   const [ccReporteSubiendo,setCcReporteSubiendo]= useState(false);
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
+  const [pagosPendientes,        setPagosPendientes]        = useState([]);
+  const [pagosPendientesLoading, setPagosPendientesLoading] = useState(false);
   const ccReporteFileRef = useRef(null);
   const [ccPagoSubiendo,         setCcPagoSubiendo]         = useState(false);
   const [ccPdfGenerando,         setCcPdfGenerando]         = useState(false);
@@ -765,12 +767,14 @@ export default function App() {
     loadOrdenes();
     loadPedidosAbiertos();
     loadCuentaCorriente();
+    loadPagosPendientes();
     loadDashboard();
     loadMisObjetivos();
     loadRanking("mes");
     loadMisLogros();
     loadClientes();
     if (me.role==="deposito") setTab("deposito");
+    if (me.role==="administracion") setTab("cuentacorriente");
   }, [me && me.id]);
 
   // ── FASE 22: Pedidos en tiempo real ──────────────────────────────────────
@@ -2021,7 +2025,7 @@ export default function App() {
   }
 
   useEffect(function(){
-    if (tab==="reglas" && isAdmin && reglasEmpresasList.length===0) {
+    if (tab==="reglas" && (isAdmin||me.role==="administracion") && reglasEmpresasList.length===0) {
       sb.from("users").select("id,name").eq("role","empresaria").order("name").then(function(res){
         if (res.data) setReglasEmpresasList(res.data);
       });
@@ -2310,7 +2314,7 @@ export default function App() {
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
   // ── FASE 19: Cuenta Corriente ─────────────────────────────────────────────
   async function loadCuentaCorriente() {
-    if (!me || !(isAdmin || me.role==="empresaria")) return;
+    if (!me || !(isAdmin || me.role==="empresaria" || me.role==="administracion")) return;
     setCuentaCorrienteLoading(true);
     try {
       var res = await sb.rpc("rpc_cuenta_corriente_resumen");
@@ -2362,6 +2366,16 @@ export default function App() {
     setCcReporteSaving(false);
   }
 
+  async function loadPagosPendientes() {
+    if (!me || !(isAdmin || me.role==="administracion")) return;
+    setPagosPendientesLoading(true);
+    try {
+      var res = await sb.rpc("rpc_pagos_pendientes");
+      if (res.data) setPagosPendientes(res.data);
+    } catch(e) { /* noop */ }
+    setPagosPendientesLoading(false);
+  }
+
   async function doConfirmarPago(pagoId, empresaId) {
     setCcConfirmando(pagoId);
     try {
@@ -2369,8 +2383,11 @@ export default function App() {
       if (res.error) { toast("Error", res.error.message, "e"); setCcConfirmando(null); return; }
       toast("✅ Pago confirmado", "Ya se descontó del saldo", "s");
       await loadCuentaCorriente();
-      var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle", { p_empresa_id: empresaId });
-      if (det.data) setCcDetalle(det.data);
+      setPagosPendientes(function(prev){ return prev.filter(function(p){ return p.id!==pagoId; }); });
+      if (empresaId) {
+        var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle", { p_empresa_id: empresaId });
+        if (det.data) setCcDetalle(det.data);
+      }
     } catch(e) { toast("Error", e.message, "e"); }
     setCcConfirmando(null);
   }
@@ -3919,7 +3936,7 @@ export default function App() {
             <div className="hdr-avatar" style={me.color?{background:me.color}:{}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
             <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={function(){setTab("inicio");}}>
               <div className="hdr-hi">{me.role==="superadmin"?"👑 Administrador":("¡Hola, "+me.name.split(" ")[0]+"!")}</div>
-              <div className="hdr-sub">{me.role==="superadmin"?"Panel de control":me.role==="deposito"?"Panel de depósito":(tab==="recibidos"?"Acá ves lo que te entregaron para vender":"¿Lista para vender hoy?")}</div>
+              <div className="hdr-sub">{me.role==="superadmin"?"Panel de control":me.role==="deposito"?"Panel de depósito":me.role==="administracion"?"Panel de administración":(tab==="recibidos"?"Acá ves lo que te entregaron para vender":"¿Lista para vender hoy?")}</div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
               <div style={{position:"relative",cursor:"pointer"}} onClick={function(){setTab("contacts");}}>
@@ -6400,7 +6417,7 @@ export default function App() {
           )}
 
           {/* ══ CUENTA CORRIENTE (superadmin, solo lectura) ══ */}
-          {tab==="reglas"&&isAdmin&&(
+          {tab==="reglas"&&(isAdmin||me.role==="administracion")&&(
             <div>
               <div className="ph">
                 <div><div className="ph-h">🔔 Reglas automáticas</div><div className="ph-s">Umbrales de las alertas del dashboard, por empresa</div></div>
@@ -6482,10 +6499,10 @@ export default function App() {
             </div>
           )}
 
-          {tab==="cuentacorriente"&&(isAdmin||me.role==="empresaria")&&(
+          {tab==="cuentacorriente"&&(isAdmin||me.role==="empresaria"||me.role==="administracion")&&(
             <div>
               <div className="ph">
-                <div><div className="ph-h">💼 Cuenta Corriente</div><div className="ph-s">{isAdmin?"Saldo que cada empresaria debe pagar":"Lo que debés a la Empresa"}</div></div>
+                <div><div className="ph-h">💼 Cuenta Corriente</div><div className="ph-s">{(isAdmin||me.role==="administracion")?"Saldo que cada empresaria debe pagar":"Lo que debés a la Empresa"}</div></div>
                 <button className="btn btn-xs b-ghost" onClick={loadCuentaCorriente}><Ic n="undo" s={13}/></button>
               </div>
               <div className="pc">
@@ -6494,12 +6511,12 @@ export default function App() {
                 {cuentaCorriente.length>0&&(
                   <div className="card" style={{marginBottom:14,background:"var(--pri-l)"}}>
                     <div style={{padding:"14px 16px"}}>
-                      <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase"}}>{isAdmin?"Total general":"Mi saldo"}</div>
+                      <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase"}}>{(isAdmin||me.role==="administracion")?"Total general":"Mi saldo"}</div>
                       <div style={{fontSize:22,fontWeight:800,color:"var(--pri)"}}>{fmtARS(cuentaCorriente.reduce(function(s,c){return s+Number(c.saldo);},0))}</div>
                     </div>
                   </div>
                 )}
-                {isAdmin&&cuentaCorriente.map(function(c){
+                {(isAdmin||me.role==="administracion")&&cuentaCorriente.map(function(c){
                   var abierto = ccPagoAbierto===c.empresa_id;
                   return (
                     <div key={c.empresa_id} className="card" style={{marginBottom:10}}>
@@ -6591,6 +6608,41 @@ export default function App() {
                     })}
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ══ PAGOS PENDIENTES (global, admin/administracion) ══ */}
+          {tab==="pagospend"&&(isAdmin||me.role==="administracion")&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">⏳ Pagos pendientes</div><div className="ph-s">Reportados por las empresarias, todavía sin confirmar</div></div>
+                <button className="btn btn-xs b-ghost" onClick={loadPagosPendientes}><Ic n="undo" s={13}/></button>
+              </div>
+              <div className="pc">
+                {pagosPendientesLoading&&<div className="empty">Cargando...</div>}
+                {!pagosPendientesLoading&&pagosPendientes.length===0&&<div className="empty">No hay pagos pendientes de confirmar 🎉</div>}
+                {pagosPendientes.map(function(p){
+                  return (
+                    <div key={p.id} className="card" style={{marginBottom:10}}>
+                      <div style={{padding:"12px 14px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                          <Avatar name={p.empresa_nombre} size={34}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700}}>{p.empresa_nombre}</div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(p.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+                          </div>
+                          <div style={{fontSize:16,fontWeight:800,color:"var(--pri)"}}>{fmtARS(p.monto)}</div>
+                        </div>
+                        {p.nota&&<div style={{fontSize:12,color:"var(--t2)",fontStyle:"italic",marginBottom:8}}>"{p.nota}"</div>}
+                        <div style={{display:"flex",gap:8}}>
+                          {p.comprobante_url&&<a href={p.comprobante_url} target="_blank" rel="noreferrer" className="btn btn-xs b-ghost" style={{flex:1,padding:"8px",textAlign:"center"}}>📎 Ver comprobante</a>}
+                          <button className="btn btn-xs b-pri" style={{flex:1,padding:"8px"}} disabled={ccConfirmando===p.id} onClick={function(){doConfirmarPago(p.id, p.empresa_id);}}>{ccConfirmando===p.id?"Confirmando...":"✓ Confirmar"}</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -6818,6 +6870,7 @@ export default function App() {
                                 style={{fontSize:10,fontWeight:800,textTransform:"uppercase",border:"1.5px solid var(--pri-l)",background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"3px 6px",fontFamily:"inherit",cursor:"pointer"}}>
                                 {isAdmin&&<option value="empresaria">🏢 Empresaria</option>}
                                 {isAdmin&&<option value="deposito">🏭 Depósito</option>}
+                                {isAdmin&&<option value="administracion">🛠️ Administración</option>}
                                 <option value="lider">⭐ Líder</option>
                                 <option value="reseller">🛍️ Vendedora</option>
                               </select>
@@ -7080,8 +7133,11 @@ export default function App() {
         <nav className="tabbar">
           {(function(){
             var esDeposito = me.role==="deposito";
+            var esAdministracion = me.role==="administracion";
             var izq = esDeposito ? [
               {id:"deposito", lbl:"Depósito", ico:"box", dot: ordenes.some(function(o){return ["pendiente_produccion","en_preparacion"].includes(o.estado);})},
+            ] : esAdministracion ? [
+              {id:"cuentacorriente", lbl:"Cta. Corriente", ico:"chart"},
             ] : [
               {id:"inicio", lbl:"Inicio", ico:"home"},
               {id:"ventas", lbl:"Ventas", ico:"chart"},
@@ -7089,6 +7145,10 @@ export default function App() {
             var der = esDeposito ? [
               {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
               {id:"__mas",  lbl:"Más",       ico:"dots"},
+            ] : esAdministracion ? [
+              {id:"pagospend", lbl:"Pagos pend.", ico:"clock", dot: pagosPendientes.length>0},
+              {id:"reglas",    lbl:"Reglas",      ico:"shield"},
+              {id:"cuenta",    lbl:"Mi Cuenta",   ico:"user"},
             ] : [
               {id:"stock",  lbl:"Mi Stock", ico:"box"},
               {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
@@ -7110,7 +7170,7 @@ export default function App() {
               <React.Fragment>
                 {izq.map(TabItem)}
                 {/* Botón central [+] (no aplica para depósito) */}
-                {!esDeposito&&(
+                {!esDeposito&&!esAdministracion&&(
                   <div className="tab-fab-wrap" onClick={function(){
                     setMasMenu(false);
                     if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") { doIniciarPedidoEspecial(); }
@@ -7136,6 +7196,11 @@ export default function App() {
                   var items = me.role==="deposito" ? [
                     {id:"deposito",  lbl:"Depósito",  ico:"box",  col:"var(--bl-d)"},
                     {id:"cuenta",    lbl:"Mi Cuenta", ico:"user", col:"var(--pri)"},
+                  ] : me.role==="administracion" ? [
+                    {id:"cuentacorriente", lbl:"Cta. Corriente",     ico:"chart",  col:"#6d28d9"},
+                    {id:"pagospend",       lbl:"Pagos pendientes",   ico:"clock",  col:"#c2650a"},
+                    {id:"reglas",          lbl:"Reglas automáticas", ico:"shield", col:"#be185d"},
+                    {id:"cuenta",          lbl:"Mi Cuenta",          ico:"user",   col:"var(--pri)"},
                   ] : [
                     {id:"stock",     lbl:"Stock",     ico:"box",   col:"var(--in-d)"},
                     {id:"consigna",  lbl:"Consigna",  ico:"send",  col:"var(--in)"},
@@ -7151,7 +7216,7 @@ export default function App() {
                     }).length;
                     items.push({id:"pedesp", lbl:"Pedidos", ico:"send", col:"var(--am-d)", badge:pePend});
                   }
-                  if (me.role!=="deposito") {
+                  if (me.role!=="deposito" && me.role!=="administracion") {
                     items.push({id:"metas", lbl:"Metas", ico:"chart", col:"#c2185b"});
                     items.push({id:"clientes", lbl:"Clientes", ico:"users", col:"var(--bl-d)"});
                   }
