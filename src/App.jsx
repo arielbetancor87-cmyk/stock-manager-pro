@@ -641,6 +641,14 @@ export default function App() {
   const [campResumenLoading, setCampResumenLoading] = useState(false);
   const [reglasForm,      setReglasForm]      = useState({stock_dias_alerta:14,pedido_detenido_dias:5,cobranza_vencida_dias:15,vendedora_inactiva_dias:7,activa_stock:true,activa_pedidos_detenidos:true,activa_cobranzas:true,activa_vendedoras_inactivas:true});
   const [reglasSaving,    setReglasSaving]    = useState(false);
+  const [reglasEmpresaId,     setReglasEmpresaId]     = useState("");
+  const [reglasEmpresasList,  setReglasEmpresasList]  = useState([]);
+  const [reglasLoading,       setReglasLoading]       = useState(false);
+  const [clNotas,          setClNotas]          = useState({}); // {clienteId: [notas]}
+  const [clNotasLoading,   setClNotasLoading]   = useState(null); // clienteId en carga
+  const [clNuevaNotaTexto, setClNuevaNotaTexto] = useState("");
+  const [clNuevaNotaTipo,  setClNuevaNotaTipo]  = useState("seguimiento");
+  const [clNotaSaving,     setClNotaSaving]     = useState(false);
   const [campExpandida,     setCampExpandida]     = useState(null);
   const [campGestProductos, setCampGestProductos] = useState([]);
   const [campGestLoading,   setCampGestLoading]   = useState(false);
@@ -679,6 +687,12 @@ export default function App() {
   const [ccPagoNota,             setCcPagoNota]             = useState("");
   const [ccPagoSaving,           setCcPagoSaving]           = useState(false);
   const [ccPagoArchivo,          setCcPagoArchivo]          = useState(null);
+  const [ccReporteMonto,   setCcReporteMonto]   = useState("");
+  const [ccReporteNota,    setCcReporteNota]    = useState("");
+  const [ccReporteArchivo, setCcReporteArchivo] = useState(null);
+  const [ccReporteSaving,  setCcReporteSaving]  = useState(false);
+  const [ccReporteSubiendo,setCcReporteSubiendo]= useState(false);
+  const [ccConfirmando,    setCcConfirmando]    = useState(null);
   const [ccPagoSubiendo,         setCcPagoSubiendo]         = useState(false);
   const [ccPdfGenerando,         setCcPdfGenerando]         = useState(false);
 
@@ -2006,13 +2020,28 @@ export default function App() {
   }
 
   useEffect(function(){
-    if (dashboard && dashboard.reglas) setReglasForm(dashboard.reglas);
-  }, [dashboard]);
+    if (tab==="reglas" && isAdmin && reglasEmpresasList.length===0) {
+      sb.from("users").select("id,name").eq("role","empresaria").order("name").then(function(res){
+        if (res.data) setReglasEmpresasList(res.data);
+      });
+    }
+  }, [tab, isAdmin]);
+
+  useEffect(function(){
+    if (!reglasEmpresaId) return;
+    setReglasLoading(true);
+    sb.rpc("rpc_get_reglas_automaticas", { p_empresa_id: reglasEmpresaId }).then(function(res){
+      if (res.data) setReglasForm(res.data);
+      setReglasLoading(false);
+    });
+  }, [reglasEmpresaId]);
 
   async function doGuardarReglas() {
+    if (!reglasEmpresaId) { toast("Elegí una empresa primero", "", "e"); return; }
     setReglasSaving(true);
     try {
       var res = await sb.rpc("rpc_set_reglas_automaticas", {
+        p_empresa_id: reglasEmpresaId,
         p_stock_dias: parseInt(reglasForm.stock_dias_alerta)||14,
         p_pedido_dias: parseInt(reglasForm.pedido_detenido_dias)||5,
         p_cobranza_dias: parseInt(reglasForm.cobranza_vencida_dias)||15,
@@ -2024,7 +2053,6 @@ export default function App() {
       });
       if (res.error) { toast("Error", res.error.message, "e"); setReglasSaving(false); return; }
       toast("✅ Reglas guardadas", "", "s");
-      await loadDashboard();
     } catch(e) { toast("Error", e.message, "e"); }
     setReglasSaving(false);
   }
@@ -2237,6 +2265,39 @@ export default function App() {
     return map[estado] || map.sin_compras;
   }
 
+  async function doToggleDetalleCliente(c) {
+    var yaAbierto = clDetalle===c.id;
+    setClDetalle(yaAbierto?null:c.id);
+    if (!yaAbierto && !clNotas[c.id]) {
+      setClNotasLoading(c.id);
+      var res = await sb.from("cliente_notas").select("*").eq("cliente_id", c.id).order("created_at",{ascending:false});
+      setClNotas(function(prev){ return Object.assign({},prev,{[c.id]:res.data||[]}); });
+      setClNotasLoading(null);
+    }
+  }
+
+  async function doAgregarNotaCliente(clienteId) {
+    if (!clNuevaNotaTexto.trim()) { toast("Escribí el texto de la nota", "", "e"); return; }
+    setClNotaSaving(true);
+    try {
+      var res = await sb.rpc("rpc_agregar_nota_cliente", { p_cliente_id: clienteId, p_tipo: clNuevaNotaTipo, p_texto: clNuevaNotaTexto.trim() });
+      if (res.error) { toast("Error", res.error.message, "e"); setClNotaSaving(false); return; }
+      var res2 = await sb.from("cliente_notas").select("*").eq("cliente_id", clienteId).order("created_at",{ascending:false});
+      setClNotas(function(prev){ return Object.assign({},prev,{[clienteId]:res2.data||[]}); });
+      setClNuevaNotaTexto(""); toast("Guardado", "", "s");
+    } catch(e) { toast("Error", e.message, "e"); }
+    setClNotaSaving(false);
+  }
+
+  async function doResolverNotaCliente(clienteId, notaId) {
+    var res = await sb.rpc("rpc_resolver_nota_cliente", { p_nota_id: notaId });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setClNotas(function(prev){
+      var lista = (prev[clienteId]||[]).map(function(n){ return n.id===notaId?Object.assign({},n,{resuelto:true}):n; });
+      return Object.assign({},prev,{[clienteId]:lista});
+    });
+  }
+
   function whatsappRecompra(c) {
     if (!c.telefono) { toast("Este cliente no tiene teléfono cargado", "", "e"); return; }
     var tel = c.telefono.replace(/\D/g,"");
@@ -2275,6 +2336,42 @@ export default function App() {
       if (det.data) setCcDetalle(det.data);
     } catch(e) { /* noop */ }
     setCcDetalleLoading(false);
+  }
+
+  async function doReportarPagoPropio() {
+    var val = parseFloat(ccReporteMonto);
+    if (isNaN(val) || val<=0) { toast("Monto inválido", "", "e"); return; }
+    if (!ccReporteArchivo) { toast("Adjuntá el comprobante", "Es obligatorio para reportar el pago", "e"); return; }
+    setCcReporteSaving(true);
+    try {
+      setCcReporteSubiendo(true);
+      var ext = ccReporteArchivo.name.split(".").pop();
+      var fileName = "reporte-"+me.id+"-"+Date.now()+"."+ext;
+      var up = await sb.storage.from("comprobantes-pago").upload(fileName, ccReporteArchivo, { contentType: ccReporteArchivo.type, upsert: true });
+      setCcReporteSubiendo(false);
+      if (up.error) { toast("Error al subir el comprobante", up.error.message, "e"); setCcReporteSaving(false); return; }
+      var pub = sb.storage.from("comprobantes-pago").getPublicUrl(fileName);
+
+      var res = await sb.rpc("rpc_reportar_pago_cuenta_corriente", { p_monto: val, p_nota: ccReporteNota.trim(), p_comprobante_url: pub.data.publicUrl });
+      if (res.error) { toast("Error", res.error.message, "e"); setCcReporteSaving(false); return; }
+      toast("📎 Pago reportado", "Queda pendiente hasta que lo confirmen", "s");
+      setCcReporteMonto(""); setCcReporteNota(""); setCcReporteArchivo(null);
+      await loadCuentaCorriente();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCcReporteSaving(false);
+  }
+
+  async function doConfirmarPago(pagoId, empresaId) {
+    setCcConfirmando(pagoId);
+    try {
+      var res = await sb.rpc("rpc_confirmar_pago_cuenta_corriente", { p_pago_id: pagoId });
+      if (res.error) { toast("Error", res.error.message, "e"); setCcConfirmando(null); return; }
+      toast("✅ Pago confirmado", "Ya se descontó del saldo", "s");
+      await loadCuentaCorriente();
+      var det = await sb.rpc("rpc_mi_cuenta_corriente_detalle", { p_empresa_id: empresaId });
+      if (det.data) setCcDetalle(det.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCcConfirmando(null);
   }
 
   async function doRegistrarPago(empresaId) {
@@ -6227,7 +6324,7 @@ export default function App() {
                     var abierto = clDetalle===c.id;
                     return (
                       <div key={c.id} className="card" style={{marginBottom:10}}>
-                        <div style={{padding:"12px 14px",cursor:"pointer"}} onClick={function(){setClDetalle(abierto?null:c.id);}}>
+                        <div style={{padding:"12px 14px",cursor:"pointer"}} onClick={function(){doToggleDetalleCliente(c);}}>
                           <div style={{display:"flex",alignItems:"center",gap:10}}>
                             <Avatar name={c.nombre} size={38}/>
                             <div style={{flex:1,minWidth:0}}>
@@ -6263,6 +6360,34 @@ export default function App() {
                               <button className="btn btn-xs b-ghost" style={{padding:"8px 12px"}} onClick={function(){abrirEditarCliente(c);}}>✏️</button>
                               <button className="btn btn-xs b-cr" style={{padding:"8px 12px"}} onClick={function(){if(window.confirm("¿Eliminar "+c.nombre+"?")) doEliminarCliente(c.id);}}>🗑️</button>
                             </div>
+
+                            <div style={{borderTop:"1px solid var(--brd)",marginTop:12,paddingTop:12}}>
+                              <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>📋 Reclamos y seguimientos</div>
+                              {clNotasLoading===c.id&&<div style={{fontSize:11,color:"var(--t3)"}}>Cargando...</div>}
+                              {(clNotas[c.id]||[]).length===0&&clNotasLoading!==c.id&&<div style={{fontSize:11,color:"var(--t3)",marginBottom:8}}>Sin registros todavía</div>}
+                              {(clNotas[c.id]||[]).map(function(n){
+                                var iconos = {reclamo:"⚠️",seguimiento:"📌",nota:"📝"};
+                                return (
+                                  <div key={n.id} style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:6,opacity:n.resuelto?0.55:1}}>
+                                    <span>{iconos[n.tipo]}</span>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{fontSize:12,textDecoration:n.resuelto?"line-through":"none"}}>{n.texto}</div>
+                                      <div style={{fontSize:9,color:"var(--t3)"}}>{new Date(n.created_at).toLocaleDateString("es-AR")}</div>
+                                    </div>
+                                    {!n.resuelto&&<button className="btn btn-xs b-ghost" style={{padding:"3px 7px",fontSize:9}} onClick={function(){doResolverNotaCliente(c.id, n.id);}}>✓ Resuelto</button>}
+                                  </div>
+                                );
+                              })}
+                              <div style={{display:"flex",gap:6,marginTop:8}}>
+                                <select value={clNuevaNotaTipo} onChange={function(e){setClNuevaNotaTipo(e.target.value);}} style={{fontSize:11,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 6px",fontFamily:"inherit"}}>
+                                  <option value="seguimiento">📌 Seguimiento</option>
+                                  <option value="reclamo">⚠️ Reclamo</option>
+                                  <option value="nota">📝 Nota</option>
+                                </select>
+                                <input value={clNuevaNotaTexto} onChange={function(e){setClNuevaNotaTexto(e.target.value);}} placeholder="Escribí acá..." style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                                <button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={clNotaSaving} onClick={function(){doAgregarNotaCliente(c.id);}}>+</button>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -6274,12 +6399,25 @@ export default function App() {
           )}
 
           {/* ══ CUENTA CORRIENTE (superadmin, solo lectura) ══ */}
-          {tab==="reglas"&&(isAdmin||me.role==="empresaria")&&(
+          {tab==="reglas"&&isAdmin&&(
             <div>
               <div className="ph">
-                <div><div className="ph-h">🔔 Reglas automáticas</div><div className="ph-s">Umbrales de las alertas del dashboard, sin tocar código</div></div>
+                <div><div className="ph-h">🔔 Reglas automáticas</div><div className="ph-s">Umbrales de las alertas del dashboard, por empresa</div></div>
               </div>
               <div className="pc">
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"14px 16px"}}>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Empresa</label>
+                    <select value={reglasEmpresaId} onChange={function(e){setReglasEmpresaId(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,fontFamily:"inherit"}}>
+                      <option value="">Elegí una empresa...</option>
+                      {reglasEmpresasList.map(function(e){return <option key={e.id} value={e.id}>{e.name}</option>;})}
+                    </select>
+                  </div>
+                </div>
+
+                {!reglasEmpresaId&&<div className="empty">Elegí una empresa para ver y editar sus reglas</div>}
+                {reglasEmpresaId&&reglasLoading&&<div className="empty">Cargando...</div>}
+                {reglasEmpresaId&&!reglasLoading&&(<>
                 <div className="card" style={{marginBottom:14}}>
                   <div style={{padding:"14px 16px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -6338,6 +6476,7 @@ export default function App() {
 
                 <button className="cta cta-am" onClick={doGuardarReglas} disabled={reglasSaving}><Ic n="check" s={16}/>{reglasSaving?"Guardando...":"Guardar reglas"}</button>
                 <div style={{fontSize:10,color:"var(--t3)",marginTop:10,textAlign:"center"}}>Estas alertas se recalculan cada vez que se abre el dashboard, no son notificaciones push automáticas.</div>
+                </>)}
               </div>
             </div>
           )}
@@ -6391,13 +6530,17 @@ export default function App() {
                           <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:8}}>Movimientos</div>
                           {ccDetalleLoading&&<div style={{fontSize:12,color:"var(--t3)"}}>Cargando...</div>}
                           {!ccDetalleLoading&&ccDetalle.map(function(d){
+                            var pendiente = d.tipo==="pago" && d.estado==="pendiente";
                             return (
                               <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--brd)"}}>
                                 <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontSize:11,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" · "+d.cliente_nombre:"")):("Pago"+(d.nota?" · "+d.nota:""))}</div>
+                                  <div style={{fontSize:11,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" · "+d.cliente_nombre:"")):("Pago"+(d.nota?" · "+d.nota:""))}
+                                    {pendiente&&<span style={{marginLeft:6,background:"#fff0db",color:"#c2650a",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:800}}>PENDIENTE</span>}
+                                  </div>
                                   <div style={{fontSize:9,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}{d.comprobante_url&&<> · <a href={d.comprobante_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontWeight:700}}>📎 Ver comprobante</a></>}</div>
+                                  {pendiente&&<button className="btn btn-xs b-pri" style={{marginTop:4,padding:"4px 10px",fontSize:10}} disabled={ccConfirmando===d.id} onClick={function(){doConfirmarPago(d.id, c.empresa_id);}}>{ccConfirmando===d.id?"Confirmando...":"✓ Confirmar pago"}</button>}
                                 </div>
-                                <div style={{fontSize:12,fontWeight:800,color:d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)"}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
+                                <div style={{fontSize:12,fontWeight:800,color:pendiente?"var(--t3)":(d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)")}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
                               </div>
                             );
                           })}
@@ -6409,18 +6552,38 @@ export default function App() {
                 {!isAdmin&&me.role==="empresaria"&&(
                   <>
                     <button className="cta cta-am" style={{marginBottom:14}} disabled={ccPdfGenerando} onClick={function(){generarPdfCuentaCorriente(me.id, me.name);}}>{ccPdfGenerando?"Generando...":"📄 Descargar estado de cuenta (PDF)"}</button>
+
+                    <div className="card" style={{marginBottom:14,background:"var(--bg2)"}}>
+                      <div style={{padding:"14px 16px"}}>
+                        <div style={{fontSize:12,fontWeight:800,marginBottom:8}}>📎 Reportar un pago</div>
+                        <div style={{fontSize:10,color:"var(--t3)",marginBottom:8}}>Queda pendiente hasta que la Empresa lo confirme.</div>
+                        <div style={{display:"flex",gap:6,marginBottom:6}}>
+                          <input type="number" value={ccReporteMonto} onChange={function(e){setCcReporteMonto(e.target.value);}} placeholder="Monto" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                          <input value={ccReporteNota} onChange={function(e){setCcReporteNota(e.target.value);}} placeholder="Nota (opcional)" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                        </div>
+                        <label style={{display:"block",fontSize:11,color:"var(--t3)",marginBottom:8,cursor:"pointer"}}>
+                          📎 {ccReporteArchivo?ccReporteArchivo.name:"Adjuntar comprobante (obligatorio)"}
+                          <input type="file" accept="image/*,.pdf" onChange={function(e){setCcReporteArchivo(e.target.files[0]||null);}} style={{display:"none"}}/>
+                        </label>
+                        <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={ccReporteSaving} onClick={doReportarPagoPropio}>{ccReporteSubiendo?"Subiendo comprobante...":ccReporteSaving?"Guardando...":"Reportar pago"}</button>
+                      </div>
+                    </div>
+
                     <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Movimientos</div>
                     {ccDetalleLoading&&<div className="empty">Cargando...</div>}
                     {!ccDetalleLoading&&ccDetalle.length===0&&<div className="empty">Sin movimientos todavía</div>}
                     {ccDetalle.map(function(d){
+                      var pendiente = d.tipo==="pago" && d.estado==="pendiente";
                       return (
                         <div key={d.id} className="card" style={{marginBottom:8}}>
                           <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:12,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" — "+d.cliente_nombre:"")):("Pago registrado"+(d.nota?" — "+d.nota:""))}</div>
+                              <div style={{fontSize:12,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" — "+d.cliente_nombre:"")):("Pago"+(d.nota?" — "+d.nota:""))}
+                                {pendiente&&<span style={{marginLeft:6,background:"#fff0db",color:"#c2650a",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:800}}>PENDIENTE DE CONFIRMAR</span>}
+                              </div>
                               <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}{d.comprobante_url&&<> · <a href={d.comprobante_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontWeight:700}}>📎 Ver comprobante</a></>}</div>
                             </div>
-                            <div style={{fontSize:13,fontWeight:800,color:d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)"}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
+                            <div style={{fontSize:13,fontWeight:800,color:pendiente?"var(--t3)":(d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)")}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
                           </div>
                         </div>
                       );
@@ -6997,6 +7160,8 @@ export default function App() {
                   }
                   if (isAdmin || me.role==="empresaria") {
                     items.push({id:"cuentacorriente", lbl:"Cta. Corriente", ico:"chart", col:"#6d28d9"});
+                  }
+                  if (isAdmin) {
                     items.push({id:"reglas", lbl:"Reglas automáticas", ico:"shield", col:"#be185d"});
                   }
                   if (me.role==="empresaria" || me.role==="lider") {
