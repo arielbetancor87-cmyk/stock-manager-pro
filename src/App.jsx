@@ -633,6 +633,9 @@ export default function App() {
   // ── FASE 5: Campañas ─────────────────────────────────────────────────────
   const [campanias,       setCampanias]       = useState([]);
   const [campNombre,      setCampNombre]      = useState("");
+  const [campResumenId,      setCampResumenId]      = useState(null);
+  const [campResumen,        setCampResumen]        = useState(null);
+  const [campResumenLoading, setCampResumenLoading] = useState(false);
   const [reglasForm,      setReglasForm]      = useState({stock_dias_alerta:14,pedido_detenido_dias:5,cobranza_vencida_dias:15,vendedora_inactiva_dias:7,activa_stock:true,activa_pedidos_detenidos:true,activa_cobranzas:true,activa_vendedoras_inactivas:true});
   const [reglasSaving,    setReglasSaving]    = useState(false);
   const [campExpandida,     setCampExpandida]     = useState(null);
@@ -2021,6 +2024,17 @@ export default function App() {
       await loadDashboard();
     } catch(e) { toast("Error", e.message, "e"); }
     setReglasSaving(false);
+  }
+
+  async function doVerResumenCampania(c) {
+    if (campResumenId===c.id) { setCampResumenId(null); return; }
+    setCampResumenId(c.id); setCampResumen(null); setCampResumenLoading(true);
+    try {
+      var res = await sb.rpc("rpc_resumen_campania", { p_campania_id: c.id });
+      if (res.error) { toast("Error", res.error.message, "e"); }
+      else setCampResumen(res.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCampResumenLoading(false);
   }
 
   async function doCambiarEstadoCampania(id, nuevoEstado) {
@@ -6433,9 +6447,39 @@ export default function App() {
                                 {c.estado==="abierta"?"Cerrar":"Reabrir"}
                               </button>
                             </div>
-                            <button className="btn btn-xs" style={{background:"#f3e8ff",color:"#6d28d9",border:"1px solid #e0c8fb",borderRadius:8,fontWeight:700,padding:"5px 10px",fontSize:10,marginBottom:8}} onClick={function(){doExpandirCampania(c);}}>
-                              🏷️ {campExpandida===c.id?"Ocultar productos y precios":"Productos y precios de esta campaña"}
-                            </button>
+                            <div style={{display:"flex",gap:8,marginBottom:8}}>
+                              <button className="btn btn-xs" style={{background:"#f3e8ff",color:"#6d28d9",border:"1px solid #e0c8fb",borderRadius:8,fontWeight:700,padding:"5px 10px",fontSize:10}} onClick={function(){doExpandirCampania(c);}}>
+                                🏷️ {campExpandida===c.id?"Ocultar productos y precios":"Productos y precios"}
+                              </button>
+                              <button className="btn btn-xs" style={{background:"#e0f2fe",color:"#0369a1",border:"1px solid #bae6fd",borderRadius:8,fontWeight:700,padding:"5px 10px",fontSize:10}} onClick={function(){doVerResumenCampania(c);}}>
+                                📊 {campResumenId===c.id?"Ocultar resumen":"Ver resumen"}
+                              </button>
+                            </div>
+                            {campResumenId===c.id&&(
+                              <div style={{background:"#f0f9ff",borderRadius:10,padding:10,marginBottom:10}}>
+                                {campResumenLoading&&<div style={{fontSize:11,color:"var(--t3)"}}>Cargando...</div>}
+                                {campResumen&&(<>
+                                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                                    <div><div style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Facturado (entregado)</div><div style={{fontSize:15,fontWeight:800,color:"var(--pri)"}}>{fmtARS(campResumen.facturado)}</div></div>
+                                    <div><div style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Pedidos entregados</div><div style={{fontSize:15,fontWeight:800}}>{campResumen.pedidos_entregados} ({campResumen.unidades} u.)</div></div>
+                                    <div><div style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>En curso (sin entregar)</div><div style={{fontSize:13,fontWeight:800,color:"#c2650a"}}>{fmtARS(campResumen.pendiente_en_curso)} ({campResumen.pedidos_en_curso})</div></div>
+                                  </div>
+                                  {campResumen.top_vendedoras.length>0&&(<>
+                                    <div style={{fontSize:10,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:4}}>Top vendedoras</div>
+                                    {campResumen.top_vendedoras.map(function(v,idx){
+                                      return <div key={idx} style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}><span>{v.vendedora}</span><b>{fmtARS(v.total)}</b></div>;
+                                    })}
+                                  </>)}
+                                  {campResumen.top_productos.length>0&&(<>
+                                    <div style={{fontSize:10,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginTop:8,marginBottom:4}}>Top productos</div>
+                                    {campResumen.top_productos.map(function(p,idx){
+                                      return <div key={idx} style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}><span>{p.producto}</span><b>{p.unidades} u.</b></div>;
+                                    })}
+                                  </>)}
+                                  {campResumen.pedidos_entregados===0&&<div style={{fontSize:11,color:"var(--t3)"}}>Todavía no hay pedidos entregados de esta campaña.</div>}
+                                </>)}
+                              </div>
+                            )}
                             {campExpandida===c.id&&(
                               <div style={{background:"var(--bg2)",borderRadius:10,padding:10,marginBottom:10}}>
                                 {campGestProductos.length===0&&!campGestLoading&&(
