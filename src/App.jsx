@@ -585,6 +585,11 @@ export default function App() {
   const [ctaCodVend,    setCtaCodVend]    = useState("");
   const [ctaLocalidad,  setCtaLocalidad]  = useState("");
   const [ctaZonaEnvio,  setCtaZonaEnvio]  = useState("");
+  const [ctaCP,         setCtaCP]         = useState("");
+  const [ctaRemNombre,     setCtaRemNombre]     = useState("");
+  const [ctaRemDireccion,  setCtaRemDireccion]  = useState("");
+  const [ctaRemCP,         setCtaRemCP]         = useState("");
+  const [ctaRemLocalidad,  setCtaRemLocalidad]  = useState("");
   const [ctaPass,       setCtaPass]       = useState("");
   const [ctaPass2,      setCtaPass2]      = useState("");
   const [ctaSaving,     setCtaSaving]     = useState(false);
@@ -726,7 +731,9 @@ export default function App() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
     setCtaDni(me.dni||""); setCtaCodVend(me.codigo_vendedora||""); setCtaLocalidad(me.localidad||"");
-    setCtaZonaEnvio(me.zona_envio||"");
+    setCtaZonaEnvio(me.zona_envio||""); setCtaCP(me.codigo_postal||"");
+    setCtaRemNombre(me.remitente_nombre||""); setCtaRemDireccion(me.remitente_direccion||"");
+    setCtaRemCP(me.remitente_cp||""); setCtaRemLocalidad(me.remitente_localidad||"");
     loadJerarquia();
     loadPedidosEspeciales();
     loadResumen();
@@ -1452,7 +1459,9 @@ export default function App() {
       var upd = await sb.from("users").update({
         name: ctaName.trim(), telefono: ctaTel.trim(), direccion: ctaDir.trim(),
         dni: ctaDni.trim(), codigo_vendedora: ctaCodVend.trim(), localidad: ctaLocalidad.trim(),
-        zona_envio: ctaZonaEnvio.trim()
+        zona_envio: ctaZonaEnvio.trim(), codigo_postal: ctaCP.trim(),
+        remitente_nombre: ctaRemNombre.trim(), remitente_direccion: ctaRemDireccion.trim(),
+        remitente_cp: ctaRemCP.trim(), remitente_localidad: ctaRemLocalidad.trim()
       }).eq("id", me.id).select().single();
       if (upd.error) { toast("Error al guardar", upd.error.message, "e"); setCtaSaving(false); return; }
       if (ctaPass) {
@@ -2269,40 +2278,72 @@ export default function App() {
 
   // Genera SOLO la etiqueta de envío (1 página, con QR) — para llevar al correo,
   // sin mezclarla con el remito/factura. Reutiliza los mismos datos snapshot.
+  //
+  // El REMITENTE ahora es propio de cada empresa (Mi Cuenta → Datos del remitente,
+  // rol empresaria), copiado a la orden al generarse. Si la empresaria todavía no
+  // lo cargó, se muestra un aviso en vez de inventar datos.
+  //
+  // El QR/código interno es solo una referencia de nuestro sistema (orden+pedido),
+  // NO es un código de barras válido de Correo Argentino/PAQ.AR: el tracking real
+  // se consigue dando de alta el envío en el sistema del correo y se carga a mano
+  // en el campo "N° de seguimiento" de la orden.
   async function generarEtiquetaSola(o) {
     try {
       var ped = o.pedido || {};
+      var rem = {
+        nombre: o.remitente_nombre || "[Falta cargar el remitente en Mi Cuenta]",
+        direccion: o.remitente_direccion || "-",
+        cp: o.remitente_cp || "-",
+        localidad: o.remitente_localidad || "-"
+      };
       var doc = new jsPDF({ unit: "mm", format: "a4" });
       var pageW = doc.internal.pageSize.getWidth();
       var margin = 14;
+      var boxW = pageW - margin*2;
 
       doc.setFillColor(224,34,78);
-      doc.rect(0,0,pageW,22,"F");
+      doc.rect(0,0,pageW,20,"F");
       doc.setTextColor(255,255,255);
-      doc.setFontSize(16); doc.setFont(undefined,"bold");
-      doc.text("Etiqueta de Envío", margin, 14);
+      doc.setFontSize(15); doc.setFont(undefined,"bold");
+      doc.text("Etiqueta de Envío", margin, 13);
       doc.setFontSize(10); doc.setFont(undefined,"normal");
-      doc.text("Orden #" + o.numero, pageW-margin, 14, {align:"right"});
+      doc.text("Orden #" + o.numero, pageW-margin, 13, {align:"right"});
 
-      var y = 34;
+      var y = 30;
       doc.setTextColor(30,30,30);
+
+      // ── REMITENTE ──
+      doc.setDrawColor(180,180,180);
+      doc.rect(margin, y, boxW, 24, "D");
+      doc.setFontSize(8); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
+      doc.text("REMITENTE", margin+4, y+7);
+      doc.setFontSize(11); doc.setTextColor(30,30,30);
+      doc.text(rem.nombre, margin+4, y+13);
+      doc.setFontSize(9); doc.setFont(undefined,"normal");
+      doc.text(rem.direccion + "   ·   CP: " + rem.cp + "   ·   " + rem.localidad, margin+4, y+19);
+      y += 24 + 6;
+
+      // ── DESTINATARIO (+ QR de referencia interna) ──
+      var destH = 44;
+      doc.setDrawColor(180,180,180);
+      doc.rect(margin, y, boxW, destH, "D");
 
       var qrTexto = "ORDEN-"+o.numero+"-PEDIDO-"+(ped.numero_pedido||"");
       var qrDataUrl = await QRCode.toDataURL(qrTexto, { margin: 1, width: 200 });
-      doc.addImage(qrDataUrl, "PNG", pageW-margin-32, y, 32, 32);
+      doc.addImage(qrDataUrl, "PNG", pageW-margin-4-30, y+4, 30, 30);
 
-      doc.setFontSize(9); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
-      doc.text("DESTINATARIO", margin, y+4);
-      doc.setFontSize(14); doc.setTextColor(30,30,30);
-      doc.text(o.empresaria_nombre || "-", margin, y+12);
-      doc.setFontSize(10); doc.setFont(undefined,"normal");
-      var y2 = y+19;
-      if (o.empresaria_codigo) { doc.text("Código: " + o.empresaria_codigo, margin, y2); y2 += 6; }
-      doc.text("Dirección: " + (o.empresaria_direccion || "-"), margin, y2); y2 += 6;
-      doc.text("Localidad: " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin, y2); y2 += 6;
-      doc.text("Teléfono: " + (o.empresaria_telefono || "-"), margin, y2); y2 += 6;
+      doc.setFontSize(8); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
+      doc.text("DESTINATARIO", margin+4, y+7);
+      doc.setFontSize(13); doc.setTextColor(30,30,30); doc.setFont(undefined,"bold");
+      doc.text(o.empresaria_nombre || "-", margin+4, y+14);
+      doc.setFontSize(9); doc.setFont(undefined,"normal");
+      var y2 = y+20;
+      if (o.empresaria_codigo) { doc.text("Código: " + o.empresaria_codigo, margin+4, y2); y2 += 5.5; }
+      doc.text((o.empresaria_direccion || "-"), margin+4, y2); y2 += 5.5;
+      doc.text("CP: " + (o.empresaria_cp || "-") + "   ·   " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin+4, y2); y2 += 5.5;
+      doc.text("Tel: " + (o.empresaria_telefono || "-"), margin+4, y2);
 
-      y = Math.max(y2, y+38) + 8;
+      y += destH + 8;
       doc.setDrawColor(220,220,220);
       doc.line(margin, y, pageW-margin, y); y += 10;
 
@@ -2310,10 +2351,12 @@ export default function App() {
       doc.text("ENVÍO", margin, y); y += 7;
       doc.setFontSize(11); doc.setTextColor(30,30,30); doc.setFont(undefined,"normal");
       doc.text("Transporte: " + (o.transporte || "A coordinar"), margin, y); y += 7;
-      doc.text("N° de seguimiento: " + (o.tracking || "-"), margin, y); y += 7;
+      doc.text("N° de seguimiento (Correo Argentino): " + (o.tracking || "________________________"), margin, y); y += 7;
       doc.text("N° de Orden: " + o.numero + "   ·   N° de Pedido: " + (ped.numero_pedido||"-"), margin, y); y += 7;
       doc.text("Cantidad de bultos: " + (ped.qty || (ped.items||[]).reduce(function(s,it){return s+it.qty;},0)) + " unidad(es)", margin, y);
 
+      doc.setFontSize(7); doc.setTextColor(190,120,40);
+      doc.text("⚠ El QR es una referencia interna del sistema, no un código postal oficial. El tracking real lo asigna Correo Argentino.", margin, 278);
       doc.setFontSize(8); doc.setTextColor(150,150,150);
       doc.text("Emitido: " + new Date().toLocaleString("es-AR"), margin, 285);
 
@@ -2344,6 +2387,14 @@ export default function App() {
       var y = 34;
       doc.setTextColor(30,30,30);
 
+      // Remitente (propio de cada empresa, cargado en Mi Cuenta)
+      doc.setFontSize(8); doc.setFont(undefined,"bold"); doc.setTextColor(140,140,140);
+      doc.text("REMITENTE: " + (o.remitente_nombre || "[Falta cargar el remitente en Mi Cuenta]") +
+        (o.remitente_direccion ? "  ·  " + o.remitente_direccion : "") +
+        (o.remitente_cp ? "  ·  CP: " + o.remitente_cp : "") +
+        (o.remitente_localidad ? "  ·  " + o.remitente_localidad : ""), margin, y);
+      y += 10;
+
       // Código QR (identifica pedido + orden)
       var qrTexto = "ORDEN-"+o.numero+"-PEDIDO-"+(ped.numero_pedido||"");
       var qrDataUrl = await QRCode.toDataURL(qrTexto, { margin: 1, width: 200 });
@@ -2357,7 +2408,7 @@ export default function App() {
       var y2 = y+19;
       if (o.empresaria_codigo) { doc.text("Código: " + o.empresaria_codigo, margin, y2); y2 += 6; }
       doc.text("Dirección: " + (o.empresaria_direccion || "-"), margin, y2); y2 += 6;
-      doc.text("Localidad: " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin, y2); y2 += 6;
+      doc.text("CP: " + (o.empresaria_cp || "-") + "  ·  Localidad: " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin, y2); y2 += 6;
       doc.text("Teléfono: " + (o.empresaria_telefono || "-"), margin, y2); y2 += 6;
 
       y = Math.max(y2, y+38) + 8;
@@ -5069,8 +5120,29 @@ export default function App() {
                       <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
                     </>)}
                     {me.role==="empresaria"&&(<>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad</label>
+                      <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Código Postal</label>
+                      <input value={ctaCP} onChange={function(e){setCtaCP(e.target.value);}} placeholder="Ej: 1603" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
                       <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Zona de envío</label>
                       <input value={ctaZonaEnvio} onChange={function(e){setCtaZonaEnvio(e.target.value);}} placeholder="Ej: Norte, Centro, Sur..." style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+
+                      <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:4,borderTop:"1px solid var(--brd)",paddingTop:14}}>Datos del remitente (para la etiqueta de envío)</div>
+                      <div style={{fontSize:10,color:"var(--t3)",marginBottom:10}}>Con qué nombre y dirección salís como remitente cuando depósito despacha tus pedidos.</div>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Nombre / Razón social</label>
+                      <input value={ctaRemNombre} onChange={function(e){setCtaRemNombre(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección del remitente</label>
+                      <input value={ctaRemDireccion} onChange={function(e){setCtaRemDireccion(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <div style={{display:"flex",gap:8}}>
+                        <div style={{flex:1}}>
+                          <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>CP remitente</label>
+                          <input value={ctaRemCP} onChange={function(e){setCtaRemCP(e.target.value);}} placeholder="Ej: 1603" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                        </div>
+                        <div style={{flex:2}}>
+                          <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad remitente</label>
+                          <input value={ctaRemLocalidad} onChange={function(e){setCtaRemLocalidad(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                        </div>
+                      </div>
                     </>)}
 
                     <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:10,borderTop:"1px solid var(--brd)",paddingTop:14}}>Cambiar contraseña (opcional)</div>
