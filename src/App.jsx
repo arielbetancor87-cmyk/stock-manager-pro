@@ -1758,8 +1758,48 @@ export default function App() {
   async function verHistorialPedidoEsp(id) {
     if (peHistOpen === id) { setPeHistOpen(null); return; }
     setPeHistOpen(id);
-    var res = await sb.from("pedidos_especiales_historial").select("*, usuario:usuario_id(name)").eq("pedido_id", id).order("created_at",{ascending:true});
-    setPeHist(res.data || []);
+    setPeHist([]);
+    try {
+      var eventos = [];
+
+      var resPed = await sb.from("pedidos_especiales_historial").select("*, usuario:usuario_id(name)").eq("pedido_id", id).order("created_at",{ascending:true});
+      (resPed.data||[]).forEach(function(h){
+        eventos.push({
+          tipo:"pedido", icono:"📦", fecha:h.created_at,
+          titulo: peEstadoInfo(h.estado_nuevo).lbl,
+          usuario: h.usuario?h.usuario.name:"Sistema",
+          obs: h.observaciones
+        });
+      });
+
+      var resOrden = await sb.from("ordenes_produccion").select("id,numero,estado,transporte,tracking").eq("pedido_id", id).maybeSingle();
+      if (resOrden.data) {
+        var orden = resOrden.data;
+        var resOrdenHist = await sb.from("ordenes_produccion_historial").select("*, usuario:usuario_id(name)").eq("orden_id", orden.id).order("created_at",{ascending:true});
+        (resOrdenHist.data||[]).forEach(function(h){
+          var lbls = {pendiente_produccion:"Orden en fábrica",en_preparacion:"En preparación",lista_despacho:"Lista para despacho",despachada:"Despachada",entregada:"Entregada"};
+          eventos.push({
+            tipo:"orden", icono:"🏭", fecha:h.created_at,
+            titulo: (lbls[h.estado_nuevo]||h.estado_nuevo) + " (Orden #"+orden.numero+")",
+            usuario: h.usuario?h.usuario.name:"Sistema",
+            obs: h.observaciones
+          });
+        });
+      }
+
+      var resDeuda = await sb.from("pedido_deudas").select("*").eq("pedido_id", id);
+      (resDeuda.data||[]).forEach(function(d){
+        eventos.push({
+          tipo:"deuda", icono:"💰", fecha:d.created_at,
+          titulo: "Deuda generada: " + fmtARS((d.monto_lider||0)+(d.monto_empresa||0)),
+          usuario: null,
+          obs: (d.pagada_lider?"✓ Cobrado por líder. ":"")+(d.pagada_empresa?"✓ Cobrado por empresa.":"")
+        });
+      });
+
+      eventos.sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
+      setPeHist(eventos);
+    } catch(e) { toast("Error al cargar el historial", e.message, "e"); }
   }
 
   // Semáforo visual: un vistazo rápido del momento del pedido, sin
@@ -5421,7 +5461,7 @@ export default function App() {
                         )}
 
                         <div style={{display:"flex",gap:12,marginTop:8,flexWrap:"wrap",alignItems:"center"}}>
-                          <button onClick={function(){verHistorialPedidoEsp(p.id);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{peHistOpen===p.id?"▲ Ocultar historial":"▼ Ver historial"}</button>
+                          <button onClick={function(){verHistorialPedidoEsp(p.id);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{peHistOpen===p.id?"▲ Ocultar seguimiento":"🗂️ Centro de Operaciones"}</button>
                           {puedeEditar&&<button onClick={function(){doAbrirEdicion(p);}} style={{background:"none",border:"none",color:"var(--pri)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✏️ Editar</button>}
                           {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
                           {p.pdf_url&&<a href={p.pdf_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontSize:11,fontWeight:700,textDecoration:"none"}}>📄 Descargar PDF</a>}
@@ -5431,12 +5471,16 @@ export default function App() {
 
                         {peHistOpen===p.id&&(
                           <div style={{marginTop:8,background:"var(--bg2)",borderRadius:10,padding:"10px 12px"}}>
-                            {peHist.length===0&&<div style={{fontSize:11,color:"var(--t3)"}}>Sin historial</div>}
-                            {peHist.map(function(h){
+                            {peHist.length===0&&<div style={{fontSize:11,color:"var(--t3)"}}>Sin movimientos todavía</div>}
+                            {peHist.map(function(h,idx){
                               return (
-                                <div key={h.id} style={{fontSize:11,color:"var(--t2)",marginBottom:6}}>
-                                  <b>{peEstadoInfo(h.estado_nuevo).lbl}</b> — {h.usuario?h.usuario.name:"Sistema"} · {new Date(h.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}
-                                  {h.observaciones&&<div style={{fontStyle:"italic",color:"var(--t3)"}}>"{h.observaciones}"</div>}
+                                <div key={idx} style={{fontSize:11,color:"var(--t2)",marginBottom:8,paddingLeft:4,borderLeft:"2px solid var(--brd)"}}>
+                                  <div style={{paddingLeft:8}}>
+                                    <b>{h.icono} {h.titulo}</b>
+                                    {h.usuario&&<span> — {h.usuario}</span>}
+                                    <span style={{color:"var(--t3)"}}> · {new Date(h.fecha).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                                    {h.obs&&<div style={{fontStyle:"italic",color:"var(--t3)"}}>{h.tipo==="deuda"?h.obs:'"'+h.obs+'"'}</div>}
+                                  </div>
                                 </div>
                               );
                             })}
