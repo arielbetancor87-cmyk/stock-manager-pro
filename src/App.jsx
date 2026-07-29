@@ -4431,6 +4431,28 @@ export default function App() {
                         <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Stock bajo</div>
                         <div style={{fontSize:17,fontWeight:800,color:dashboard.stock_bajo_count>0?"var(--cr,#d32)":"var(--t2)"}}>{dashboard.stock_bajo_count}</div>
                       </div></div>
+                      {isAdmin&&(<>
+                        <div className="card"><div style={{padding:"12px"}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Pedidos cargados</div>
+                          <div style={{fontSize:17,fontWeight:800,color:"var(--t1)"}}>{dashboard.pedidos_totales}</div>
+                        </div></div>
+                        <div className="card"><div style={{padding:"12px"}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Pedidos cerrados</div>
+                          <div style={{fontSize:17,fontWeight:800,color:"var(--em-d,#0a8f4d)"}}>{dashboard.pedidos_cerrados}</div>
+                        </div></div>
+                        <div className="card"><div style={{padding:"12px"}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Pedidos sin cerrar</div>
+                          <div style={{fontSize:17,fontWeight:800,color:dashboard.pedidos_sin_cerrar>0?"var(--am-d,#e07800)":"var(--t2)"}}>{dashboard.pedidos_sin_cerrar}</div>
+                        </div></div>
+                        <div className="card"><div style={{padding:"12px"}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Stock Central (u.)</div>
+                          <div style={{fontSize:17,fontWeight:800,color:"var(--bl-d)"}}>{dashboard.stock_central_total}</div>
+                        </div></div>
+                        <div className="card"><div style={{padding:"12px"}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>A reponer (Stock Central)</div>
+                          <div style={{fontSize:17,fontWeight:800,color:dashboard.stock_central_bajo>0?"var(--cr,#d32)":"var(--t2)"}}>{dashboard.stock_central_bajo}</div>
+                        </div></div>
+                      </>)}
                       {(me.role==="lider"||me.role==="empresaria")&&(<>
                         <div className="card"><div style={{padding:"12px"}}>
                           <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Deuda pendiente</div>
