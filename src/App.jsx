@@ -138,14 +138,6 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .sidebar-item:hover{background:var(--bg2)}
 .sidebar-item-activo{background:var(--pri-l);color:var(--pri)}
 .sidebar-dot{width:7px;height:7px;border-radius:50%;background:var(--in-m);margin-left:auto}
-@media (min-width:1024px){
-  .app{flex-direction:row}
-  .sidebar-desktop{display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;background:var(--card);border-right:1px solid var(--brd);padding-bottom:20px}
-  .tabbar{display:none}
-  .hdr{display:none}
-  .main{max-width:1180px;margin:0 auto;padding:28px 32px !important;width:100%;box-sizing:border-box}
-  .app > div:not(.sidebar-desktop){flex:1;min-width:0;overflow-y:auto;height:100vh}
-}
 .main{flex:1;overflow-y:auto;padding-bottom:var(--tab)}
 .spin{animation:spin 1s linear infinite}
 
@@ -327,6 +319,16 @@ tr:last-child td{border-bottom:none}
 /* MISC */
 .row{display:flex;align-items:center}.jb{justify-content:space-between}.g8{gap:8px}.g12{gap:12px}
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:4px}
+
+/* ── DESKTOP (va al final a propósito, para ganarle a las reglas de arriba) ── */
+@media (min-width:1024px){
+  .app{flex-direction:row}
+  .sidebar-desktop{display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;background:var(--card);border-right:1px solid var(--brd);padding-bottom:20px}
+  .tabbar{display:none}
+  .hdr{display:none}
+  .main{max-width:1180px;margin:0 auto;padding:28px 32px !important;width:100%;box-sizing:border-box}
+  .app > div:not(.sidebar-desktop){flex:1;min-width:0;overflow-y:auto;height:100vh}
+}
 `
 
 // ─── SUBCOMPONENTES ───────────────────────────────────────────────────────────
