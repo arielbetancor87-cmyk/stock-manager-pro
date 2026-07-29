@@ -129,6 +129,23 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 
 .app{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--bg)}
+
+.sidebar-desktop{display:none}
+.sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 16px 20px}
+.sidebar-sec{margin-bottom:18px}
+.sidebar-sec-titulo{font-size:10px;font-weight:800;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;padding:0 16px 6px}
+.sidebar-item{display:flex;align-items:center;gap:12px;padding:10px 16px;margin:0 8px;border-radius:12px;cursor:pointer;color:var(--t2);font-size:13px;font-weight:700;transition:all .15s;position:relative}
+.sidebar-item:hover{background:var(--bg2)}
+.sidebar-item-activo{background:var(--pri-l);color:var(--pri)}
+.sidebar-dot{width:7px;height:7px;border-radius:50%;background:var(--in-m);margin-left:auto}
+@media (min-width:1024px){
+  .app{flex-direction:row}
+  .sidebar-desktop{display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;background:var(--card);border-right:1px solid var(--brd);padding-bottom:20px}
+  .tabbar{display:none}
+  .hdr{display:none}
+  .main{max-width:1180px;margin:0 auto;padding:28px 32px !important;width:100%;box-sizing:border-box}
+  .app > div:not(.sidebar-desktop){flex:1;min-width:0;overflow-y:auto;height:100vh}
+}
 .main{flex:1;overflow-y:auto;padding-bottom:var(--tab)}
 .spin{animation:spin 1s linear infinite}
 
@@ -574,6 +591,12 @@ export default function App() {
 
   // ── UI ──────────────────────────────────────────────────────────────────────
   const [tab,       setTab]       = useState("inicio");
+  const [isDesktopView, setIsDesktopView] = useState(typeof window!=="undefined" && window.innerWidth>=1024);
+  useEffect(function(){
+    function onResize(){ setIsDesktopView(window.innerWidth>=1024); }
+    window.addEventListener("resize", onResize);
+    return function(){ window.removeEventListener("resize", onResize); };
+  }, []);
   const [masMenu,   setMasMenu]   = useState(false);
 
   // ── FASE 1: Roles y jerarquía ──────────────────────────────────────────
@@ -3999,6 +4022,68 @@ export default function App() {
       <style>{CSS}</style>
       <div className="app">
 
+        {isDesktopView && me.role==="superadmin" && (function(){
+          var secciones = [
+            {titulo:"General", items:[
+              {id:"inicio", lbl:"Inicio", ico:"home"},
+              {id:"ventas", lbl:"Ventas", ico:"chart"},
+            ]},
+            {titulo:"Catálogo", items:[
+              {id:"catalog", lbl:"Catálogo", ico:"list"},
+              {id:"importar", lbl:"Importar", ico:"upload"},
+              {id:"stock", lbl:"Stock", ico:"box"},
+              {id:"stockcentral", lbl:"Stock Central", ico:"box"},
+            ]},
+            {titulo:"Operación", items:[
+              {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
+              {id:"deposito", lbl:"Depósito", ico:"box"},
+              {id:"consigna", lbl:"Consigna", ico:"send"},
+            ]},
+            {titulo:"Financiero", items:[
+              {id:"cuentacorriente", lbl:"Cuenta Corriente", ico:"chart"},
+              {id:"pagospend", lbl:"Pagos pendientes", ico:"clock", dot: pagosPendientes.length>0},
+              {id:"reglas", lbl:"Reglas automáticas", ico:"shield"},
+            ]},
+            {titulo:"Administración", items:[
+              {id:"admin", lbl:"Usuarios", ico:"shield"},
+              {id:"empresas", lbl:"Empresas", ico:"users"},
+              {id:"metas", lbl:"Metas", ico:"chart"},
+              {id:"clientes", lbl:"Clientes", ico:"users"},
+            ]},
+          ];
+          return (
+            <aside className="sidebar-desktop">
+              <div className="sidebar-brand">
+                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>Venta Directa</div>
+                  <div style={{fontSize:11,color:"var(--t3)"}}>👑 Administrador</div>
+                </div>
+              </div>
+              {secciones.map(function(sec){
+                return (
+                  <div key={sec.titulo} className="sidebar-sec">
+                    <div className="sidebar-sec-titulo">{sec.titulo}</div>
+                    {sec.items.map(function(it){
+                      return (
+                        <div key={it.id} className={"sidebar-item"+(tab===it.id?" sidebar-item-activo":"")} onClick={function(){setTab(it.id);}}>
+                          <Ic n={it.ico} s={17}/>
+                          <span>{it.lbl}</span>
+                          {it.dot&&<span className="sidebar-dot"/>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              <div className="sidebar-item" style={{marginTop:"auto"}} onClick={doLogout}>
+                <Ic n="logout" s={17}/>
+                <span>Cerrar sesión</span>
+              </div>
+            </aside>
+          );
+        })()}
+
         {/* HEADER */}
         <div className="hdr">
           <div className="hdr-top">
@@ -7022,8 +7107,13 @@ export default function App() {
                               <div style={{fontSize:11,color:"var(--t3)"}}>{u.email}</div>
                             </div>
                             {(isAdmin || (me.role==="empresaria" && u.role!=="empresaria")) ? (
-                              <select value={u.role} onChange={function(e){doCambiarRol(u.id, e.target.value);}}
+                              <select value={u.role} onChange={function(e){
+                                  var nuevoRol = e.target.value;
+                                  if (nuevoRol==="superadmin" && !window.confirm("¿Seguro que querés hacer a "+u.name+" SUPERADMIN? Va a tener control total del sistema, igual que vos.")) { e.target.value = u.role; return; }
+                                  doCambiarRol(u.id, nuevoRol);
+                                }}
                                 style={{fontSize:10,fontWeight:800,textTransform:"uppercase",border:"1.5px solid var(--pri-l)",background:"var(--pri-l)",color:"var(--pri)",borderRadius:6,padding:"3px 6px",fontFamily:"inherit",cursor:"pointer"}}>
+                                {isAdmin&&<option value="superadmin">👑 Superadmin</option>}
                                 {isAdmin&&<option value="empresaria">🏢 Empresaria</option>}
                                 {isAdmin&&<option value="deposito">🏭 Depósito</option>}
                                 {isAdmin&&<option value="administracion">🛠️ Administración</option>}
