@@ -628,6 +628,8 @@ export default function App() {
   const [invComis,      setInvComis]      = useState("10");
   const [invSaving,     setInvSaving]     = useState(false);
   const [equipoEditComis, setEquipoEditComis] = useState({}); // {userId: valor en edición}
+  const [equipoExpandido, setEquipoExpandido] = useState(null); // id de la empresaria con estructura desplegada
+  const [equipoMoviendo,  setEquipoMoviendo]  = useState(null); // id del usuario que se está reasignando
 
   // ── FASE 2: Pedidos en cascada (productos sin stock) ───────────────────
   const [pedEspList,   setPedEspList]   = useState([]);
@@ -1596,6 +1598,16 @@ export default function App() {
   }
 
   // Cambiar el rol de un usuario del equipo (superadmin: cualquiera / empresaria: los suyos)
+  async function doMoverEmpresa(userId, nombre, nuevaEmpresaId, nuevaEmpresaNombre) {
+    if (!window.confirm("¿Mover a "+nombre+" a \""+nuevaEmpresaNombre+"\"? Pierde el líder que tenía asignado (pertenecía a la otra empresa).")) return;
+    setEquipoMoviendo(userId);
+    var res = await sb.rpc("rpc_editar_jerarquia_usuario", { p_user_id: userId, p_nueva_empresa_id: nuevaEmpresaId, p_set_empresa: true });
+    setEquipoMoviendo(null);
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{empresa_id:nuevaEmpresaId, lider_id:null}) : u; }); });
+    toast("✅ "+nombre+" ahora es parte de "+nuevaEmpresaNombre, "", "s");
+  }
+
   async function doCambiarRol(userId, nuevoRol) {
     var res = await sb.rpc("rpc_editar_jerarquia_usuario", { p_user_id: userId, p_nuevo_role: nuevoRol });
     if (res.error) { toast("No se pudo cambiar el rol", res.error.message, "e"); return; }
@@ -4048,7 +4060,7 @@ export default function App() {
             ]},
             {titulo:"Administración", items:[
               {id:"admin", lbl:"Usuarios", ico:"shield"},
-              {id:"empresas", lbl:"Empresas", ico:"users"},
+              {id:"equipo", lbl:"Empresas", ico:"users"},
               {id:"metas", lbl:"Metas", ico:"chart"},
               {id:"clientes", lbl:"Clientes", ico:"users"},
             ]},
@@ -7119,16 +7131,20 @@ export default function App() {
                 {/* Lista de equipo */}
                 <div className="card">
                   <div style={{padding:"14px 16px"}}>
-                    <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>{isAdmin?"Empresarias":"Miembros"} ({miEquipo.length})</div>
+                    <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>{isAdmin?"Empresarias":"Miembros"} ({isAdmin?miEquipo.filter(function(u){return u.role==="empresaria";}).length:miEquipo.length})</div>
                     {miEquipo.length===0&&<div className="empty">Todavía no hay nadie en tu equipo</div>}
-                    {miEquipo.map(function(u){
+                    {(isAdmin?miEquipo.filter(function(u){return u.role==="empresaria";}):miEquipo).map(function(u){
+                      var estructura = isAdmin ? miEquipo.filter(function(x){return x.empresa_id===u.id && (x.role==="lider"||x.role==="reseller");}) : [];
+                      var abierto = equipoExpandido===u.id;
                       return (
                         <div key={u.id} style={{padding:"10px 0",borderTop:"1px solid var(--brd)"}}>
                           <div style={{display:"flex",alignItems:"center",gap:10}}>
-                            <Avatar name={u.name} color={u.color} size={34}/>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:13,fontWeight:700}}>{u.name}</div>
-                              <div style={{fontSize:11,color:"var(--t3)"}}>{u.email}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0,cursor:isAdmin&&u.role==="empresaria"?"pointer":"default"}} onClick={function(){ if (isAdmin && u.role==="empresaria") setEquipoExpandido(abierto?null:u.id); }}>
+                              <Avatar name={u.name} color={u.color} size={34}/>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:700}}>{u.name} {isAdmin&&u.role==="empresaria"&&<span style={{color:"var(--t3)",fontWeight:400}}>{abierto?"▲":"▼"} ({estructura.length})</span>}</div>
+                                <div style={{fontSize:11,color:"var(--t3)"}}>{u.email}</div>
+                              </div>
                             </div>
                             {(isAdmin || (me.role==="empresaria" && u.role!=="empresaria")) ? (
                               <select value={u.role} onChange={function(e){
@@ -7153,6 +7169,33 @@ export default function App() {
                               <button onClick={function(){doSacarDelEquipo(u.id, u.name);}} title="Sacar del equipo" style={{background:"none",border:"none",color:"var(--cr,#d32)",cursor:"pointer",fontSize:15,padding:"2px 4px"}}>🗑️</button>
                             )}
                           </div>
+
+                          {/* Estructura de la empresaria (solo superadmin, al desplegar) */}
+                          {isAdmin&&u.role==="empresaria"&&abierto&&(
+                            <div style={{marginTop:10,marginLeft:44,background:"var(--bg2)",borderRadius:10,padding:10}}>
+                              {estructura.length===0&&<div style={{fontSize:11,color:"var(--t3)"}}>Todavía no tiene líderes ni vendedoras</div>}
+                              {estructura.map(function(m){
+                                var otrasEmpresas = miEquipo.filter(function(e){return e.role==="empresaria" && e.id!==u.id;});
+                                return (
+                                  <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--brd)"}}>
+                                    <span style={{fontSize:11}}>{m.role==="lider"?"⭐":"🛍️"}</span>
+                                    <div style={{flex:1,minWidth:0,fontSize:12}}>{m.name}</div>
+                                    {otrasEmpresas.length>0&&(
+                                      <select disabled={equipoMoviendo===m.id} defaultValue="" onChange={function(e){
+                                          if (!e.target.value) return;
+                                          var destino = otrasEmpresas.find(function(x){return x.id===e.target.value;});
+                                          doMoverEmpresa(m.id, m.name, destino.id, destino.name);
+                                          e.target.value = "";
+                                        }} style={{fontSize:10,border:"1.5px solid var(--brd)",borderRadius:7,padding:"3px 6px",fontFamily:"inherit"}}>
+                                        <option value="">Mover a otra empresa...</option>
+                                        {otrasEmpresas.map(function(e){return <option key={e.id} value={e.id}>{e.name}</option>;})}
+                                      </select>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                           {/* Asignar líder a una vendedora (solo empresaria) */}
                           {(me.role==="empresaria"&&u.role==="reseller")&&(
                             <div style={{marginTop:8,marginLeft:44}}>
