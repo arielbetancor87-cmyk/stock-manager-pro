@@ -695,8 +695,6 @@ export default function App() {
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
   const [pagosPendientes,        setPagosPendientes]        = useState([]);
   const [pagosPendientesLoading, setPagosPendientesLoading] = useState(false);
-  const [scEmpresaId,     setScEmpresaId]     = useState("");
-  const [scEmpresasList,  setScEmpresasList]  = useState([]);
   const [scLista,         setScLista]         = useState([]);
   const [scMovs,          setScMovs]          = useState([]);
   const [scLoading,       setScLoading]       = useState(false);
@@ -2047,10 +2045,8 @@ export default function App() {
   }, [tab, isAdmin]);
 
   useEffect(function(){
-    if (tab==="stockcentral" && (isAdmin||me.role==="deposito"||me.role==="administracion") && scEmpresasList.length===0) {
-      sb.from("users").select("id,name").eq("role","empresaria").order("name").then(function(res){
-        if (res.data) setScEmpresasList(res.data);
-      });
+    if (tab==="stockcentral" && (isAdmin||me.role==="deposito"||me.role==="administracion") && scLista.length===0 && !scLoading) {
+      loadStockCentral();
     }
   }, [tab]);
 
@@ -2398,12 +2394,10 @@ export default function App() {
     setPagosPendientesLoading(false);
   }
 
-  async function doElegirEmpresaStockCentral(empresaId) {
-    setScEmpresaId(empresaId); setScLista([]); setScMovs([]); setScVerMovs(false);
-    if (!empresaId) return;
+  async function loadStockCentral() {
     setScLoading(true);
     try {
-      var res = await sb.rpc("rpc_stock_central", { p_empresa_id: empresaId });
+      var res = await sb.rpc("rpc_stock_central");
       if (res.data) setScLista(res.data);
     } catch(e) { toast("Error", e.message, "e"); }
     setScLoading(false);
@@ -2412,14 +2406,13 @@ export default function App() {
   async function doVerMovimientosStockCentral() {
     if (scVerMovs) { setScVerMovs(false); return; }
     setScVerMovs(true);
-    if (scMovs.length===0 && scEmpresaId) {
-      var res = await sb.rpc("rpc_stock_central_movimientos", { p_empresa_id: scEmpresaId });
+    if (scMovs.length===0) {
+      var res = await sb.rpc("rpc_stock_central_movimientos");
       if (res.data) setScMovs(res.data);
     }
   }
 
   async function doIngresarStockCentral(tipo) {
-    if (!scEmpresaId) { toast("Elegí una empresa primero", "", "e"); return; }
     if (!scProdId) { toast("Elegí un producto", "", "e"); return; }
     var qtyNum = parseInt(scQty);
     if (isNaN(qtyNum) || qtyNum<=0) { toast("Cantidad inválida", "", "e"); return; }
@@ -2431,7 +2424,7 @@ export default function App() {
       if (scArchivo) {
         setScSubiendo(true);
         var ext = scArchivo.name.split(".").pop();
-        var fileName = "stockcentral-"+scEmpresaId+"-"+Date.now()+"."+ext;
+        var fileName = "stockcentral-"+Date.now()+"."+ext;
         var up = await sb.storage.from("comprobantes-pago").upload(fileName, scArchivo, { contentType: scArchivo.type, upsert: true });
         setScSubiendo(false);
         if (up.error) { toast("Error al subir el archivo", up.error.message, "e"); setScSaving(false); return; }
@@ -2440,14 +2433,14 @@ export default function App() {
       }
 
       var res = await sb.rpc("rpc_ingresar_stock_central", {
-        p_empresa_id: scEmpresaId, p_product_id: scProdId, p_qty: qtyNum,
+        p_product_id: scProdId, p_qty: qtyNum,
         p_tipo: tipo, p_nota: scNota.trim(), p_comprobante_url: comprobanteUrl
       });
       if (res.error) { toast("Error", res.error.message, "e"); setScSaving(false); return; }
       toast("✅ Stock ingresado", "", "s");
       setScProdId(""); setScProdSrch(""); setScQty(""); setScNota(""); setScArchivo(null);
-      await doElegirEmpresaStockCentral(scEmpresaId);
-      if (scVerMovs) { var m = await sb.rpc("rpc_stock_central_movimientos", { p_empresa_id: scEmpresaId }); if (m.data) setScMovs(m.data); }
+      await loadStockCentral();
+      if (scVerMovs) { var m = await sb.rpc("rpc_stock_central_movimientos"); if (m.data) setScMovs(m.data); }
     } catch(e) { toast("Error", e.message, "e"); }
     setScSaving(false);
   }
@@ -6730,15 +6723,7 @@ export default function App() {
                 <div><div className="ph-h">🏬 Stock Central</div><div className="ph-s">Lo que hay disponible en depósito para abastecer al canal</div></div>
               </div>
               <div className="pc">
-                <select value={scEmpresaId} onChange={function(e){doElegirEmpresaStockCentral(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:14,fontFamily:"inherit"}}>
-                  <option value="">Elegí una empresa...</option>
-                  {scEmpresasList.map(function(e){return <option key={e.id} value={e.id}>{e.name}</option>;})}
-                </select>
-
-                {!scEmpresaId&&<div className="empty">Elegí una empresa para ver su stock central</div>}
-
-                {scEmpresaId&&(<>
-                  {(me.role==="deposito"||isAdmin)&&(
+                {(me.role==="deposito"||isAdmin)&&(
                     <div className="card" style={{marginBottom:14,background:"var(--bg2)"}}>
                       <div style={{padding:"14px 16px"}}>
                         <div style={{fontSize:12,fontWeight:800,marginBottom:8}}>➕ Ingreso manual de stock</div>
@@ -6784,9 +6769,9 @@ export default function App() {
                     </div>
                   )}
 
-                  <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Disponible</div>
+                  <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Disponible ({scLista.length} productos con stock cargado)</div>
                   {scLoading&&<div className="empty">Cargando...</div>}
-                  {!scLoading&&scLista.length===0&&<div className="empty">Todavía no hay stock cargado para esta empresa</div>}
+                  {!scLoading&&scLista.length===0&&<div className="empty">Todavía no hay stock cargado</div>}
                   {scLista.map(function(s){
                     return (
                       <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
@@ -6814,7 +6799,6 @@ export default function App() {
                       })}
                     </div>
                   )}
-                </>)}
               </div>
             </div>
           )}
