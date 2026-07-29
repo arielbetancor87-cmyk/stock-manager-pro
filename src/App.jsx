@@ -695,6 +695,20 @@ export default function App() {
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
   const [pagosPendientes,        setPagosPendientes]        = useState([]);
   const [pagosPendientesLoading, setPagosPendientesLoading] = useState(false);
+  const [scEmpresaId,     setScEmpresaId]     = useState("");
+  const [scEmpresasList,  setScEmpresasList]  = useState([]);
+  const [scLista,         setScLista]         = useState([]);
+  const [scMovs,          setScMovs]          = useState([]);
+  const [scLoading,       setScLoading]       = useState(false);
+  const [scVerMovs,       setScVerMovs]       = useState(false);
+  const [scProdId,        setScProdId]        = useState("");
+  const [scProdSrch,      setScProdSrch]      = useState("");
+  const [scQty,           setScQty]           = useState("");
+  const [scNota,          setScNota]          = useState("");
+  const [scArchivo,       setScArchivo]       = useState(null);
+  const [scSaving,        setScSaving]        = useState(false);
+  const [scSubiendo,      setScSubiendo]      = useState(false);
+  const scFileRef = useRef(null);
   const ccReporteFileRef = useRef(null);
   const [ccPagoSubiendo,         setCcPagoSubiendo]         = useState(false);
   const [ccPdfGenerando,         setCcPdfGenerando]         = useState(false);
@@ -2033,6 +2047,14 @@ export default function App() {
   }, [tab, isAdmin]);
 
   useEffect(function(){
+    if (tab==="stockcentral" && (isAdmin||me.role==="deposito"||me.role==="administracion") && scEmpresasList.length===0) {
+      sb.from("users").select("id,name").eq("role","empresaria").order("name").then(function(res){
+        if (res.data) setScEmpresasList(res.data);
+      });
+    }
+  }, [tab]);
+
+  useEffect(function(){
     if (!reglasEmpresaId) return;
     setReglasLoading(true);
     sb.rpc("rpc_get_reglas_automaticas", { p_empresa_id: reglasEmpresaId }).then(function(res){
@@ -2374,6 +2396,60 @@ export default function App() {
       if (res.data) setPagosPendientes(res.data);
     } catch(e) { /* noop */ }
     setPagosPendientesLoading(false);
+  }
+
+  async function doElegirEmpresaStockCentral(empresaId) {
+    setScEmpresaId(empresaId); setScLista([]); setScMovs([]); setScVerMovs(false);
+    if (!empresaId) return;
+    setScLoading(true);
+    try {
+      var res = await sb.rpc("rpc_stock_central", { p_empresa_id: empresaId });
+      if (res.data) setScLista(res.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setScLoading(false);
+  }
+
+  async function doVerMovimientosStockCentral() {
+    if (scVerMovs) { setScVerMovs(false); return; }
+    setScVerMovs(true);
+    if (scMovs.length===0 && scEmpresaId) {
+      var res = await sb.rpc("rpc_stock_central_movimientos", { p_empresa_id: scEmpresaId });
+      if (res.data) setScMovs(res.data);
+    }
+  }
+
+  async function doIngresarStockCentral(tipo) {
+    if (!scEmpresaId) { toast("Elegí una empresa primero", "", "e"); return; }
+    if (!scProdId) { toast("Elegí un producto", "", "e"); return; }
+    var qtyNum = parseInt(scQty);
+    if (isNaN(qtyNum) || qtyNum<=0) { toast("Cantidad inválida", "", "e"); return; }
+    if (tipo==="factura_compra" && !scArchivo) { toast("Adjuntá la factura", "Es obligatoria para este tipo de carga", "e"); return; }
+
+    setScSaving(true);
+    try {
+      var comprobanteUrl = null;
+      if (scArchivo) {
+        setScSubiendo(true);
+        var ext = scArchivo.name.split(".").pop();
+        var fileName = "stockcentral-"+scEmpresaId+"-"+Date.now()+"."+ext;
+        var up = await sb.storage.from("comprobantes-pago").upload(fileName, scArchivo, { contentType: scArchivo.type, upsert: true });
+        setScSubiendo(false);
+        if (up.error) { toast("Error al subir el archivo", up.error.message, "e"); setScSaving(false); return; }
+        var pub = sb.storage.from("comprobantes-pago").getPublicUrl(fileName);
+        comprobanteUrl = pub.data.publicUrl;
+      }
+
+      var res = await sb.rpc("rpc_ingresar_stock_central", {
+        p_empresa_id: scEmpresaId, p_product_id: scProdId, p_qty: qtyNum,
+        p_tipo: tipo, p_nota: scNota.trim(), p_comprobante_url: comprobanteUrl
+      });
+      if (res.error) { toast("Error", res.error.message, "e"); setScSaving(false); return; }
+      toast("✅ Stock ingresado", "", "s");
+      setScProdId(""); setScProdSrch(""); setScQty(""); setScNota(""); setScArchivo(null);
+      await doElegirEmpresaStockCentral(scEmpresaId);
+      if (scVerMovs) { var m = await sb.rpc("rpc_stock_central_movimientos", { p_empresa_id: scEmpresaId }); if (m.data) setScMovs(m.data); }
+    } catch(e) { toast("Error", e.message, "e"); }
+    setScSaving(false);
   }
 
   async function doConfirmarPago(pagoId, empresaId) {
@@ -6647,6 +6723,102 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ STOCK CENTRAL (deposito, administracion, superadmin) ══ */}
+          {tab==="stockcentral"&&(isAdmin||me.role==="deposito"||me.role==="administracion")&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">🏬 Stock Central</div><div className="ph-s">Lo que hay disponible en depósito para abastecer al canal</div></div>
+              </div>
+              <div className="pc">
+                <select value={scEmpresaId} onChange={function(e){doElegirEmpresaStockCentral(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:14,fontFamily:"inherit"}}>
+                  <option value="">Elegí una empresa...</option>
+                  {scEmpresasList.map(function(e){return <option key={e.id} value={e.id}>{e.name}</option>;})}
+                </select>
+
+                {!scEmpresaId&&<div className="empty">Elegí una empresa para ver su stock central</div>}
+
+                {scEmpresaId&&(<>
+                  {(me.role==="deposito"||isAdmin)&&(
+                    <div className="card" style={{marginBottom:14,background:"var(--bg2)"}}>
+                      <div style={{padding:"14px 16px"}}>
+                        <div style={{fontSize:12,fontWeight:800,marginBottom:8}}>➕ Ingreso manual de stock</div>
+                        <SearchBar value={scProdSrch} onChange={setScProdSrch} placeholder="Buscar producto..."/>
+                        {scProdSrch&&(
+                          <div style={{maxHeight:140,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:9,marginTop:6,marginBottom:8}}>
+                            {products.filter(function(p){var q=scProdSrch.toLowerCase();return p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);}).slice(0,6).map(function(p){
+                              return <div key={p.id} onClick={function(){setScProdId(p.id);setScProdSrch(p.name);}} style={{padding:"7px 9px",cursor:"pointer",borderBottom:"1px solid var(--brd)",fontSize:12,background:scProdId===p.id?"var(--pri-l)":"var(--card)"}}>{p.name} <span style={{color:"var(--t3)"}}>({p.sku||"s/c"})</span></div>;
+                            })}
+                          </div>
+                        )}
+                        <div style={{display:"flex",gap:6,marginBottom:8}}>
+                          <input type="number" value={scQty} onChange={function(e){setScQty(e.target.value);}} placeholder="Cantidad" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                          <input value={scNota} onChange={function(e){setScNota(e.target.value);}} placeholder="Nota (opcional)" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                        </div>
+                        <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={scSaving} onClick={function(){doIngresarStockCentral("ingreso_manual");}}>{scSaving?"Guardando...":"Ingresar stock"}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {(me.role==="administracion"||isAdmin)&&(
+                    <div className="card" style={{marginBottom:14,background:"#f5f3ff"}}>
+                      <div style={{padding:"14px 16px"}}>
+                        <div style={{fontSize:12,fontWeight:800,marginBottom:8}}>📄 Cargar factura de compra</div>
+                        <SearchBar value={scProdSrch} onChange={setScProdSrch} placeholder="Buscar producto..."/>
+                        {scProdSrch&&(
+                          <div style={{maxHeight:140,overflowY:"auto",border:"1px solid var(--brd)",borderRadius:9,marginTop:6,marginBottom:8}}>
+                            {products.filter(function(p){var q=scProdSrch.toLowerCase();return p.name.toLowerCase().includes(q)||(p.sku||"").toLowerCase().includes(q);}).slice(0,6).map(function(p){
+                              return <div key={p.id} onClick={function(){setScProdId(p.id);setScProdSrch(p.name);}} style={{padding:"7px 9px",cursor:"pointer",borderBottom:"1px solid var(--brd)",fontSize:12,background:scProdId===p.id?"var(--pri-l)":"var(--card)"}}>{p.name} <span style={{color:"var(--t3)"}}>({p.sku||"s/c"})</span></div>;
+                            })}
+                          </div>
+                        )}
+                        <div style={{display:"flex",gap:6,marginBottom:8}}>
+                          <input type="number" value={scQty} onChange={function(e){setScQty(e.target.value);}} placeholder="Cantidad" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                          <input value={scNota} onChange={function(e){setScNota(e.target.value);}} placeholder="N° de factura / nota" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                        </div>
+                        <div onClick={function(){ scFileRef.current && scFileRef.current.click(); }} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:scArchivo?"var(--t2)":"var(--t3)",marginBottom:8,cursor:"pointer",border:"1.5px dashed var(--brd)",borderRadius:8,padding:"10px 12px",background:"var(--card)"}}>
+                          📎 {scArchivo?scArchivo.name:"Toca acá para adjuntar la factura (obligatorio)"}
+                        </div>
+                        <input ref={scFileRef} type="file" accept="image/*,.pdf" onChange={function(e){setScArchivo(e.target.files[0]||null);}} style={{display:"none"}}/>
+                        <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={scSaving} onClick={function(){doIngresarStockCentral("factura_compra");}}>{scSubiendo?"Subiendo factura...":scSaving?"Guardando...":"Cargar factura"}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Disponible</div>
+                  {scLoading&&<div className="empty">Cargando...</div>}
+                  {!scLoading&&scLista.length===0&&<div className="empty">Todavía no hay stock cargado para esta empresa</div>}
+                  {scLista.map(function(s){
+                    return (
+                      <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
+                        <div style={{fontSize:13}}>{s.producto} <span style={{color:"var(--t3)",fontSize:11}}>({s.sku||"s/c"})</span></div>
+                        <div style={{fontSize:14,fontWeight:800,color:s.qty_disponible<0?"var(--cr,#d32)":"var(--t1)"}}>{s.qty_disponible} u.{s.qty_disponible<0&&<span style={{fontSize:9,fontWeight:700,color:"var(--cr,#d32)",display:"block"}}>⚠ hay que reponer</span>}</div>
+                      </div>
+                    );
+                  })}
+
+                  <button className="btn btn-xs b-ghost" style={{marginTop:14,width:"100%",padding:"8px"}} onClick={doVerMovimientosStockCentral}>{scVerMovs?"▲ Ocultar movimientos":"▼ Ver movimientos"}</button>
+                  {scVerMovs&&(
+                    <div style={{marginTop:10}}>
+                      {scMovs.length===0&&<div className="empty">Sin movimientos todavía</div>}
+                      {scMovs.map(function(m){
+                        var lbls = {ingreso_manual:"➕ Ingreso manual",factura_compra:"📄 Factura de compra",consumo_preparacion:"📦 Consumido al preparar",devolucion_preparacion:"↩️ Devuelto (se destildó)"};
+                        return (
+                          <div key={m.id} style={{padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
+                            <div style={{display:"flex",justifyContent:"space-between"}}>
+                              <div style={{fontSize:12}}>{lbls[m.tipo]||m.tipo} — {m.producto}</div>
+                              <div style={{fontSize:12,fontWeight:800,color:m.qty>0?"var(--em-d,#0a8f4d)":"var(--cr,#d32)"}}>{m.qty>0?"+":""}{m.qty}</div>
+                            </div>
+                            <div style={{fontSize:10,color:"var(--t3)"}}>{m.registrado_por_nombre} · {new Date(m.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}{m.nota?" · "+m.nota:""}{m.comprobante_url&&<> · <a href={m.comprobante_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontWeight:700}}>📎 Ver</a></>}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>)}
+              </div>
+            </div>
+          )}
+
           {/* ══ MI EQUIPO ══ */}
           {tab==="equipo"&&(me.role==="empresaria"||me.role==="lider"||isAdmin)&&(
             <div>
@@ -7143,12 +7315,14 @@ export default function App() {
               {id:"ventas", lbl:"Ventas", ico:"chart"},
             ];
             var der = esDeposito ? [
+              {id:"stockcentral", lbl:"Stock Central", ico:"box"},
               {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
               {id:"__mas",  lbl:"Más",       ico:"dots"},
             ] : esAdministracion ? [
-              {id:"pagospend", lbl:"Pagos pend.", ico:"clock", dot: pagosPendientes.length>0},
-              {id:"reglas",    lbl:"Reglas",      ico:"shield"},
-              {id:"cuenta",    lbl:"Mi Cuenta",   ico:"user"},
+              {id:"pagospend",    lbl:"Pagos pend.", ico:"clock", dot: pagosPendientes.length>0},
+              {id:"stockcentral", lbl:"Stock Central", ico:"box"},
+              {id:"reglas",       lbl:"Reglas",      ico:"shield"},
+              {id:"cuenta",       lbl:"Mi Cuenta",   ico:"user"},
             ] : [
               {id:"stock",  lbl:"Mi Stock", ico:"box"},
               {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
@@ -7223,6 +7397,7 @@ export default function App() {
                   if (isAdmin) {
                     var ordPend = ordenes.filter(function(o){ return ["pendiente_produccion","en_preparacion","lista_despacho"].includes(o.estado); }).length;
                     items.push({id:"deposito", lbl:"Depósito", ico:"box", col:"var(--bl-d)", badge:ordPend});
+                    items.push({id:"stockcentral", lbl:"Stock Central", ico:"box", col:"var(--bl-d)"});
                   }
                   if (isAdmin || me.role==="empresaria") {
                     items.push({id:"cuentacorriente", lbl:"Cta. Corriente", ico:"chart", col:"#6d28d9"});
