@@ -2045,7 +2045,7 @@ export default function App() {
   }, [tab, isAdmin]);
 
   useEffect(function(){
-    if (tab==="stockcentral" && (isAdmin||me.role==="deposito"||me.role==="administracion") && scLista.length===0 && !scLoading) {
+    if (tab==="stockcentral" && (isAdmin||me.role==="deposito"||me.role==="administracion")) {
       loadStockCentral();
     }
   }, [tab]);
