@@ -722,6 +722,11 @@ export default function App() {
   const [ccReporteSubiendo,setCcReporteSubiendo]= useState(false);
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
   const [ccFiltroDeuda,    setCcFiltroDeuda]    = useState("todos");
+  const [peReclamos,        setPeReclamos]        = useState({}); // {pedidoId: [reclamos]}
+  const [peReclamosOpen,    setPeReclamosOpen]    = useState(null); // pedidoId con reclamos desplegados
+  const [peReclamosLoading, setPeReclamosLoading] = useState(null);
+  const [peReclamoTexto,    setPeReclamoTexto]    = useState("");
+  const [peReclamoSaving,   setPeReclamoSaving]   = useState(false);
   const [pickingOpen,    setPickingOpen]    = useState(false);
   const [depReglasEnvio, setDepReglasEnvio] = useState([]);
   const [pickingData,    setPickingData]    = useState([]);
@@ -1783,10 +1788,10 @@ export default function App() {
     setPeSaving(false);
   }
 
-  async function doEnviarPedidoEspecial(id) {
+  async function doEnviarPedidoEspecial(id, nota) {
     setPeBusy(function(prev){ return Object.assign({},prev,{[id]:true}); });
     try {
-      var res = await sb.rpc("rpc_enviar_pedido_especial", { p_pedido_id: id });
+      var res = await sb.rpc("rpc_enviar_pedido_especial", { p_pedido_id: id, p_nota: nota||null });
       if (res.error) { toast("Error al enviar", res.error.message, "e"); setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); }); return; }
       toast("✅ Pedido enviado", "Queda pendiente de aprobación", "s");
       await loadPedidosEspeciales();
@@ -1858,6 +1863,39 @@ export default function App() {
       }
     } catch(e) { toast("Error", e.message, "e"); }
     setPeBusy(function(prev){ return Object.assign({},prev,{[id]:false}); });
+  }
+
+  async function doVerReclamosPedido(pedidoId) {
+    if (peReclamosOpen===pedidoId) { setPeReclamosOpen(null); return; }
+    setPeReclamosOpen(pedidoId);
+    if (!peReclamos[pedidoId]) {
+      setPeReclamosLoading(pedidoId);
+      var res = await sb.from("pedido_reclamos").select("*, usuario:usuario_id(name)").eq("pedido_id", pedidoId).order("created_at",{ascending:false});
+      setPeReclamos(function(prev){ return Object.assign({},prev,{[pedidoId]:res.data||[]}); });
+      setPeReclamosLoading(null);
+    }
+  }
+
+  async function doAgregarReclamoPedido(pedidoId) {
+    if (!peReclamoTexto.trim()) { toast("Escribí el reclamo", "", "e"); return; }
+    setPeReclamoSaving(true);
+    try {
+      var res = await sb.rpc("rpc_agregar_reclamo_pedido", { p_pedido_id: pedidoId, p_texto: peReclamoTexto.trim() });
+      if (res.error) { toast("Error", res.error.message, "e"); setPeReclamoSaving(false); return; }
+      var res2 = await sb.from("pedido_reclamos").select("*, usuario:usuario_id(name)").eq("pedido_id", pedidoId).order("created_at",{ascending:false});
+      setPeReclamos(function(prev){ return Object.assign({},prev,{[pedidoId]:res2.data||[]}); });
+      setPeReclamoTexto(""); toast("⚠️ Reclamo cargado", "", "s");
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPeReclamoSaving(false);
+  }
+
+  async function doResolverReclamoPedido(pedidoId, reclamoId) {
+    var res = await sb.rpc("rpc_resolver_reclamo_pedido", { p_reclamo_id: reclamoId });
+    if (res.error) { toast("Error", res.error.message, "e"); return; }
+    setPeReclamos(function(prev){
+      var lista = (prev[pedidoId]||[]).map(function(r){ return r.id===reclamoId?Object.assign({},r,{resuelto:true}):r; });
+      return Object.assign({},prev,{[pedidoId]:lista});
+    });
   }
 
   async function verHistorialPedidoEsp(id) {
@@ -6109,7 +6147,11 @@ export default function App() {
                               placeholder={(puedeLider||puedeEmpAprobar)?"Comentario (obligatorio si elegís Observar)":"Observación (opcional)"} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:12,marginBottom:8,fontFamily:"inherit"}}/>
                             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                               {puedeVendEditar&&<button className="btn btn-xs b-ghost" style={{padding:"7px 12px",border:"1.5px solid var(--brd)"}} disabled={busy} onClick={function(){doAbrirEdicion(p);}}>➕ Agregar productos</button>}
-                              {puedeVendEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){if(window.confirm("¿Cerrar el pedido y enviarlo? Ya no vas a poder agregar productos.")) doEnviarPedidoEspecial(p.id);}}>📤 Cerrar y enviar pedido</button>}
+                              {puedeVendEnviar&&<button className="btn btn-xs b-pri" style={{padding:"7px 12px"}} disabled={busy} onClick={function(){
+                                var nota = window.prompt("¿Algún comentario para este pedido? (opcional — dejalo vacío si no querés agregar nada, o cancelá para no enviarlo)","");
+                                if (nota===null) return;
+                                doEnviarPedidoEspecial(p.id, nota);
+                              }}>📤 Cerrar y enviar pedido</button>}
                               {puedeLider&&(<>
                                 <button className="btn btn-xs" style={{background:"#e7f9ee",color:"#0a8f4d",border:"1px solid #bfe9d2",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doAccionPedidoEsp(p.id,"rpc_lider_decidir_pedido",{p_decision:"aprobar"});}}>✅ Aprobar</button>
                                 <button className="btn btn-xs" style={{background:"#fff0db",color:"#c2650a",border:"1px solid #ffd8a8",borderRadius:8,fontWeight:700,padding:"7px 12px"}} disabled={busy} onClick={function(){doObservarPedido(p.id,"rpc_lider_decidir_pedido");}}>📝 Observar</button>
@@ -6132,6 +6174,7 @@ export default function App() {
 
                         <div style={{display:"flex",gap:12,marginTop:8,flexWrap:"wrap",alignItems:"center"}}>
                           <button onClick={function(){verHistorialPedidoEsp(p.id);}} style={{background:"none",border:"none",color:"var(--t3)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{peHistOpen===p.id?"▲ Ocultar seguimiento":"🗂️ Centro de Operaciones"}</button>
+                          <button onClick={function(){doVerReclamosPedido(p.id);}} style={{background:"none",border:"none",color:(peReclamos[p.id]||[]).some(function(r){return !r.resuelto;})?"var(--cr,#d32)":"var(--t3)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{peReclamosOpen===p.id?"▲ Ocultar reclamos":"⚠️ Reclamos"+((peReclamos[p.id]||[]).filter(function(r){return !r.resuelto;}).length>0?" ("+(peReclamos[p.id]||[]).filter(function(r){return !r.resuelto;}).length+")":"")}</button>
                           {puedeEditar&&<button onClick={function(){doAbrirEdicion(p);}} style={{background:"none",border:"none",color:"var(--pri)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>✏️ Editar</button>}
                           {puedeCancelar&&<button onClick={function(){doAccionPedidoEsp(p.id,"rpc_pedido_cancelar");}} disabled={busy} style={{background:"none",border:"none",color:"var(--cr,#d32)",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Cancelar pedido</button>}
                           {p.pdf_url&&<a href={p.pdf_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontSize:11,fontWeight:700,textDecoration:"none"}}>📄 Descargar PDF</a>}
@@ -6154,6 +6197,29 @@ export default function App() {
                                 </div>
                               );
                             })}
+                          </div>
+                        )}
+
+                        {peReclamosOpen===p.id&&(
+                          <div style={{marginTop:8,background:"#fff0f0",borderRadius:10,padding:"10px 12px"}}>
+                            {peReclamosLoading===p.id&&<div style={{fontSize:11,color:"var(--t3)"}}>Cargando...</div>}
+                            {(peReclamos[p.id]||[]).length===0&&peReclamosLoading!==p.id&&<div style={{fontSize:11,color:"var(--t3)",marginBottom:8}}>Sin reclamos en este pedido</div>}
+                            {(peReclamos[p.id]||[]).map(function(r){
+                              return (
+                                <div key={r.id} style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:8,opacity:r.resuelto?0.55:1}}>
+                                  <span>{r.resuelto?"✅":"⚠️"}</span>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:12,textDecoration:r.resuelto?"line-through":"none"}}>{r.texto}</div>
+                                    <div style={{fontSize:9,color:"var(--t3)"}}>{r.usuario?r.usuario.name:"—"} · {new Date(r.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+                                  </div>
+                                  {!r.resuelto&&(me.role==="lider"||me.role==="empresaria"||isAdmin)&&<button className="btn btn-xs b-ghost" style={{padding:"3px 7px",fontSize:9,flexShrink:0}} onClick={function(){doResolverReclamoPedido(p.id, r.id);}}>✓ Resuelto</button>}
+                                </div>
+                              );
+                            })}
+                            <div style={{display:"flex",gap:6,marginTop:8}}>
+                              <input value={peReclamoTexto} onChange={function(e){setPeReclamoTexto(e.target.value);}} placeholder="Ej: llegó incompleto, producto dañado..." style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                              <button className="btn btn-xs" style={{background:"#ffe0e5",color:"#c2185b",border:"1px solid #ffb3c0",borderRadius:8,padding:"7px 12px",fontWeight:700}} disabled={peReclamoSaving} onClick={function(){doAgregarReclamoPedido(p.id);}}>+</button>
+                            </div>
                           </div>
                         )}
 
