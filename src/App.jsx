@@ -322,12 +322,12 @@ tr:last-child td{border-bottom:none}
 
 /* ── DESKTOP (va al final a propósito, para ganarle a las reglas de arriba) ── */
 @media (min-width:1024px){
-  .app{flex-direction:row}
-  .sidebar-desktop{display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;background:var(--card);border-right:1px solid var(--brd);padding-bottom:20px}
-  .tabbar{display:none}
-  .hdr{display:none}
-  .main{max-width:1180px;margin:0 auto;padding:28px 32px !important;width:100%;box-sizing:border-box}
-  .app > div:not(.sidebar-desktop){flex:1;min-width:0;overflow-y:auto;height:100vh}
+  .app-desktop-nav{flex-direction:row}
+  .app-desktop-nav .sidebar-desktop{display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;background:var(--card);border-right:1px solid var(--brd);padding-bottom:20px}
+  .app-desktop-nav .tabbar{display:none}
+  .app-desktop-nav .hdr{display:none}
+  .app-desktop-nav .main{max-width:1180px;margin:0 auto;padding:28px 32px !important;width:100%;box-sizing:border-box}
+  .app-desktop-nav > div:not(.sidebar-desktop){flex:1;min-width:0;overflow-y:auto;height:100vh}
 }
 `
 
@@ -4048,7 +4048,7 @@ export default function App() {
   return (
     <div>
       <style>{CSS}</style>
-      <div className="app">
+      <div className={"app"+((isDesktopView&&["superadmin","deposito","administracion","empresaria"].includes(me.role))?" app-desktop-nav":"")}>
 
         {isDesktopView && me.role==="superadmin" && (function(){
           var secciones = [
@@ -4112,7 +4112,133 @@ export default function App() {
           );
         })()}
 
-        {/* HEADER */}
+        {isDesktopView && me.role==="deposito" && (function(){
+          var items = [
+            {id:"deposito", lbl:"Depósito", ico:"box", dot: ordenes.some(function(o){return ["pendiente_produccion","en_preparacion"].includes(o.estado);})},
+            {id:"stockcentral", lbl:"Stock Central", ico:"box"},
+            {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
+          ];
+          return (
+            <aside className="sidebar-desktop">
+              <div className="sidebar-brand">
+                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>Venta Directa</div>
+                  <div style={{fontSize:11,color:"var(--t3)"}}>🏭 Depósito</div>
+                </div>
+              </div>
+              <div className="sidebar-sec">
+                {items.map(function(it){
+                  return (
+                    <div key={it.id} className={"sidebar-item"+(tab===it.id?" sidebar-item-activo":"")} onClick={function(){setTab(it.id);}}>
+                      <Ic n={it.ico} s={17}/>
+                      <span>{it.lbl}</span>
+                      {it.dot&&<span className="sidebar-dot"/>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="sidebar-item" style={{marginTop:"auto"}} onClick={doLogout}>
+                <Ic n="logout" s={17}/>
+                <span>Cerrar sesión</span>
+              </div>
+            </aside>
+          );
+        })()}
+
+        {isDesktopView && me.role==="administracion" && (function(){
+          var items = [
+            {id:"cuentacorriente", lbl:"Cuenta Corriente", ico:"chart"},
+            {id:"pagospend", lbl:"Pagos pendientes", ico:"clock", dot: pagosPendientes.length>0},
+            {id:"stockcentral", lbl:"Stock Central", ico:"box"},
+            {id:"reglas", lbl:"Reglas automáticas", ico:"shield"},
+            {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
+          ];
+          return (
+            <aside className="sidebar-desktop">
+              <div className="sidebar-brand">
+                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>Venta Directa</div>
+                  <div style={{fontSize:11,color:"var(--t3)"}}>🛠️ Administración</div>
+                </div>
+              </div>
+              <div className="sidebar-sec">
+                {items.map(function(it){
+                  return (
+                    <div key={it.id} className={"sidebar-item"+(tab===it.id?" sidebar-item-activo":"")} onClick={function(){setTab(it.id);}}>
+                      <Ic n={it.ico} s={17}/>
+                      <span>{it.lbl}</span>
+                      {it.dot&&<span className="sidebar-dot"/>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="sidebar-item" style={{marginTop:"auto"}} onClick={doLogout}>
+                <Ic n="logout" s={17}/>
+                <span>Cerrar sesión</span>
+              </div>
+            </aside>
+          );
+        })()}
+
+        {isDesktopView && me.role==="empresaria" && (function(){
+          var secciones = [
+            {titulo:"General", items:[
+              {id:"inicio", lbl:"Inicio", ico:"home"},
+              {id:"ventas", lbl:"Ventas", ico:"chart"},
+              {id:"stock", lbl:"Mi Stock", ico:"box"},
+            ]},
+            {titulo:"Operación", items:[
+              {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
+              {id:"consigna", lbl:"Consigna", ico:"send"},
+            ]},
+            {titulo:"Equipo", items:[
+              {id:"equipo", lbl:"Mi Estructura", ico:"users"},
+              {id:"clientes", lbl:"Clientes", ico:"users"},
+              {id:"metas", lbl:"Metas", ico:"chart"},
+              {id:"resumen", lbl:"Resumen consolidado", ico:"chart"},
+            ]},
+            {titulo:"Financiero", items:[
+              {id:"cuentacorriente", lbl:"Cuenta Corriente", ico:"chart"},
+            ]},
+          ];
+          return (
+            <aside className="sidebar-desktop">
+              <div className="sidebar-brand">
+                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>{me.name}</div>
+                  <div style={{fontSize:11,color:"var(--t3)"}}>🏢 Empresaria</div>
+                </div>
+              </div>
+              {secciones.map(function(sec){
+                return (
+                  <div key={sec.titulo} className="sidebar-sec">
+                    <div className="sidebar-sec-titulo">{sec.titulo}</div>
+                    {sec.items.map(function(it){
+                      return (
+                        <div key={it.id} className={"sidebar-item"+(tab===it.id?" sidebar-item-activo":"")} onClick={function(){setTab(it.id);}}>
+                          <Ic n={it.ico} s={17}/>
+                          <span>{it.lbl}</span>
+                          {it.dot&&<span className="sidebar-dot"/>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              <div className="sidebar-item" style={{marginTop:"auto"}} onClick={function(){setTab("cuenta");}}>
+                <Ic n="user" s={17}/>
+                <span>Mi Cuenta</span>
+              </div>
+              <div className="sidebar-item" onClick={doLogout}>
+                <Ic n="logout" s={17}/>
+                <span>Cerrar sesión</span>
+              </div>
+            </aside>
+          );
+        })()}
         <div className="hdr">
           <div className="hdr-top">
             <div className="hdr-avatar" style={me.color?{background:me.color}:{}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
