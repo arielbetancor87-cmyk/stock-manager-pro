@@ -667,7 +667,7 @@ export default function App() {
   const [campResumenId,      setCampResumenId]      = useState(null);
   const [campResumen,        setCampResumen]        = useState(null);
   const [campResumenLoading, setCampResumenLoading] = useState(false);
-  const [reglasForm,      setReglasForm]      = useState({stock_dias_alerta:14,pedido_detenido_dias:5,cobranza_vencida_dias:15,vendedora_inactiva_dias:7,activa_stock:true,activa_pedidos_detenidos:true,activa_cobranzas:true,activa_vendedoras_inactivas:true});
+  const [reglasForm,      setReglasForm]      = useState({stock_dias_alerta:14,pedido_detenido_dias:5,cobranza_vencida_dias:15,vendedora_inactiva_dias:7,activa_stock:true,activa_pedidos_detenidos:true,activa_cobranzas:true,activa_vendedoras_inactivas:true,monto_minimo_envio:0,activa_monto_minimo:false});
   const [reglasSaving,    setReglasSaving]    = useState(false);
   const [reglasEmpresaId,     setReglasEmpresaId]     = useState("");
   const [reglasEmpresasList,  setReglasEmpresasList]  = useState([]);
@@ -723,6 +723,7 @@ export default function App() {
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
   const [ccFiltroDeuda,    setCcFiltroDeuda]    = useState("todos");
   const [pickingOpen,    setPickingOpen]    = useState(false);
+  const [depReglasEnvio, setDepReglasEnvio] = useState([]);
   const [pickingData,    setPickingData]    = useState([]);
   const [pickingLoading, setPickingLoading] = useState(false);
   const [pagosPendientes,        setPagosPendientes]        = useState([]);
@@ -810,6 +811,7 @@ export default function App() {
     loadCampanias();
     loadMisDeudas();
     loadOrdenes();
+    loadReglasEnvioMinimo();
     loadPedidosAbiertos();
     loadCuentaCorriente();
     loadPagosPendientes();
@@ -2134,7 +2136,9 @@ export default function App() {
         p_activa_stock: !!reglasForm.activa_stock,
         p_activa_pedidos: !!reglasForm.activa_pedidos_detenidos,
         p_activa_cobranzas: !!reglasForm.activa_cobranzas,
-        p_activa_vendedoras: !!reglasForm.activa_vendedoras_inactivas
+        p_activa_vendedoras: !!reglasForm.activa_vendedoras_inactivas,
+        p_monto_minimo: parseFloat(reglasForm.monto_minimo_envio)||0,
+        p_activa_monto_minimo: !!reglasForm.activa_monto_minimo
       });
       if (res.error) { toast("Error", res.error.message, "e"); setReglasSaving(false); return; }
       toast("✅ Reglas guardadas", "", "s");
@@ -2631,6 +2635,14 @@ export default function App() {
       if (res.data) setPedidosAbiertos(res.data);
     } catch(e) { /* noop */ }
     setPedidosAbiertosLoading(false);
+  }
+
+  async function loadReglasEnvioMinimo() {
+    if (!me || !(me.role==="deposito"||isAdmin||me.role==="administracion")) return;
+    try {
+      var res = await sb.rpc("rpc_reglas_envio_minimo");
+      if (res.data) setDepReglasEnvio(res.data);
+    } catch(e) { /* noop */ }
   }
 
   async function loadOrdenes() {
@@ -6456,6 +6468,8 @@ export default function App() {
                     var prepCount = items.filter(function(it){return it.preparado;}).length;
                     var puedePreparar = (me.role==="deposito"||isAdmin) && ["pendiente_produccion","en_preparacion"].includes(o.estado);
                     var puedeDespachar = (me.role==="deposito"||isAdmin) && o.estado==="lista_despacho";
+                    var reglaEnvio = depReglasEnvio.find(function(r){return r.empresa_id===o.empresa_id;});
+                    var bloqueadoPorMonto = reglaEnvio && reglaEnvio.activa_monto_minimo && (o.pedido?o.pedido.total:0) < reglaEnvio.monto_minimo_envio;
                     var puedeEntregada = o.estado==="despachada" && (me.role==="deposito"||isAdmin||o.empresa_id===me.id);
                     var desp = ordenDespacho[o.id]||{transporte:"",tracking:""};
                     return (
@@ -6503,7 +6517,12 @@ export default function App() {
                               ✅ Confirmar preparación completa
                             </button>
                           )}
-                          {puedeDespachar&&(
+                          {puedeDespachar&&bloqueadoPorMonto&&(
+                            <div style={{marginTop:10,background:"#ffe0e5",border:"1px solid #ffb3c0",borderRadius:9,padding:"10px 12px",fontSize:12,color:"#c2185b",fontWeight:700}}>
+                              🚫 No se puede enviar a domicilio: el pedido es de {fmtARS(o.pedido?o.pedido.total:0)} y el mínimo configurado para esta empresa es {fmtARS(reglaEnvio.monto_minimo_envio)}.
+                            </div>
+                          )}
+                          {puedeDespachar&&!bloqueadoPorMonto&&(
                             <div style={{marginTop:10,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                               <input value={desp.transporte} onChange={function(e){var v=e.target.value;setOrdenDespacho(function(prev){return Object.assign({},prev,{[o.id]:Object.assign({},desp,{transporte:v})});});}}
                                 placeholder="Transporte" style={{flex:1,minWidth:110,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
@@ -6885,6 +6904,20 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
                       <input type="number" value={reglasForm.vendedora_inactiva_dias} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{vendedora_inactiva_dias:e.target.value}));}} style={{width:70,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
                       <span style={{fontSize:12,color:"var(--t3)"}}>días</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:13,fontWeight:700}}>🚚 Monto mínimo para envío a domicilio</label>
+                      <input type="checkbox" checked={reglasForm.activa_monto_minimo} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{activa_monto_minimo:e.target.checked}));}} style={{width:20,height:20}}/>
+                    </div>
+                    <label style={{fontSize:11,color:"var(--t3)"}}>Depósito no puede despachar un pedido a domicilio si no llega a</label>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                      <span style={{fontSize:14,color:"var(--t3)"}}>$</span>
+                      <input type="number" value={reglasForm.monto_minimo_envio} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{monto_minimo_envio:e.target.value}));}} style={{width:110,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
                     </div>
                   </div>
                 </div>
