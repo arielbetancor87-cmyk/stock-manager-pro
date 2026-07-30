@@ -1509,7 +1509,7 @@ export default function App() {
         me.lider_id   ? sb.from("users").select("id,name").eq("id", me.lider_id).maybeSingle()   : Promise.resolve({data:null}),
         me.empresa_id ? sb.from("users").select("id,name").eq("id", me.empresa_id).maybeSingle()  : Promise.resolve({data:null}),
         (me.role==="empresaria"||me.role==="lider"||me.role==="superadmin")
-          ? sb.from("users").select("id,name,email,role,lider_id,empresa_id,comision_lider_pct,comision_empresaria_pct,color,avatar_url").neq("id", me.id).order("role").order("name")
+          ? sb.from("users").select("id,name,email,role,lider_id,empresa_id,comision_lider_pct,comision_empresaria_pct,color,avatar_url,dni,telefono,direccion,localidad,codigo_postal,codigo_vendedora").neq("id", me.id).order("role").order("name")
           : Promise.resolve({data:null}),
         (me.role==="empresaria"||me.role==="superadmin")
           ? sb.from("pending_invites").select("*").eq("invited_by", me.id).order("created_at", {ascending:false})
@@ -1527,6 +1527,9 @@ export default function App() {
     if (!ctaName.trim()) { toast("Falta el nombre", "", "e"); return; }
     if (ctaPass && ctaPass.length < 6) { toast("La contraseña debe tener al menos 6 caracteres", "", "e"); return; }
     if (ctaPass && ctaPass !== ctaPass2) { toast("Las contraseñas no coinciden", "", "e"); return; }
+    if (me.role==="reseller" && (!ctaDni.trim() || !ctaDir.trim() || !ctaLocalidad.trim() || !ctaCP.trim())) {
+      toast("Faltan datos obligatorios", "DNI, Dirección, Localidad y Código Postal son requeridos", "e"); return;
+    }
     var emailNuevo = ctaEmail.trim().toLowerCase();
     if (!emailNuevo || !emailNuevo.includes("@")) { toast("El email no es válido", "", "e"); return; }
     setCtaSaving(true);
@@ -5773,16 +5776,18 @@ export default function App() {
                     {ctaEmail.trim().toLowerCase()===(me.email||"").toLowerCase()&&<div style={{marginBottom:12}}/>}
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Teléfono</label>
                     <input value={ctaTel} onChange={function(e){setCtaTel(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
-                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección</label>
-                    <input value={ctaDir} onChange={function(e){setCtaDir(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección{me.role==="reseller"?" *":""}</label>
+                    <input value={ctaDir} onChange={function(e){setCtaDir(e.target.value);}} placeholder={me.role==="reseller"?"Requerido":"Opcional"} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
 
                     {me.role==="reseller"&&(<>
-                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>DNI</label>
-                      <input value={ctaDni} onChange={function(e){setCtaDni(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>DNI *</label>
+                      <input value={ctaDni} onChange={function(e){setCtaDni(e.target.value);}} placeholder="Requerido" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
                       <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Código de vendedora</label>
                       <input value={ctaCodVend} onChange={function(e){setCtaCodVend(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
-                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad</label>
-                      <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad *</label>
+                      <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Requerido" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Código Postal *</label>
+                      <input value={ctaCP} onChange={function(e){setCtaCP(e.target.value);}} placeholder="Requerido" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
                     </>)}
                     {me.role==="empresaria"&&(<>
                       <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad</label>
@@ -7361,10 +7366,10 @@ export default function App() {
                       return (
                         <div key={u.id} style={{padding:"10px 0",borderTop:"1px solid var(--brd)"}}>
                           <div style={{display:"flex",alignItems:"center",gap:10}}>
-                            <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0,cursor:isAdmin&&u.role==="empresaria"?"pointer":"default"}} onClick={function(){ if (isAdmin && u.role==="empresaria") setEquipoExpandido(abierto?null:u.id); }}>
+                            <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0,cursor:(isAdmin&&u.role==="empresaria")||((me.role==="lider"||me.role==="empresaria")&&u.role==="reseller")?"pointer":"default"}} onClick={function(){ if ((isAdmin&&u.role==="empresaria")||((me.role==="lider"||me.role==="empresaria")&&u.role==="reseller")) setEquipoExpandido(abierto?null:u.id); }}>
                               <Avatar name={u.name} color={u.color} size={34}/>
                               <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontSize:13,fontWeight:700}}>{u.name} {isAdmin&&u.role==="empresaria"&&<span style={{color:"var(--t3)",fontWeight:400}}>{abierto?"▲":"▼"} ({estructura.length})</span>}</div>
+                                <div style={{fontSize:13,fontWeight:700}}>{u.name} {isAdmin&&u.role==="empresaria"&&<span style={{color:"var(--t3)",fontWeight:400}}>{abierto?"▲":"▼"} ({estructura.length})</span>}{((me.role==="lider"||me.role==="empresaria")&&u.role==="reseller")&&<span style={{color:"var(--t3)",fontWeight:400}}>{abierto?"▲":"▼"}</span>}</div>
                                 <div style={{fontSize:11,color:"var(--t3)"}}>{u.email}</div>
                               </div>
                             </div>
@@ -7416,6 +7421,18 @@ export default function App() {
                                   </div>
                                 );
                               })}
+                            </div>
+                          )}
+
+                          {/* Datos personales de la vendedora (líder/empresaria, al desplegar) */}
+                          {(me.role==="lider"||me.role==="empresaria")&&u.role==="reseller"&&abierto&&(
+                            <div style={{marginTop:10,marginLeft:44,background:"var(--bg2)",borderRadius:10,padding:10,fontSize:12}}>
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{color:"var(--t3)"}}>DNI</span><span style={{fontWeight:700}}>{u.dni||"—"}</span></div>
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{color:"var(--t3)"}}>Teléfono</span><span style={{fontWeight:700}}>{u.telefono||"—"}</span></div>
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{color:"var(--t3)"}}>Dirección</span><span style={{fontWeight:700,textAlign:"right"}}>{u.direccion||"—"}</span></div>
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{color:"var(--t3)"}}>Localidad</span><span style={{fontWeight:700}}>{u.localidad||"—"}</span></div>
+                              <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{color:"var(--t3)"}}>Código Postal</span><span style={{fontWeight:700}}>{u.codigo_postal||"—"}</span></div>
+                              {u.codigo_vendedora&&<div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{color:"var(--t3)"}}>Código de vendedora</span><span style={{fontWeight:700}}>{u.codigo_vendedora}</span></div>}
                             </div>
                           )}
                           {/* Asignar líder a una vendedora (solo empresaria) */}
