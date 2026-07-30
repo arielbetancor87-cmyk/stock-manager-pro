@@ -4162,7 +4162,6 @@ export default function App() {
             {titulo:"Operación", items:[
               {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
               {id:"deposito", lbl:"Depósito", ico:"box"},
-              {id:"consigna", lbl:"Consigna", ico:"send"},
             ]},
             {titulo:"Financiero", items:[
               {id:"cuentacorriente", lbl:"Cuenta Corriente", ico:"chart"},
@@ -4623,9 +4622,11 @@ export default function App() {
                     {(function(){
                       var favs = [
                         {ico:"📦",bg:"var(--in-l)",col:"var(--in)",lbl:"Mi Stock",sub:ownStock.reduce(function(s,i){return s+i.qty_available;},0)+" productos",tab:"stock",scroll:true},
-                        {ico:"🤝",bg:"var(--bl-l)",col:"var(--bl)",lbl:"Consigna",sub:consignaEnv>0?consignaEnv+" activos":"Enviados/Recibidos",tab:"consigna",badge:consignaEnv||null},
                         {ico:"💰",bg:"var(--em-l)",col:"var(--em-d)",lbl:"Ventas",sub:fmtARS(totalVal).replace("$ ","$"),tab:"ventas"},
                       ];
+                      if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
+                        favs.splice(1, 0, {ico:"🤝",bg:"var(--bl-l)",col:"var(--bl)",lbl:"Consigna",sub:consignaEnv>0?consignaEnv+" activos":"Enviados/Recibidos",tab:"consigna",badge:consignaEnv||null});
+                      }
                       if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
                         var peProp = pedEspList.filter(function(p){
                           var propio = p.vendedor_id===me.id && ["borrador","listo_entregar"].includes(p.estado);
@@ -5431,7 +5432,7 @@ export default function App() {
           )}
 
           {/* ══ CONSIGNA (hub: Enviados / Recibidos / Mi Red) ══ */}
-          {tab==="consigna"&&(
+          {tab==="consigna"&&(me.role==="empresaria"||me.role==="lider"||me.role==="reseller")&&(
             <div>
               <div className="ph"><div><div className="ph-h">🤝 Consigna</div><div className="ph-s">Elegí qué querés ver</div></div></div>
               <div className="pc">
@@ -5468,7 +5469,7 @@ export default function App() {
           )}
 
           {/* ══ ENVIADOS ══ */}
-          {tab==="enviados"&&(
+          {tab==="enviados"&&(me.role==="empresaria"||me.role==="lider"||me.role==="reseller")&&(
             <ConsignacionModule
               sb={sb}
               me={me}
@@ -5483,7 +5484,7 @@ export default function App() {
           )}
 
           {/* ══ RECIBIDOS ══ */}
-          {tab==="recibidos"&&(
+          {tab==="recibidos"&&(me.role==="empresaria"||me.role==="lider"||me.role==="reseller")&&(
             <ConsignacionModule
               sb={sb}
               me={me}
@@ -7884,6 +7885,9 @@ export default function App() {
                     {id:"importar",        lbl:"Importar productos", ico:"upload", col:"var(--in-d)"},
                     {id:"reglas",          lbl:"Reglas automáticas", ico:"shield", col:"#be185d"},
                     {id:"cuenta",          lbl:"Mi Cuenta",          ico:"user",   col:"var(--pri)"},
+                  ] : isAdmin ? [
+                    {id:"stock",     lbl:"Stock",     ico:"box",   col:"var(--in-d)"},
+                    {id:"cuenta",    lbl:"Mi Cuenta", ico:"user",  col:"var(--pri)"},
                   ] : [
                     {id:"stock",     lbl:"Stock",     ico:"box",   col:"var(--in-d)"},
                     {id:"consigna",  lbl:"Consigna",  ico:"send",  col:"var(--in)"},
