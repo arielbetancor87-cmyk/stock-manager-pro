@@ -16,7 +16,20 @@ if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KE
 }
 const sb = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      // Renovar el token solo antes de que venza: sin esto, después de un rato
+      // de uso el token expiraba y las operaciones (incluido el logout) fallaban.
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+    },
+    global: {
+      headers: { "x-client-info": "ventadirecta-web" },
+    },
+    db: { schema: "public" },
+  }
 );
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
@@ -810,24 +823,36 @@ export default function App() {
     setCtaZonaEnvio(me.zona_envio||""); setCtaCP(me.codigo_postal||"");
     setCtaRemNombre(me.remitente_nombre||""); setCtaRemDireccion(me.remitente_direccion||"");
     setCtaRemCP(me.remitente_cp||""); setCtaRemLocalidad(me.remitente_localidad||"");
-    loadJerarquia();
+    // Solo lo que se necesita en la pantalla de entrada. El resto se carga
+    // cuando el usuario entra a esa sección (ver useEffect de carga diferida
+    // más abajo) — antes se disparaban 16 consultas de golpe al abrir la app,
+    // lo que la hacía lenta en el plan Free de Supabase.
     loadPedidosEspeciales();
-    loadResumen();
-    loadCampanias();
-    loadMisDeudas();
-    loadOrdenes();
-    loadReglasEnvioMinimo();
-    loadPedidosAbiertos();
-    loadCuentaCorriente();
-    loadPagosPendientes();
     loadDashboard();
-    loadMisObjetivos();
-    loadRanking("mes");
-    loadMisLogros();
-    loadClientes();
-    if (me.role==="deposito") setTab("deposito");
-    if (me.role==="administracion") setTab("cuentacorriente");
+    if (me.role==="deposito") { setTab("deposito"); loadOrdenes(); loadPedidosAbiertos(); loadReglasEnvioMinimo(); }
+    else if (me.role==="administracion") { setTab("cuentacorriente"); loadCuentaCorriente(); loadPagosPendientes(); }
   }, [me && me.id]);
+
+  // Carga diferida por sección: evita traer datos de pantallas que el usuario
+  // capaz nunca abre en esa sesión.
+  var cargadoRef = useRef({});
+  useEffect(function() {
+    if (!me) return;
+    function unaVez(clave, fn) {
+      if (cargadoRef.current[clave]) return;
+      cargadoRef.current[clave] = true;
+      fn();
+    }
+    if (["equipo","resumen"].includes(tab)) { unaVez("jerarquia", loadJerarquia); unaVez("campanias", loadCampanias); }
+    if (tab==="ventas" || tab==="inicio") unaVez("resumen", loadResumen);
+    if (["pedesp","cuenta"].includes(tab)) unaVez("deudas", loadMisDeudas);
+    if (tab==="deposito") { unaVez("ordenes", loadOrdenes); unaVez("pedabiertos", loadPedidosAbiertos); unaVez("reglasenvio", loadReglasEnvioMinimo); }
+    if (tab==="cuentacorriente") { unaVez("cc", loadCuentaCorriente); unaVez("pagospend", loadPagosPendientes); }
+    if (tab==="metas") { unaVez("objetivos", loadMisObjetivos); unaVez("ranking", function(){ loadRanking("mes"); }); unaVez("logros", loadMisLogros); }
+    if (tab==="clientes") unaVez("clientes", loadClientes);
+    if (["consigna","enviados","recibidos"].includes(tab)) unaVez("recvinv", loadRecvInventory);
+    if (tab==="pedesp") unaVez("campanias", loadCampanias);
+  }, [tab, me && me.id]);
 
   // ── FASE 22: Pedidos en tiempo real ──────────────────────────────────────
   // Si cualquier vendedora agrega/quita/modifica un producto en su pedido
@@ -3187,7 +3212,22 @@ export default function App() {
     // Resetear UI de inmediato — no esperar a Supabase
     setMe(null); setAuthOk(false); setTab("stock"); setAEmail(""); setAPass("");
     toast("Hasta luego, "+n+"!","","i");
-    try { await sb.auth.signOut(); } catch(e) { /* la sesión local ya se limpió */ }
+    // signOut puede fallar si el token ya venció; en ese caso el token queda
+    // guardado en el navegador y al volver a entrar te reconoce con la sesión
+    // vieja. Por eso limpiamos a mano las claves de Supabase del storage.
+    try { await sb.auth.signOut({ scope: "local" }); } catch(e) { /* seguimos con la limpieza manual */ }
+    try {
+      var borrar = [];
+      for (var i=0; i<window.localStorage.length; i++) {
+        var k = window.localStorage.key(i);
+        if (k && (k.indexOf("sb-")===0 || k.indexOf("supabase")!==-1)) borrar.push(k);
+      }
+      borrar.forEach(function(k){ window.localStorage.removeItem(k); });
+      for (var j=0; j<window.sessionStorage.length; j++) {
+        var k2 = window.sessionStorage.key(j);
+        if (k2 && (k2.indexOf("sb-")===0 || k2.indexOf("supabase")!==-1)) window.sessionStorage.removeItem(k2);
+      }
+    } catch(e) { /* algunos navegadores bloquean el storage */ }
   }
 
   // ── SELL ────────────────────────────────────────────────────────────────────
