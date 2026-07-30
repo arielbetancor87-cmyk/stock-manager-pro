@@ -721,6 +721,10 @@ export default function App() {
   const [ccReporteSaving,  setCcReporteSaving]  = useState(false);
   const [ccReporteSubiendo,setCcReporteSubiendo]= useState(false);
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
+  const [ccFiltroDeuda,    setCcFiltroDeuda]    = useState("todos");
+  const [pickingOpen,    setPickingOpen]    = useState(false);
+  const [pickingData,    setPickingData]    = useState([]);
+  const [pickingLoading, setPickingLoading] = useState(false);
   const [pagosPendientes,        setPagosPendientes]        = useState([]);
   const [pagosPendientesLoading, setPagosPendientesLoading] = useState(false);
   const [scLista,         setScLista]         = useState([]);
@@ -2433,6 +2437,16 @@ export default function App() {
       await loadCuentaCorriente();
     } catch(e) { toast("Error", e.message, "e"); }
     setCcReporteSaving(false);
+  }
+
+  async function doVerPickingConsolidado() {
+    if (pickingOpen) { setPickingOpen(false); return; }
+    setPickingOpen(true); setPickingLoading(true);
+    try {
+      var res = await sb.rpc("rpc_picking_consolidado");
+      if (res.data) setPickingData(res.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setPickingLoading(false);
   }
 
   async function loadPagosPendientes() {
@@ -4604,6 +4618,10 @@ export default function App() {
                           <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>A reponer (Stock Central)</div>
                           <div style={{fontSize:17,fontWeight:800,color:dashboard.stock_central_bajo>0?"var(--cr,#d32)":"var(--t2)"}}>{dashboard.stock_central_bajo}</div>
                         </div></div>
+                        <div className="card"><div style={{padding:"12px",cursor:"pointer"}} onClick={function(){setTab("cuentacorriente");}}>
+                          <div style={{fontSize:10,color:"var(--t3)",fontWeight:700,textTransform:"uppercase"}}>Deuda total (Cta. Corriente)</div>
+                          <div style={{fontSize:17,fontWeight:800,color:"var(--pri)"}}>{fmtARS(dashboard.deuda_sistema_total)}</div>
+                        </div></div>
                       </>)}
                       {(me.role==="lider"||me.role==="empresaria")&&(<>
                         <div className="card"><div style={{padding:"12px"}}>
@@ -6306,6 +6324,36 @@ export default function App() {
                 </div>
               </div>
               <div className="pc">
+                {(me.role==="deposito"||isAdmin)&&(
+                  <button className="btn btn-xs" style={{background:"#f3e8ff",color:"#6d28d9",border:"1px solid #e0c8fb",borderRadius:8,fontWeight:700,padding:"9px 14px",marginBottom:14,width:"100%"}} onClick={doVerPickingConsolidado}>
+                    🧺 {pickingOpen?"Ocultar picking consolidado":"Ver picking consolidado (todos los pedidos juntos)"}
+                  </button>
+                )}
+                {pickingOpen&&(
+                  <div className="card" style={{marginBottom:14,background:"#f5f3ff"}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:"var(--t3)",marginBottom:10}}>Cuánto hay que sacar de cada producto sumando todos los pedidos pendientes de preparar — para ir una sola vez por el depósito.</div>
+                      {pickingLoading&&<div className="empty">Cargando...</div>}
+                      {!pickingLoading&&pickingData.length===0&&<div className="empty">No hay nada pendiente de picking 🎉</div>}
+                      {pickingData.map(function(p){
+                        var falta = p.stock_disponible < p.cantidad_total;
+                        return (
+                          <div key={p.product_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:"1px solid var(--brd)"}}>
+                            <span style={{fontSize:18}}>{p.emoji||"📦"}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:700}}>{p.producto}</div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{p.sku||"s/c"} · {p.cantidad_ordenes} pedido(s)</div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:16,fontWeight:800}}>{p.cantidad_total} u.</div>
+                              <div style={{fontSize:10,fontWeight:700,color:falta?"var(--cr,#d32)":"var(--em-d,#0a8f4d)"}}>{falta?"⚠ solo hay "+p.stock_disponible:"✓ hay "+p.stock_disponible}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 {/* Filtros por empresaria y zona (útil para depósito/superadmin que ven varias) */}
                 {(me.role==="deposito"||isAdmin)&&ordenes.length>0&&(function(){
                   var empresas = Array.from(new Set(ordenes.map(function(o){return o.empresaria_nombre;}).filter(Boolean)));
@@ -6413,16 +6461,22 @@ export default function App() {
                             <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
                           </div>
 
-                          {/* Checklist de productos */}
-                          <div style={{background:"var(--bg2)",borderRadius:9,padding:"8px 10px"}}>
-                            <div style={{fontSize:10,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:4}}>Productos ({prepCount}/{items.length} preparados)</div>
+                          {/* Checklist de productos (picking) */}
+                          <div style={{background:"var(--bg2)",borderRadius:9,padding:"10px 12px"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                              <div style={{fontSize:10,fontWeight:800,color:"var(--t3)",textTransform:"uppercase"}}>Picking ({prepCount}/{items.length})</div>
+                              {prepCount===items.length&&items.length>0&&<span style={{fontSize:11}}>✅</span>}
+                            </div>
+                            <div style={{height:6,background:"var(--brd)",borderRadius:4,marginBottom:10,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:(items.length?Math.round(prepCount/items.length*100):0)+"%",background:prepCount===items.length&&items.length>0?"var(--em-d,#0a8f4d)":"var(--pri)",transition:"width .2s"}}/>
+                            </div>
                             {items.map(function(it){
                               return (
-                                <label key={it.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",fontSize:12,cursor:puedePreparar?"pointer":"default"}}>
+                                <label key={it.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 6px",fontSize:13,cursor:puedePreparar?"pointer":"default",borderRadius:8,background:it.preparado?"var(--em-l,#e7f9ee)":"var(--card)",marginBottom:5,border:"1px solid "+(it.preparado?"var(--em-d,#0a8f4d)":"var(--brd)")}}>
                                   <input type="checkbox" checked={!!it.preparado} disabled={!puedePreparar}
                                     onChange={function(e){doItemPreparado(o.id, it.id, e.target.checked);}}
-                                    style={{width:16,height:16,accentColor:"var(--em-d,#0a8f4d)"}}/>
-                                  <span style={{flex:1,textDecoration:it.preparado?"line-through":"none",color:it.preparado?"var(--t3)":"var(--t1)"}}>
+                                    style={{width:20,height:20,accentColor:"var(--em-d,#0a8f4d)",flexShrink:0}}/>
+                                  <span style={{flex:1,textDecoration:it.preparado?"line-through":"none",color:it.preparado?"var(--t3)":"var(--t1)",fontWeight:it.preparado?400:700}}>
                                     {it.qty}x {it.product?it.product.name:"-"}{[it.color,it.talle].filter(Boolean).length>0?" ("+[it.color,it.talle].filter(Boolean).join(", ")+")":""}
                                   </span>
                                   <span style={{fontSize:10,color:"var(--t3)",fontFamily:"var(--mf)"}}>{it.product?it.product.sku:""}</span>
@@ -6850,7 +6904,27 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                {(isAdmin||me.role==="administracion")&&cuentaCorriente.map(function(c){
+                {(isAdmin||me.role==="administracion")&&cuentaCorriente.length>0&&(
+                  <div style={{display:"flex",gap:8,marginBottom:14}}>
+                    {[
+                      {v:"todos", lbl:"Todas"},
+                      {v:"con_deuda", lbl:"🔴 Con deuda"},
+                      {v:"sin_deuda", lbl:"🟢 Sin deuda"},
+                    ].map(function(f){
+                      return (
+                        <button key={f.v} onClick={function(){setCcFiltroDeuda(f.v);}}
+                          style={{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:20,border:ccFiltroDeuda===f.v?"1.5px solid var(--pri)":"1.5px solid var(--brd)",background:ccFiltroDeuda===f.v?"var(--pri-l)":"var(--card)",color:ccFiltroDeuda===f.v?"var(--pri)":"var(--t2)",cursor:"pointer"}}>
+                          {f.lbl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {(isAdmin||me.role==="administracion")&&cuentaCorriente.filter(function(c){
+                  if (ccFiltroDeuda==="con_deuda") return Number(c.saldo)>0;
+                  if (ccFiltroDeuda==="sin_deuda") return Number(c.saldo)<=0;
+                  return true;
+                }).map(function(c){
                   var abierto = ccPagoAbierto===c.empresa_id;
                   return (
                     <div key={c.empresa_id} className="card" style={{marginBottom:10}}>
