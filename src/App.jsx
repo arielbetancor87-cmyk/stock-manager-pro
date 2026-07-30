@@ -616,6 +616,7 @@ export default function App() {
   const [ctaRemCP,         setCtaRemCP]         = useState("");
   const [ctaRemLocalidad,  setCtaRemLocalidad]  = useState("");
   const [ctaPass,       setCtaPass]       = useState("");
+  const [ctaEmail,      setCtaEmail]      = useState("");
   const [ctaPass2,      setCtaPass2]      = useState("");
   const [ctaSaving,     setCtaSaving]     = useState(false);
   const [ctaJerInfo,    setCtaJerInfo]    = useState(null); // {lider:{name}, empresa:{name}, comision}
@@ -794,6 +795,7 @@ export default function App() {
   useEffect(function() {
     if (!me) return;
     setCtaName(me.name||""); setCtaTel(me.telefono||""); setCtaDir(me.direccion||"");
+    setCtaEmail(me.email||"");
     setCtaDni(me.dni||""); setCtaCodVend(me.codigo_vendedora||""); setCtaLocalidad(me.localidad||"");
     setCtaZonaEnvio(me.zona_envio||""); setCtaCP(me.codigo_postal||"");
     setCtaRemNombre(me.remitente_nombre||""); setCtaRemDireccion(me.remitente_direccion||"");
@@ -1521,6 +1523,8 @@ export default function App() {
     if (!ctaName.trim()) { toast("Falta el nombre", "", "e"); return; }
     if (ctaPass && ctaPass.length < 6) { toast("La contraseña debe tener al menos 6 caracteres", "", "e"); return; }
     if (ctaPass && ctaPass !== ctaPass2) { toast("Las contraseñas no coinciden", "", "e"); return; }
+    var emailNuevo = ctaEmail.trim().toLowerCase();
+    if (!emailNuevo || !emailNuevo.includes("@")) { toast("El email no es válido", "", "e"); return; }
     setCtaSaving(true);
     try {
       var upd = await sb.from("users").update({
@@ -1535,9 +1539,19 @@ export default function App() {
         var pr = await sb.auth.updateUser({ password: ctaPass });
         if (pr.error) { toast("Datos guardados, pero la contraseña falló", pr.error.message, "e"); setCtaSaving(false); return; }
       }
+      var emailCambio = false;
+      if (emailNuevo !== (me.email||"").toLowerCase()) {
+        var er = await sb.auth.updateUser({ email: emailNuevo });
+        if (er.error) { toast("Datos guardados, pero el email falló", er.error.message, "e"); setCtaSaving(false); return; }
+        emailCambio = true;
+      }
       setMe(upd.data);
       setCtaPass(""); setCtaPass2("");
-      toast("Datos actualizados", "", "s");
+      if (emailCambio) {
+        toast("📧 Revisá tu correo", "Te mandamos un link a "+emailNuevo+" para confirmar el cambio — hasta que lo confirmes, seguís entrando con el email viejo", "s");
+      } else {
+        toast("Datos actualizados", "", "s");
+      }
     } catch(e) { toast("Error", e.message, "e"); }
     setCtaSaving(false);
   }
@@ -5605,6 +5619,10 @@ export default function App() {
                     <div style={{fontSize:11,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",marginBottom:10}}>Editar datos</div>
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Nombre</label>
                     <input value={ctaName} onChange={function(e){setCtaName(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Email (con el que entrás al sistema)</label>
+                    <input type="email" value={ctaEmail} onChange={function(e){setCtaEmail(e.target.value);}} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:4,fontFamily:"inherit"}}/>
+                    {ctaEmail.trim().toLowerCase()!==(me.email||"").toLowerCase()&&<div style={{fontSize:11,color:"#c2650a",marginBottom:12}}>⚠️ Al guardar te va a llegar un mail a esa dirección para confirmar el cambio.</div>}
+                    {ctaEmail.trim().toLowerCase()===(me.email||"").toLowerCase()&&<div style={{marginBottom:12}}/>}
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Teléfono</label>
                     <input value={ctaTel} onChange={function(e){setCtaTel(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección</label>
