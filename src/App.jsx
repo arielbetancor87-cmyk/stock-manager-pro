@@ -945,6 +945,7 @@ export default function App() {
   const [impRows, setImpRows] = useState([]);
   const [impQty,  setImpQty]  = useState(0);
   const [impFile, setImpFile] = useState(null);
+  const [impImportando, setImpImportando] = useState(false);
 
   // ── CONSIGNACIONES (conteo para badge) ──────────────────────────────────────
   const [consignActivas,  setConsignActivas]  = useState([]);
@@ -2888,6 +2889,31 @@ export default function App() {
     setOrdenBusy(function(prev){ return Object.assign({},prev,{[ordenId]:false}); });
   }
 
+  async function doImport() {
+    var validRows = impRows.filter(function(r){return r.ok;});
+    if (validRows.length===0) return;
+    var existentes = {};
+    products.forEach(function(p){ existentes[p.sku]=true; });
+    var vistos = {};
+    var nuevos = [];
+    var duplicados = 0;
+    validRows.forEach(function(r){
+      if (existentes[r.sku] || vistos[r.sku]) { duplicados++; return; }
+      vistos[r.sku] = true;
+      nuevos.push({sku:r.sku, name:r.name, price:r.price, category:r.cat, created_by:me.id});
+    });
+    if (nuevos.length===0) { toast("Nada para importar", "Todos los SKU ya existen en el catálogo", "e"); return; }
+    setImpImportando(true);
+    try {
+      var res = await sb.from("products").insert(nuevos).select();
+      if (res.error) { toast("Error al importar", res.error.message, "e"); setImpImportando(false); return; }
+      setProducts(function(prev){ return prev.concat(res.data||[]); });
+      toast("✅ Importación completa", nuevos.length+" producto(s) nuevo(s)"+(duplicados>0?" · "+duplicados+" ya existían (se saltearon)":""), "s");
+      setImpRows([]); setImpFile(null);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setImpImportando(false);
+  }
+
   async function doItemPreparado(ordenId, itemId, val) {
     var res = await sb.rpc("rpc_orden_item_preparado", { p_item_id: itemId, p_preparado: val });
     if (res.error) { toast("Error", res.error.message, "e"); return; }
@@ -4149,6 +4175,7 @@ export default function App() {
           var items = [
             {id:"deposito", lbl:"Depósito", ico:"box", dot: ordenes.some(function(o){return ["pendiente_produccion","en_preparacion"].includes(o.estado);})},
             {id:"stockcentral", lbl:"Stock Central", ico:"box"},
+            {id:"importar", lbl:"Importar productos", ico:"upload"},
             {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
           ];
           return (
@@ -4184,6 +4211,7 @@ export default function App() {
             {id:"cuentacorriente", lbl:"Cuenta Corriente", ico:"chart"},
             {id:"pagospend", lbl:"Pagos pendientes", ico:"clock", dot: pagosPendientes.length>0},
             {id:"stockcentral", lbl:"Stock Central", ico:"box"},
+            {id:"importar", lbl:"Importar productos", ico:"upload"},
             {id:"reglas", lbl:"Reglas automáticas", ico:"shield"},
             {id:"cuenta", lbl:"Mi Cuenta", ico:"user"},
           ];
@@ -5301,7 +5329,7 @@ export default function App() {
           })()}
 
           {/* ══ IMPORTAR ══ */}
-          {tab==="importar"&&isAdmin&&(
+          {tab==="importar"&&(isAdmin||me.role==="administracion"||me.role==="deposito")&&(
             <div>
               <div className="ph"><div><div className="ph-h">Importar</div><div className="ph-s">Carga masiva de productos</div></div></div>
               <div className="pc">
@@ -5355,8 +5383,8 @@ export default function App() {
                         {impRows.length>20&&<div style={{textAlign:"center",padding:8,fontSize:12,color:"var(--t3)"}}>...y {impRows.length-20} más</div>}
                       </div>
                     </div>
-                    <button className="cta cta-in" onClick={doImport} disabled={impRows.filter(function(r){return r.ok;}).length===0}>
-                      <Ic n="upload" s={18}/>Importar {impRows.filter(function(r){return r.ok;}).length} productos
+                    <button className="cta cta-in" onClick={doImport} disabled={impRows.filter(function(r){return r.ok;}).length===0||impImportando}>
+                      <Ic n="upload" s={18}/>{impImportando?"Importando...":"Importar "+impRows.filter(function(r){return r.ok;}).length+" productos"}
                     </button>
                   </div>
                 )}
@@ -7782,10 +7810,12 @@ export default function App() {
                 {(function(){
                   var items = me.role==="deposito" ? [
                     {id:"deposito",  lbl:"Depósito",  ico:"box",  col:"var(--bl-d)"},
+                    {id:"importar",  lbl:"Importar productos", ico:"upload", col:"var(--in-d)"},
                     {id:"cuenta",    lbl:"Mi Cuenta", ico:"user", col:"var(--pri)"},
                   ] : me.role==="administracion" ? [
                     {id:"cuentacorriente", lbl:"Cta. Corriente",     ico:"chart",  col:"#6d28d9"},
                     {id:"pagospend",       lbl:"Pagos pendientes",   ico:"clock",  col:"#c2650a"},
+                    {id:"importar",        lbl:"Importar productos", ico:"upload", col:"var(--in-d)"},
                     {id:"reglas",          lbl:"Reglas automáticas", ico:"shield", col:"#be185d"},
                     {id:"cuenta",          lbl:"Mi Cuenta",          ico:"user",   col:"var(--pri)"},
                   ] : [
