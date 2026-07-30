@@ -1598,8 +1598,10 @@ export default function App() {
 
   // Actualizar % de comisión de un líder (empresaria)
   async function doGuardarComisionLider(userId) {
-    var val = parseFloat(equipoEditComis[userId]);
-    if (isNaN(val) || val < 0 || val > 100) { toast("Porcentaje inválido", "", "e"); return; }
+    var u = miEquipo.find(function(x){return x.id===userId;});
+    var raw = equipoEditComis[userId]!==undefined ? equipoEditComis[userId] : (u?u.comision_lider_pct:0);
+    var val = parseFloat(raw);
+    if (isNaN(val) || val < 0 || val > 100) { toast("Porcentaje inválido", "Tiene que ser un número entre 0 y 100", "e"); return; }
     var res = await sb.rpc("rpc_editar_jerarquia_usuario", { p_user_id: userId, p_comision: val });
     if (res.error) { toast("Error", res.error.message, "e"); return; }
     setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{comision_lider_pct:val}) : u; }); });
@@ -1607,8 +1609,10 @@ export default function App() {
   }
 
   async function doGuardarComisionEmpresaria(userId) {
-    var val = parseFloat(equipoEditComis[userId]);
-    if (isNaN(val) || val < 0 || val > 100) { toast("Porcentaje inválido", "", "e"); return; }
+    var u = miEquipo.find(function(x){return x.id===userId;});
+    var raw = equipoEditComis[userId]!==undefined ? equipoEditComis[userId] : (u?u.comision_empresaria_pct:0);
+    var val = parseFloat(raw);
+    if (isNaN(val) || val < 0 || val > 100) { toast("Porcentaje inválido", "Tiene que ser un número entre 0 y 100", "e"); return; }
     var res = await sb.rpc("rpc_set_comision_empresaria", { p_empresaria_id: userId, p_pct: val });
     if (res.error) { toast("Error", res.error.message, "e"); return; }
     setMiEquipo(function(prev){ return prev.map(function(u){ return u.id===userId ? Object.assign({},u,{comision_empresaria_pct:val}) : u; }); });
