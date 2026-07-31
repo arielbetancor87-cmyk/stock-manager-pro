@@ -2963,7 +2963,7 @@ export default function App() {
     validRows.forEach(function(r){
       if (existentes[r.sku] || vistos[r.sku]) { duplicados++; return; }
       vistos[r.sku] = true;
-      nuevos.push({sku:r.sku, name:r.name, price:r.price, category:r.cat, created_by:me.id});
+      nuevos.push({sku:r.sku, name:r.name, price:r.price, category:r.cat, bonificable: r.bonificable!==false, created_by:me.id});
     });
     if (nuevos.length===0) { toast("Nada para importar", "Todos los SKU ya existen en el catálogo", "e"); return; }
     setImpImportando(true);
@@ -3951,9 +3951,9 @@ export default function App() {
           var wb=XLSX.read(ev.target.result,{type:"binary"});
           var ws=wb.Sheets[wb.SheetNames[0]];
           var data=XLSX.utils.sheet_to_json(ws,{header:1,raw:false});
-          var sr=0,cs=-1,cn=-1,cc=-1,cp=-1;
-          if (data.length>0){ var h=data[0].map(function(x){ return (x||"").toString().toLowerCase(); }); h.forEach(function(x,i){ if(/sku|cod/.test(x)) cs=i; else if(/nom|desc|prod|det/.test(x)) cn=i; else if(/cat|rub/.test(x)) cc=i; else if(/prec|price|val/.test(x)) cp=i; }); if(cs>=0&&cn>=0) sr=1; else{ cs=0;cn=1;cc=2;cp=3;sr=1; } }
-          data.slice(sr).forEach(function(row){ if(!row||!row.length) return; var sku=(row[cs]||"").toString().trim().toUpperCase(); var name=(row[cn]||"").toString().trim(); var cat=cc>=0?(row[cc]||"Importado").toString().trim():"Importado"; var pc=cp>=0?(row[cp]||"0").toString():"0"; pc=pc.replace(/[^\d.,]/g,""); if(pc.includes(",")){ pc=pc.replace(/\./g,"").replace(",","."); } if(!sku||!name){ rows.push({ok:false,raw:(row||[]).join(","),err:"Fila incompleta"}); return; } rows.push({ok:true,sku:sku,name:name,cat:cat,price:parseFloat(pc)||0,qty:impQty}); });
+          var sr=0,cs=-1,cn=-1,cc=-1,cp=-1,cb=-1;
+          if (data.length>0){ var h=data[0].map(function(x){ return (x||"").toString().toLowerCase(); }); h.forEach(function(x,i){ if(/sku|cod/.test(x)) cs=i; else if(/bonif/.test(x)) cb=i; else if(/nom|desc|prod|det/.test(x)) cn=i; else if(/cat|rub/.test(x)) cc=i; else if(/prec|price|val/.test(x)) cp=i; }); if(cs>=0&&cn>=0) sr=1; else{ cs=0;cn=1;cc=2;cp=3;sr=1; } }
+          data.slice(sr).forEach(function(row){ if(!row||!row.length) return; var sku=(row[cs]||"").toString().trim().toUpperCase(); var name=(row[cn]||"").toString().trim(); var cat=cc>=0?(row[cc]||"Importado").toString().trim():"Importado"; var pc=cp>=0?(row[cp]||"0").toString():"0"; pc=pc.replace(/[^\d.,]/g,""); if(pc.includes(",")){ pc=pc.replace(/\./g,"").replace(",","."); } var bonif=true; if(cb>=0){ var bv=(row[cb]||"").toString().trim().toLowerCase(); if(bv==="no"||bv==="0"||bv==="false"||bv==="n") bonif=false; } if(!sku||!name){ rows.push({ok:false,raw:(row||[]).join(","),err:"Fila incompleta"}); return; } rows.push({ok:true,sku:sku,name:name,cat:cat,price:parseFloat(pc)||0,qty:impQty,bonificable:bonif}); });
         } else { rows=parseLines(ev.target.result,impQty); }
         setImpRows(rows);
         toast(rows.filter(function(r){return r.ok;}).length+" detectados","Revisa y confirma","s");
@@ -5333,10 +5333,17 @@ export default function App() {
                         <div style={{flex:1}}><label className="fl">Categoría</label><select className="fi fi-sel" value={fCat} onChange={function(e){setFCat(e.target.value);}}>{CATS.map(function(c){return <option key={c}>{c}</option>;})}</select></div>
                         <div style={{flex:1}}><label className="fl">Stock mínimo</label><input className="fi" type="number" placeholder="5 (por defecto)" value={fStockMinimo} onChange={function(e){setFStockMinimo(e.target.value);}}/></div>
                       </div>
-                      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,marginBottom:12,cursor:"pointer"}}>
-                        <input type="checkbox" checked={fBonificable} onChange={function(e){setFBonificable(e.target.checked);}} style={{width:18,height:18}}/>
-                        Bonificable (genera comisión para vendedora/líder)
-                      </label>
+                      <div style={{background:fBonificable?"var(--em-l,#e7f9ee)":"#fff0db",border:"1.5px solid "+(fBonificable?"var(--em-d,#0a8f4d)":"#ffd8a8"),borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+                        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                          <input type="checkbox" checked={fBonificable} onChange={function(e){setFBonificable(e.target.checked);}} style={{width:18,height:18}}/>
+                          {fBonificable?"✅ Producto bonificable":"⚠️ Producto NO bonificable"}
+                        </label>
+                        <div style={{fontSize:11,color:"var(--t2)",marginTop:6,paddingLeft:26}}>
+                          {fBonificable
+                            ? "Genera ganancia en toda la escala: la vendedora se queda su 30%, el líder cobra su comisión y la empresaria su parte."
+                            : "No genera ganancia para nadie (ni vendedora, ni líder, ni empresaria). El importe va completo a la Empresa."}
+                        </div>
+                      </div>
                       {/* Carrusel de imágenes */}
                       <div className="fld">
                         <label className="fl">Fotos del producto</label>
@@ -5412,6 +5419,12 @@ export default function App() {
             <div>
               <div className="ph"><div><div className="ph-h">Importar</div><div className="ph-s">Carga masiva de productos</div></div></div>
               <div className="pc">
+                <div className="card" style={{marginBottom:12,background:"#f0f9ff"}}>
+                  <div style={{padding:"12px 14px",fontSize:11,color:"var(--t2)"}}>
+                    <b>Columnas que reconoce el archivo:</b> SKU (o Código), Nombre (o Descripción), Categoría, Precio, y <b>Bonificable</b>.<br/>
+                    En la columna Bonificable poné <b>NO</b> (o 0) para los productos que <b>no generan ganancia para nadie</b>. Si la dejás vacía o no incluís la columna, se cargan como bonificables.
+                  </div>
+                </div>
                 <div className="card">
                   <div className="card-h"><div className="card-title">📂 Subir archivo Excel / CSV</div></div>
                   <div style={{padding:"14px 16px"}}>
@@ -5453,7 +5466,7 @@ export default function App() {
                             <div key={i} className={"prev-row "+(r.ok?"prev-ok":"prev-err")}>
                               <div style={{flex:1,minWidth:0}}>
                                 <div style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.sku} · {r.name}</div>
-                                <div style={{fontSize:11,opacity:.7}}>{fmtARS(r.price)} · {r.cat}</div>
+                                <div style={{fontSize:11,opacity:.7}}>{fmtARS(r.price)} · {r.cat}{r.ok&&r.bonificable===false?" · ⚠️ NO bonificable":""}</div>
                               </div>
                               <span style={{marginLeft:8}}>{r.ok?"✅":"❌"}</span>
                             </div>
