@@ -853,6 +853,7 @@ export default function App() {
     if (tab==="cuentacorriente") { unaVez("cc", loadCuentaCorriente); unaVez("pagospend", loadPagosPendientes); }
     if (tab==="metas") { unaVez("objetivos", loadMisObjetivos); unaVez("ranking", function(){ loadRanking("mes"); }); unaVez("logros", loadMisLogros); }
     if (tab==="clientes") unaVez("clientes", loadClientes);
+    if (tab==="recordatorios") unaVez("recordatorios", loadRecordatorios);
     if (["consigna","enviados","recibidos"].includes(tab)) unaVez("recvinv", loadRecvInventory);
     if (tab==="pedesp") unaVez("campanias", loadCampanias);
   }, [tab, me && me.id]);
@@ -980,6 +981,16 @@ export default function App() {
   const [impFile, setImpFile] = useState(null);
   const [impImportando, setImpImportando] = useState(false);
   const [ctaFotoSubiendo, setCtaFotoSubiendo] = useState(false);
+  const [recordatorios,        setRecordatorios]        = useState([]);
+  const [recordatoriosLoading, setRecordatoriosLoading]  = useState(false);
+  const [recFiltro,   setRecFiltro]   = useState("pendientes"); // 'pendientes' | 'todos'
+  const [recTitulo,   setRecTitulo]   = useState("");
+  const [recFecha,    setRecFecha]    = useState("");
+  const [recHora,     setRecHora]     = useState("");
+  const [recTipo,     setRecTipo]     = useState("general");
+  const [recDesc,     setRecDesc]     = useState("");
+  const [recSaving,   setRecSaving]   = useState(false);
+  const [recFormOpen, setRecFormOpen] = useState(false);
   const ctaFotoRef = useRef(null);
 
   // ── CONSIGNACIONES (conteo para badge) ──────────────────────────────────────
@@ -1561,6 +1572,45 @@ export default function App() {
   }
 
   // Guardar cambios de "Mi Cuenta"
+  async function loadRecordatorios() {
+    if (!me) return;
+    setRecordatoriosLoading(true);
+    try {
+      var res = await sb.from("recordatorios").select("*").eq("usuario_id", me.id).order("fecha",{ascending:true}).order("hora",{ascending:true});
+      if (res.data) setRecordatorios(res.data);
+    } catch(e) { /* noop */ }
+    setRecordatoriosLoading(false);
+  }
+
+  async function doCrearRecordatorio() {
+    if (!recTitulo.trim()) { toast("Falta el título", "", "e"); return; }
+    if (!recFecha) { toast("Falta la fecha", "", "e"); return; }
+    setRecSaving(true);
+    try {
+      var res = await sb.from("recordatorios").insert({
+        usuario_id: me.id, titulo: recTitulo.trim(), descripcion: recDesc.trim()||null,
+        fecha: recFecha, hora: recHora||null, tipo: recTipo
+      }).select().single();
+      if (res.error) { toast("Error", res.error.message, "e"); setRecSaving(false); return; }
+      setRecordatorios(function(prev){ return prev.concat([res.data]).sort(function(a,b){ return (a.fecha+((a.hora)||"")).localeCompare(b.fecha+((b.hora)||"")); }); });
+      setRecTitulo(""); setRecFecha(""); setRecHora(""); setRecDesc(""); setRecTipo("general"); setRecFormOpen(false);
+      toast("📅 Recordatorio agregado", "", "s");
+    } catch(e) { toast("Error", e.message, "e"); }
+    setRecSaving(false);
+  }
+
+  async function doCompletarRecordatorio(id, val) {
+    setRecordatorios(function(prev){ return prev.map(function(r){ return r.id===id?Object.assign({},r,{completado:val}):r; }); });
+    var res = await sb.from("recordatorios").update({completado:val}).eq("id", id);
+    if (res.error) { toast("Error", res.error.message, "e"); loadRecordatorios(); }
+  }
+
+  async function doEliminarRecordatorio(id) {
+    setRecordatorios(function(prev){ return prev.filter(function(r){ return r.id!==id; }); });
+    var res = await sb.from("recordatorios").delete().eq("id", id);
+    if (res.error) { toast("Error", res.error.message, "e"); loadRecordatorios(); }
+  }
+
   async function doSubirFotoPerfil(file) {
     if (!file) return;
     if (!file.type.startsWith("image/")) { toast("Tiene que ser una imagen", "", "e"); return; }
@@ -4350,6 +4400,7 @@ export default function App() {
               {id:"inicio", lbl:"Inicio", ico:"home"},
               {id:"ventas", lbl:"Ventas", ico:"chart"},
               {id:"stock", lbl:"Mi Stock", ico:"box"},
+              {id:"recordatorios", lbl:"Recordatorios", ico:"clock"},
             ]},
             {titulo:"Operación", items:[
               {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
@@ -6851,6 +6902,78 @@ export default function App() {
             </div>
           )}
 
+          {/* ══ RECORDATORIOS ══ */}
+          {tab==="recordatorios"&&(me.role==="empresaria"||me.role==="lider"||me.role==="reseller")&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">📅 Recordatorios</div><div className="ph-s">Tu calendario personal</div></div>
+                <button className="btn btn-xs b-ghost" onClick={loadRecordatorios}><Ic n="undo" s={13}/></button>
+              </div>
+              <div className="pc">
+                <button className="cta cta-am" style={{marginBottom:14}} onClick={function(){setRecFormOpen(!recFormOpen);}}>
+                  <Ic n="plus" s={18}/>{recFormOpen?"Cancelar":"Nuevo recordatorio"}
+                </button>
+
+                {recFormOpen&&(
+                  <div className="card" style={{marginBottom:14,background:"var(--bg2)"}}>
+                    <div style={{padding:"14px 16px"}}>
+                      <input value={recTitulo} onChange={function(e){setRecTitulo(e.target.value);}} placeholder="¿Qué tenés que hacer? *" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:10,fontFamily:"inherit"}}/>
+                      <div style={{display:"flex",gap:8,marginBottom:10}}>
+                        <input type="date" value={recFecha} onChange={function(e){setRecFecha(e.target.value);}} style={{flex:1,border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:13,fontFamily:"inherit"}}/>
+                        <input type="time" value={recHora} onChange={function(e){setRecHora(e.target.value);}} style={{flex:1,border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:13,fontFamily:"inherit"}}/>
+                      </div>
+                      <select value={recTipo} onChange={function(e){setRecTipo(e.target.value);}} style={{width:"100%",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:10,fontFamily:"inherit"}}>
+                        <option value="general">📌 General</option>
+                        <option value="pago">💰 Pago / cobranza</option>
+                        <option value="cliente">👤 Cliente</option>
+                        <option value="pedido">📦 Pedido</option>
+                      </select>
+                      <input value={recDesc} onChange={function(e){setRecDesc(e.target.value);}} placeholder="Nota (opcional)" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginBottom:12,fontFamily:"inherit"}}/>
+                      <button className="btn btn-xs b-pri" style={{width:"100%",padding:"10px"}} disabled={recSaving} onClick={doCrearRecordatorio}>{recSaving?"Guardando...":"Guardar recordatorio"}</button>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{display:"flex",gap:8,marginBottom:14}}>
+                  {[{v:"pendientes",lbl:"Pendientes"},{v:"todos",lbl:"Todos"}].map(function(f){
+                    return (
+                      <button key={f.v} onClick={function(){setRecFiltro(f.v);}}
+                        style={{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:20,border:recFiltro===f.v?"1.5px solid var(--pri)":"1.5px solid var(--brd)",background:recFiltro===f.v?"var(--pri-l)":"var(--card)",color:recFiltro===f.v?"var(--pri)":"var(--t2)",cursor:"pointer"}}>
+                        {f.lbl}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {recordatoriosLoading&&<div className="empty">Cargando...</div>}
+                {!recordatoriosLoading&&(function(){
+                  var lista = recordatorios.filter(function(r){ return recFiltro==="todos" || !r.completado; });
+                  if (lista.length===0) return <div className="empty">{recFiltro==="pendientes"?"Sin recordatorios pendientes 🎉":"Todavía no cargaste ningún recordatorio"}</div>;
+                  var iconos = {general:"📌",pago:"💰",cliente:"👤",pedido:"📦"};
+                  var hoy = new Date().toISOString().slice(0,10);
+                  return lista.map(function(r){
+                    var vencido = !r.completado && r.fecha < hoy;
+                    return (
+                      <div key={r.id} className="card" style={{marginBottom:8,opacity:r.completado?0.55:1}}>
+                        <div style={{padding:"12px 14px",display:"flex",alignItems:"flex-start",gap:10}}>
+                          <input type="checkbox" checked={!!r.completado} onChange={function(e){doCompletarRecordatorio(r.id, e.target.checked);}} style={{width:20,height:20,marginTop:2,accentColor:"var(--em-d,#0a8f4d)",flexShrink:0}}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,textDecoration:r.completado?"line-through":"none"}}>{iconos[r.tipo]||"📌"} {r.titulo}</div>
+                            <div style={{fontSize:11,color:vencido?"var(--cr,#d32)":"var(--t3)",fontWeight:vencido?700:400,marginTop:2}}>
+                              {new Date(r.fecha+"T00:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"2-digit",month:"2-digit"})}{r.hora?" · "+r.hora.slice(0,5):""}{vencido?" · vencido":""}
+                            </div>
+                            {r.descripcion&&<div style={{fontSize:12,color:"var(--t2)",marginTop:4}}>{r.descripcion}</div>}
+                          </div>
+                          <button onClick={function(){doEliminarRecordatorio(r.id);}} style={{background:"none",border:"none",color:"var(--t3)",cursor:"pointer",fontSize:15,padding:"2px 4px",flexShrink:0}}>🗑️</button>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+
           {/* ══ CRM DE CLIENTES ══ */}
           {tab==="clientes"&&(
             <div>
@@ -7975,6 +8098,7 @@ export default function App() {
                   ] : [
                     {id:"stock",     lbl:"Stock",     ico:"box",   col:"var(--in-d)"},
                     {id:"consigna",  lbl:"Consigna",  ico:"send",  col:"var(--in)"},
+                    {id:"recordatorios", lbl:"Recordatorios", ico:"clock", col:"#be185d"},
                     {id:"cuenta",    lbl:"Mi Cuenta", ico:"user",  col:"var(--pri)"},
                   ];
                   if (me.role==="reseller"||me.role==="lider"||me.role==="empresaria") {
