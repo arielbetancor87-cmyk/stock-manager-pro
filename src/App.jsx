@@ -119,8 +119,8 @@ const CSS = `
   /* ── Primario = rosa magenta ── */
   --pri:#e0224e;--pri-d:#c11743;--pri-l:#fff0f3;
 
-  /* ── Gradiente magenta vibrante ── */
-  --grad:linear-gradient(145deg,#e0224e 0%,#e0224e 50%,#fa1e5a 100%);
+  /* ── Gradiente violeta → rosa, diagonal (estilo tarjeta de bienvenida) ── */
+  --grad:linear-gradient(135deg,#7c3aed 0%,#a855f7 45%,#e0224e 100%);
 
   /* ── Tipografías ── */
   --hf:'Nunito',sans-serif;--mf:'JetBrains Mono',monospace;
@@ -155,8 +155,8 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .spin{animation:spin 1s linear infinite}
 
 /* HEADER */
-.hdr{background:var(--card);padding:0;flex-shrink:0;position:sticky;top:0;z-index:60;box-shadow:0 1px 0 var(--brd)}
-.hdr-btn{width:44px;height:44px;border-radius:14px;border:1.5px solid var(--brd);background:var(--card);cursor:pointer;color:var(--t2);display:flex;align-items:center;justify-content:center;transition:all .18s;flex-shrink:0}
+.hdr{background:var(--grad);padding:0;flex-shrink:0;position:sticky;top:0;z-index:60;box-shadow:0 8px 24px rgba(124,58,237,.25);border-radius:0 0 var(--r3) var(--r3)}
+.hdr-btn{width:44px;height:44px;border-radius:14px;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.16);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;transition:all .18s;flex-shrink:0}
 .hdr-btn:active{background:var(--bg2);transform:scale(.94)}
 
 .hdr-top{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px;gap:12px}
@@ -164,9 +164,9 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .hdr-search input{width:100%;padding:14px 18px 14px 46px;border-radius:16px;border:1.5px solid var(--brd);background:var(--card);color:var(--t1);font-family:var(--hf);font-size:14px;outline:none;font-weight:600}
 .hdr-search input:focus{border-color:var(--in-m)}
 .hdr-search-ico{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
-.hdr-avatar{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;color:#fff;flex-shrink:0;background:var(--grad)}
-.hdr-hi{font-size:17px;font-weight:900;color:var(--t1);letter-spacing:-.02em;line-height:1.15}
-.hdr-sub{font-size:12px;color:var(--t3);font-weight:600;margin-top:2px;line-height:1.3}
+.hdr-avatar{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;color:#fff;flex-shrink:0;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.55)}
+.hdr-hi{font-size:17px;font-weight:900;color:#fff;letter-spacing:-.02em;line-height:1.15}
+.hdr-sub{font-size:12px;color:rgba(255,255,255,.85);font-weight:600;margin-top:2px;line-height:1.3}
 /* TABBAR */
 .tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tab);background:rgba(255,255,255,.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;z-index:50;box-shadow:0 -1px 0 var(--brd),0 -10px 30px rgba(0,0,0,.08);border-radius:24px 24px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--t4);transition:all .22s cubic-bezier(.34,1.56,.64,1);position:relative;padding:8px 2px 5px;min-width:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
@@ -177,7 +177,7 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--hf)
 .tab.on .tab-lbl{color:var(--in-m)}
 .tab-dot{position:absolute;top:5px;right:calc(50% - 22px);width:7px;height:7px;border-radius:50%;background:var(--cr);border:2px solid white;box-shadow:0 0 0 1px var(--cr-l)}
 .tab-fab-wrap{flex:1;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
-.tab-fab{width:56px;height:56px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 6px 20px rgba(224,34,78,.42);margin-top:-26px;border:4px solid var(--card);transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
+.tab-fab{width:56px;height:56px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 6px 20px rgba(124,58,237,.38);margin-top:-26px;border:4px solid var(--card);transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
 .tab-fab-wrap:active .tab-fab{transform:scale(.9)}
 
 /* PAGE */
@@ -346,7 +346,10 @@ tr:last-child td{border-bottom:none}
 
 // ─── SUBCOMPONENTES ───────────────────────────────────────────────────────────
 const Avatar = memo(function Avatar(props) {
-  var name=props.name, color=props.color, size=props.size||38, style=props.style||{};
+  var name=props.name, color=props.color, size=props.size||38, style=props.style||{}, url=props.url;
+  if (url) {
+    return <img src={url} alt={name||""} style={Object.assign({width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1px solid var(--brd)"},style)}/>;
+  }
   return (
     <div style={Object.assign({width:size,height:size,borderRadius:"50%",background:color||"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(size*.36),fontWeight:800,color:"#fff",flexShrink:0,fontFamily:"var(--hf)"},style)}>
       {ini(name)}
@@ -976,6 +979,8 @@ export default function App() {
   const [impQty,  setImpQty]  = useState(0);
   const [impFile, setImpFile] = useState(null);
   const [impImportando, setImpImportando] = useState(false);
+  const [ctaFotoSubiendo, setCtaFotoSubiendo] = useState(false);
+  const ctaFotoRef = useRef(null);
 
   // ── CONSIGNACIONES (conteo para badge) ──────────────────────────────────────
   const [consignActivas,  setConsignActivas]  = useState([]);
@@ -1556,6 +1561,25 @@ export default function App() {
   }
 
   // Guardar cambios de "Mi Cuenta"
+  async function doSubirFotoPerfil(file) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast("Tiene que ser una imagen", "", "e"); return; }
+    if (file.size > 5*1024*1024) { toast("La imagen es muy pesada", "Máximo 5MB", "e"); return; }
+    setCtaFotoSubiendo(true);
+    try {
+      var ext = file.name.split(".").pop();
+      var fileName = "avatar-"+me.id+"-"+Date.now()+"."+ext;
+      var up = await sb.storage.from("product-images").upload(fileName, file, { contentType: file.type, upsert: true });
+      if (up.error) { toast("Error al subir la foto", up.error.message, "e"); setCtaFotoSubiendo(false); return; }
+      var pub = sb.storage.from("product-images").getPublicUrl(fileName);
+      var upd = await sb.from("users").update({ avatar_url: pub.data.publicUrl }).eq("id", me.id).select().single();
+      if (upd.error) { toast("Error al guardar", upd.error.message, "e"); setCtaFotoSubiendo(false); return; }
+      setMe(upd.data);
+      toast("📸 Foto actualizada", "", "s");
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCtaFotoSubiendo(false);
+  }
+
   async function doSaveMiCuenta() {
     if (!ctaName.trim()) { toast("Falta el nombre", "", "e"); return; }
     if (ctaPass && ctaPass.length < 6) { toast("La contraseña debe tener al menos 6 caracteres", "", "e"); return; }
@@ -4218,7 +4242,7 @@ export default function App() {
           return (
             <aside className="sidebar-desktop">
               <div className="sidebar-brand">
-                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                {me.avatar_url ? <img src={me.avatar_url} alt="" style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/> : <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>}
                 <div>
                   <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>Venta Directa</div>
                   <div style={{fontSize:11,color:"var(--t3)"}}>👑 Administrador</div>
@@ -4258,7 +4282,7 @@ export default function App() {
           return (
             <aside className="sidebar-desktop">
               <div className="sidebar-brand">
-                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                {me.avatar_url ? <img src={me.avatar_url} alt="" style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/> : <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>}
                 <div>
                   <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>Venta Directa</div>
                   <div style={{fontSize:11,color:"var(--t3)"}}>🏭 Depósito</div>
@@ -4295,7 +4319,7 @@ export default function App() {
           return (
             <aside className="sidebar-desktop">
               <div className="sidebar-brand">
-                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                {me.avatar_url ? <img src={me.avatar_url} alt="" style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/> : <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>}
                 <div>
                   <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>Venta Directa</div>
                   <div style={{fontSize:11,color:"var(--t3)"}}>🛠️ Administración</div>
@@ -4344,7 +4368,7 @@ export default function App() {
           return (
             <aside className="sidebar-desktop">
               <div className="sidebar-brand">
-                <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+                {me.avatar_url ? <img src={me.avatar_url} alt="" style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/> : <div className="hdr-avatar" style={{width:36,height:36,fontSize:14}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>}
                 <div>
                   <div style={{fontSize:14,fontWeight:900,color:"var(--t1)"}}>{me.name}</div>
                   <div style={{fontSize:11,color:"var(--t3)"}}>🏢 Empresaria</div>
@@ -4379,7 +4403,7 @@ export default function App() {
         })()}
         <div className="hdr">
           <div className="hdr-top">
-            <div className="hdr-avatar" style={me.color?{background:me.color}:{}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>
+            {me.avatar_url ? <img src={me.avatar_url} alt="" className="hdr-avatar" style={{objectFit:"cover"}}/> : <div className="hdr-avatar" style={me.color?{background:me.color}:{}}>{(me.name||"?").trim().charAt(0).toUpperCase()}</div>}
             <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={function(){setTab("inicio");}}>
               <div className="hdr-hi">{me.role==="superadmin"?"👑 Administrador":("¡Hola, "+me.name.split(" ")[0]+"!")}</div>
               <div className="hdr-sub">{me.role==="superadmin"?"Panel de control":me.role==="deposito"?"Panel de depósito":me.role==="administracion"?"Panel de administración":(tab==="recibidos"?"Acá ves lo que te entregaron para vender":"¿Lista para vender hoy?")}</div>
@@ -5872,7 +5896,14 @@ export default function App() {
               <div className="pc">
                 <div className="card" style={{marginBottom:14}}>
                   <div style={{padding:"18px 16px",display:"flex",alignItems:"center",gap:14}}>
-                    <Avatar name={me.name} color={me.color} size={56}/>
+                    <div style={{position:"relative",width:56,marginBottom:4}} onClick={function(){ ctaFotoRef.current && ctaFotoRef.current.click(); }}>
+                      <Avatar name={me.name} color={me.color} url={me.avatar_url} size={56}/>
+                      <div style={{position:"absolute",bottom:-2,right:-2,width:22,height:22,borderRadius:"50%",background:"var(--pri)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"2px solid var(--card)"}}>
+                        {ctaFotoSubiendo?<span style={{fontSize:9}}>⏳</span>:<Ic n="upload" s={11}/>}
+                      </div>
+                    </div>
+                    <input ref={ctaFotoRef} type="file" accept="image/*" onChange={function(e){doSubirFotoPerfil(e.target.files[0]);}} style={{display:"none"}}/>
+                    <div style={{fontSize:10,color:"var(--t3)",marginBottom:12,cursor:"pointer"}} onClick={function(){ ctaFotoRef.current && ctaFotoRef.current.click(); }}>Tocá la foto para cambiarla</div>
                     <div>
                       <div style={{fontSize:16,fontWeight:800,color:"var(--t1)"}}>{me.name}</div>
                       <div style={{fontSize:12,color:"var(--t3)"}}>{me.email}</div>
@@ -7548,7 +7579,7 @@ export default function App() {
                         <div key={u.id} style={{padding:"10px 0",borderTop:"1px solid var(--brd)"}}>
                           <div style={{display:"flex",alignItems:"center",gap:10}}>
                             <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0,cursor:(isAdmin&&u.role==="empresaria")||((me.role==="lider"||me.role==="empresaria")&&u.role==="reseller")?"pointer":"default"}} onClick={function(){ if ((isAdmin&&u.role==="empresaria")||((me.role==="lider"||me.role==="empresaria")&&u.role==="reseller")) setEquipoExpandido(abierto?null:u.id); }}>
-                              <Avatar name={u.name} color={u.color} size={34}/>
+                              <Avatar name={u.name} color={u.color} url={u.avatar_url} size={34}/>
                               <div style={{flex:1,minWidth:0}}>
                                 <div style={{fontSize:13,fontWeight:700}}>{u.name} {isAdmin&&u.role==="empresaria"&&<span style={{color:"var(--t3)",fontWeight:400}}>{abierto?"▲":"▼"} ({estructura.length})</span>}{((me.role==="lider"||me.role==="empresaria")&&u.role==="reseller")&&<span style={{color:"var(--t3)",fontWeight:400}}>{abierto?"▲":"▼"}</span>}</div>
                                 <div style={{fontSize:11,color:"var(--t3)"}}>{u.email}</div>
@@ -7774,7 +7805,7 @@ export default function App() {
                 <div className="card">
                   <div className="card-h"><div className="card-title"><Ic n="users" s={14}/>Usuarios registrados ({allUsers.length})</div></div>
                   {allUsers.length===0?<div className="empty">Sin usuarios aún</div>:(
-                    <div className="tw"><table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Registro</th><th></th></tr></thead><tbody>{allUsers.map(function(u){ return (<tr key={u.id} className="tr"><td><div className="row g8"><Avatar name={u.name} color={u.color} size={28}/><span style={{fontWeight:600,fontSize:12}}>{u.name}</span></div></td><td style={{fontSize:11,color:"var(--t3)"}}>{u.email}</td><td><span style={{background:u.role==="superadmin"?"var(--am-t)":"var(--in-t)",color:u.role==="superadmin"?"var(--am-d)":"var(--in-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>{u.role==="superadmin"?"👑 Admin":"Usuario"}</span></td><td style={{fontSize:10,color:"var(--t3)"}}>{new Date(u.created_at).toLocaleDateString("es-AR")}</td>
+                    <div className="tw"><table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Registro</th><th></th></tr></thead><tbody>{allUsers.map(function(u){ return (<tr key={u.id} className="tr"><td><div className="row g8"><Avatar name={u.name} color={u.color} url={u.avatar_url} size={28}/><span style={{fontWeight:600,fontSize:12}}>{u.name}</span></div></td><td style={{fontSize:11,color:"var(--t3)"}}>{u.email}</td><td><span style={{background:u.role==="superadmin"?"var(--am-t)":"var(--in-t)",color:u.role==="superadmin"?"var(--am-d)":"var(--in-d)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700}}>{u.role==="superadmin"?"👑 Admin":"Usuario"}</span></td><td style={{fontSize:10,color:"var(--t3)"}}>{new Date(u.created_at).toLocaleDateString("es-AR")}</td>
                               <td>
                                 {u.id!==me.id&&u.role!=="superadmin"&&(
                                   delUserConf===u.id
