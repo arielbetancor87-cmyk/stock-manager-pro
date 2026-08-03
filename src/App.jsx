@@ -738,6 +738,20 @@ export default function App() {
   const [ccReporteSubiendo,setCcReporteSubiendo]= useState(false);
   const [ccConfirmando,    setCcConfirmando]    = useState(null);
   const [ccFiltroDeuda,    setCcFiltroDeuda]    = useState("todos");
+  const [ccLideres,        setCcLideres]        = useState([]); // resumen de deuda de cada líder (vista empresaria)
+  const [ccLideresLoading, setCcLideresLoading] = useState(false);
+  const [ccLiderAbierto,   setCcLiderAbierto]   = useState(null); // id de líder expandido
+  const [ccLiderDetalle,   setCcLiderDetalle]   = useState([]);
+  const [ccLiderConfirmando, setCcLiderConfirmando] = useState(null);
+  const [ccReporteLiderMonto,    setCcReporteLiderMonto]    = useState("");
+  const [ccReporteLiderNota,     setCcReporteLiderNota]     = useState("");
+  const [ccReporteLiderArchivo,  setCcReporteLiderArchivo]  = useState(null);
+  const [ccReporteLiderSaving,   setCcReporteLiderSaving]   = useState(false);
+  const [ccReporteLiderSubiendo, setCcReporteLiderSubiendo] = useState(false);
+  const [ccMiSaldoLider,   setCcMiSaldoLider]   = useState(0);
+  const [ccMiDetalleLider, setCcMiDetalleLider] = useState([]);
+  const [ccMiDetalleLiderLoading, setCcMiDetalleLiderLoading] = useState(false);
+  const ccReporteLiderFileRef = useRef(null);
   const [peReclamos,        setPeReclamos]        = useState({}); // {pedidoId: [reclamos]}
   const [peReclamosOpen,    setPeReclamosOpen]    = useState(null); // pedidoId con reclamos desplegados
   const [peReclamosLoading, setPeReclamosLoading] = useState(null);
@@ -2536,13 +2550,16 @@ export default function App() {
   // ── FASE 11: Órdenes de producción ───────────────────────────────────────
   // ── FASE 19: Cuenta Corriente ─────────────────────────────────────────────
   async function loadCuentaCorriente() {
-    if (!me || !(isAdmin || me.role==="empresaria" || me.role==="administracion")) return;
-    setCuentaCorrienteLoading(true);
-    try {
-      var res = await sb.rpc("rpc_cuenta_corriente_resumen");
-      if (res.data) setCuentaCorriente(res.data);
-    } catch(e) { /* noop */ }
-    setCuentaCorrienteLoading(false);
+    if (!me || !(isAdmin || me.role==="empresaria" || me.role==="administracion" || me.role==="lider")) return;
+
+    if (isAdmin || me.role==="empresaria" || me.role==="administracion") {
+      setCuentaCorrienteLoading(true);
+      try {
+        var res = await sb.rpc("rpc_cuenta_corriente_resumen");
+        if (res.data) setCuentaCorriente(res.data);
+      } catch(e) { /* noop */ }
+      setCuentaCorrienteLoading(false);
+    }
 
     if (me.role==="empresaria") {
       setCcDetalleLoading(true);
@@ -2551,7 +2568,71 @@ export default function App() {
         if (det.data) setCcDetalle(det.data);
       } catch(e) { /* noop */ }
       setCcDetalleLoading(false);
+
+      setCcLideresLoading(true);
+      try {
+        var lids = await sb.rpc("rpc_cuenta_corriente_lider_resumen");
+        if (lids.data) setCcLideres(lids.data);
+      } catch(e) { /* noop */ }
+      setCcLideresLoading(false);
     }
+
+    if (me.role==="lider") {
+      setCcMiDetalleLiderLoading(true);
+      try {
+        var detL = await sb.rpc("rpc_mi_cuenta_corriente_lider_detalle");
+        if (detL.data) {
+          setCcMiDetalleLider(detL.data);
+          var saldo = detL.data.reduce(function(s,d){ return s + (d.tipo==="cargo"?d.monto:(d.estado==="confirmado"?-d.monto:0)); }, 0);
+          setCcMiSaldoLider(saldo);
+        }
+      } catch(e) { /* noop */ }
+      setCcMiDetalleLiderLoading(false);
+    }
+  }
+
+  async function doVerDetalleLider(liderId) {
+    if (ccLiderAbierto===liderId) { setCcLiderAbierto(null); return; }
+    setCcLiderAbierto(liderId); setCcLiderDetalle([]);
+    var res = await sb.rpc("rpc_mi_cuenta_corriente_lider_detalle", { p_lider_id: liderId });
+    if (res.data) setCcLiderDetalle(res.data);
+  }
+
+  async function doConfirmarPagoLider(pagoId, liderId) {
+    setCcLiderConfirmando(pagoId);
+    try {
+      var res = await sb.rpc("rpc_confirmar_pago_lider", { p_pago_id: pagoId });
+      if (res.error) { toast("Error", res.error.message, "e"); setCcLiderConfirmando(null); return; }
+      toast("✅ Pago confirmado", "", "s");
+      var det = await sb.rpc("rpc_mi_cuenta_corriente_lider_detalle", { p_lider_id: liderId });
+      if (det.data) setCcLiderDetalle(det.data);
+      var lids = await sb.rpc("rpc_cuenta_corriente_lider_resumen");
+      if (lids.data) setCcLideres(lids.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCcLiderConfirmando(null);
+  }
+
+  async function doReportarPagoLider() {
+    var val = parseFloat(ccReporteLiderMonto);
+    if (isNaN(val) || val<=0) { toast("Monto inválido", "", "e"); return; }
+    if (!ccReporteLiderArchivo) { toast("Adjuntá el comprobante", "Es obligatorio para reportar el pago", "e"); return; }
+    setCcReporteLiderSaving(true);
+    try {
+      setCcReporteLiderSubiendo(true);
+      var ext = ccReporteLiderArchivo.name.split(".").pop();
+      var fileName = "reporte-lider-"+me.id+"-"+Date.now()+"."+ext;
+      var up = await sb.storage.from("comprobantes-pago").upload(fileName, ccReporteLiderArchivo, { contentType: ccReporteLiderArchivo.type, upsert: true });
+      setCcReporteLiderSubiendo(false);
+      if (up.error) { toast("Error al subir el comprobante", up.error.message, "e"); setCcReporteLiderSaving(false); return; }
+      var pub = sb.storage.from("comprobantes-pago").getPublicUrl(fileName);
+
+      var res = await sb.rpc("rpc_reportar_pago_lider", { p_monto: val, p_nota: ccReporteLiderNota.trim(), p_comprobante_url: pub.data.publicUrl });
+      if (res.error) { toast("Error", res.error.message, "e"); setCcReporteLiderSaving(false); return; }
+      toast("📎 Pago reportado", "Queda pendiente hasta que tu empresaria lo confirme", "s");
+      setCcReporteLiderMonto(""); setCcReporteLiderNota(""); setCcReporteLiderArchivo(null);
+      await loadCuentaCorriente();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setCcReporteLiderSaving(false);
   }
 
   async function verDetalleCuentaCorriente(empresaId) {
@@ -7231,10 +7312,10 @@ export default function App() {
             </div>
           )}
 
-          {tab==="cuentacorriente"&&(isAdmin||me.role==="empresaria"||me.role==="administracion")&&(
+          {tab==="cuentacorriente"&&(isAdmin||me.role==="empresaria"||me.role==="administracion"||me.role==="lider")&&(
             <div>
               <div className="ph">
-                <div><div className="ph-h">💼 Cuenta Corriente</div><div className="ph-s">{(isAdmin||me.role==="administracion")?"Saldo que cada empresaria debe pagar":"Lo que debés a la Empresa"}</div></div>
+                <div><div className="ph-h">💼 Cuenta Corriente</div><div className="ph-s">{(isAdmin||me.role==="administracion")?"Saldo que cada empresaria debe pagar":me.role==="lider"?"Lo que le debés a tu empresaria":"Lo que debés a la Empresa"}</div></div>
                 <button className="btn btn-xs b-ghost" onClick={loadCuentaCorriente}><Ic n="undo" s={13}/></button>
               </div>
               <div className="pc">
@@ -7343,6 +7424,89 @@ export default function App() {
                     {ccDetalleLoading&&<div className="empty">Cargando...</div>}
                     {!ccDetalleLoading&&ccDetalle.length===0&&<div className="empty">Sin movimientos todavía</div>}
                     {ccDetalle.map(function(d){
+                      var pendiente = d.tipo==="pago" && d.estado==="pendiente";
+                      return (
+                        <div key={d.id} className="card" style={{marginBottom:8}}>
+                          <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" — "+d.cliente_nombre:"")):("Pago"+(d.nota?" — "+d.nota:""))}
+                                {pendiente&&<span style={{marginLeft:6,background:"#fff0db",color:"#c2650a",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:800}}>PENDIENTE DE CONFIRMAR</span>}
+                              </div>
+                              <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}{d.comprobante_url&&<> · <a href={d.comprobante_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontWeight:700}}>📎 Ver comprobante</a></>}</div>
+                            </div>
+                            <div style={{fontSize:13,fontWeight:800,color:pendiente?"var(--t3)":(d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)")}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {ccLideres.length>0&&(<>
+                      <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"20px 0 8px"}}>Lo que te deben tus líderes</div>
+                      {ccLideresLoading&&<div className="empty">Cargando...</div>}
+                      {ccLideres.map(function(l){
+                        var abiertoL = ccLiderAbierto===l.lider_id;
+                        return (
+                          <div key={l.lider_id} className="card" style={{marginBottom:8}}>
+                            <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={function(){doVerDetalleLider(l.lider_id);}}>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:700}}>{l.lider_nombre} <span style={{color:"var(--t3)",fontWeight:400}}>{abiertoL?"▲":"▼"}</span></div>
+                              </div>
+                              <div style={{fontSize:15,fontWeight:800,color:l.saldo>0?"var(--pri)":"var(--em-d,#0a8f4d)"}}>{fmtARS(l.saldo)}</div>
+                            </div>
+                            {abiertoL&&(
+                              <div style={{padding:"0 14px 12px"}}>
+                                {ccLiderDetalle.length===0&&<div style={{fontSize:11,color:"var(--t3)"}}>Sin movimientos</div>}
+                                {ccLiderDetalle.map(function(d){
+                                  var pend = d.tipo==="pago" && d.estado==="pendiente";
+                                  return (
+                                    <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--brd)"}}>
+                                      <div style={{flex:1,minWidth:0}}>
+                                        <div style={{fontSize:11,fontWeight:700}}>{d.tipo==="cargo"?("Pedido #"+d.numero_pedido+(d.cliente_nombre?" · "+d.cliente_nombre:"")):("Pago"+(d.nota?" · "+d.nota:""))}
+                                          {pend&&<span style={{marginLeft:6,background:"#fff0db",color:"#c2650a",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:800}}>PENDIENTE</span>}
+                                        </div>
+                                        <div style={{fontSize:9,color:"var(--t3)"}}>{new Date(d.created_at).toLocaleDateString("es-AR")}{d.comprobante_url&&<> · <a href={d.comprobante_url} target="_blank" rel="noreferrer" style={{color:"var(--pri)",fontWeight:700}}>📎 Ver</a></>}</div>
+                                        {pend&&<button className="btn btn-xs b-pri" style={{marginTop:4,padding:"4px 10px",fontSize:10}} disabled={ccLiderConfirmando===d.id} onClick={function(){doConfirmarPagoLider(d.id, l.lider_id);}}>{ccLiderConfirmando===d.id?"Confirmando...":"✓ Confirmar pago"}</button>}
+                                      </div>
+                                      <div style={{fontSize:11,fontWeight:800,color:pend?"var(--t3)":(d.tipo==="cargo"?"var(--pri)":"var(--em-d,#0a8f4d)")}}>{d.tipo==="cargo"?"+":"-"}{fmtARS(d.monto)}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>)}
+                  </>
+                )}
+
+                {!isAdmin&&me.role==="lider"&&(
+                  <>
+                    <div style={{background:"var(--pri-l)",borderRadius:14,padding:"16px",marginBottom:14}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"var(--pri)",textTransform:"uppercase"}}>Le debés a tu empresaria</div>
+                      <div style={{fontSize:24,fontWeight:900,color:"var(--pri)"}}>{fmtARS(ccMiSaldoLider)}</div>
+                    </div>
+
+                    <div className="card" style={{marginBottom:14,background:"var(--bg2)"}}>
+                      <div style={{padding:"14px 16px"}}>
+                        <div style={{fontSize:12,fontWeight:800,marginBottom:8}}>📎 Reportar un pago</div>
+                        <div style={{fontSize:10,color:"var(--t3)",marginBottom:8}}>Queda pendiente hasta que tu empresaria lo confirme.</div>
+                        <div style={{display:"flex",gap:6,marginBottom:6}}>
+                          <input type="number" value={ccReporteLiderMonto} onChange={function(e){setCcReporteLiderMonto(e.target.value);}} placeholder="Monto" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                          <input value={ccReporteLiderNota} onChange={function(e){setCcReporteLiderNota(e.target.value);}} placeholder="Nota (opcional)" style={{flex:1,fontSize:12,border:"1.5px solid var(--brd)",borderRadius:8,padding:"7px 9px",fontFamily:"inherit"}}/>
+                        </div>
+                        <div onClick={function(){ ccReporteLiderFileRef.current && ccReporteLiderFileRef.current.click(); }} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:ccReporteLiderArchivo?"var(--t2)":"var(--t3)",marginBottom:8,cursor:"pointer",border:"1.5px dashed var(--brd)",borderRadius:8,padding:"10px 12px",background:"var(--card)"}}>
+                          📎 {ccReporteLiderArchivo?ccReporteLiderArchivo.name:"Toca acá para adjuntar el comprobante (obligatorio)"}
+                        </div>
+                        <input ref={ccReporteLiderFileRef} type="file" accept="image/*,.pdf" onChange={function(e){setCcReporteLiderArchivo(e.target.files[0]||null);}} style={{display:"none"}}/>
+                        <button className="btn btn-xs b-pri" style={{width:"100%",padding:"8px"}} disabled={ccReporteLiderSaving} onClick={doReportarPagoLider}>{ccReporteLiderSubiendo?"Subiendo comprobante...":ccReporteLiderSaving?"Guardando...":"Reportar pago"}</button>
+                      </div>
+                    </div>
+
+                    <div style={{fontSize:12,fontWeight:800,color:"var(--t3)",textTransform:"uppercase",margin:"14px 0 8px"}}>Movimientos</div>
+                    {ccMiDetalleLiderLoading&&<div className="empty">Cargando...</div>}
+                    {!ccMiDetalleLiderLoading&&ccMiDetalleLider.length===0&&<div className="empty">Sin movimientos todavía</div>}
+                    {ccMiDetalleLider.map(function(d){
                       var pendiente = d.tipo==="pago" && d.estado==="pendiente";
                       return (
                         <div key={d.id} className="card" style={{marginBottom:8}}>
@@ -8120,7 +8284,7 @@ export default function App() {
                     items.push({id:"deposito", lbl:"Depósito", ico:"box", col:"var(--bl-d)", badge:ordPend});
                     items.push({id:"stockcentral", lbl:"Stock Central", ico:"box", col:"var(--bl-d)"});
                   }
-                  if (isAdmin || me.role==="empresaria") {
+                  if (isAdmin || me.role==="empresaria" || me.role==="lider") {
                     items.push({id:"cuentacorriente", lbl:"Cta. Corriente", ico:"chart", col:"#6d28d9"});
                   }
                   if (isAdmin) {
