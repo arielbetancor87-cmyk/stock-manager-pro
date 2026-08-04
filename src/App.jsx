@@ -683,7 +683,7 @@ export default function App() {
   const [campResumenId,      setCampResumenId]      = useState(null);
   const [campResumen,        setCampResumen]        = useState(null);
   const [campResumenLoading, setCampResumenLoading] = useState(false);
-  const [reglasForm,      setReglasForm]      = useState({stock_dias_alerta:14,pedido_detenido_dias:5,cobranza_vencida_dias:15,vendedora_inactiva_dias:7,activa_stock:true,activa_pedidos_detenidos:true,activa_cobranzas:true,activa_vendedoras_inactivas:true,monto_minimo_envio:0,activa_monto_minimo:false});
+  const [reglasForm,      setReglasForm]      = useState({stock_dias_alerta:14,pedido_detenido_dias:5,cobranza_vencida_dias:15,vendedora_inactiva_dias:7,activa_stock:true,activa_pedidos_detenidos:true,activa_cobranzas:true,activa_vendedoras_inactivas:true,monto_minimo_envio:0,activa_monto_minimo:false,monto_minimo_envio_lider:0,activa_envio_lider:false});
   const [reglasSaving,    setReglasSaving]    = useState(false);
   const [reglasEmpresaId,     setReglasEmpresaId]     = useState("");
   const [reglasEmpresasList,  setReglasEmpresasList]  = useState([]);
@@ -752,6 +752,10 @@ export default function App() {
   const [ccMiDetalleLider, setCcMiDetalleLider] = useState([]);
   const [ccMiDetalleLiderLoading, setCcMiDetalleLiderLoading] = useState(false);
   const ccReporteLiderFileRef = useRef(null);
+  const [agrPedidos,      setAgrPedidos]      = useState([]);
+  const [agrLoading,      setAgrLoading]      = useState(false);
+  const [agrSeleccion,    setAgrSeleccion]    = useState({}); // {pedidoId: true}
+  const [agrCreando,      setAgrCreando]      = useState(false);
   const [peReclamos,        setPeReclamos]        = useState({}); // {pedidoId: [reclamos]}
   const [peReclamosOpen,    setPeReclamosOpen]    = useState(null); // pedidoId con reclamos desplegados
   const [peReclamosLoading, setPeReclamosLoading] = useState(null);
@@ -868,6 +872,7 @@ export default function App() {
     if (tab==="metas") { unaVez("objetivos", loadMisObjetivos); unaVez("ranking", function(){ loadRanking("mes"); }); unaVez("logros", loadMisLogros); }
     if (tab==="clientes") unaVez("clientes", loadClientes);
     if (tab==="recordatorios") unaVez("recordatorios", loadRecordatorios);
+    if (tab==="agrupados" && me.role==="empresaria") unaVez("agrupados", loadPedidosParaAgrupar);
     if (["consigna","enviados","recibidos"].includes(tab)) unaVez("recvinv", loadRecvInventory);
     if (tab==="pedesp") unaVez("campanias", loadCampanias);
   }, [tab, me && me.id]);
@@ -1586,6 +1591,29 @@ export default function App() {
   }
 
   // Guardar cambios de "Mi Cuenta"
+  async function loadPedidosParaAgrupar() {
+    if (!me || me.role!=="empresaria") return;
+    setAgrLoading(true);
+    try {
+      var res = await sb.rpc("rpc_pedidos_para_agrupar");
+      if (res.data) setAgrPedidos(res.data);
+    } catch(e) { toast("Error", e.message, "e"); }
+    setAgrLoading(false);
+  }
+
+  async function doCrearPedidoAgrupado(pedidoIds) {
+    if (!pedidoIds || pedidoIds.length===0) { toast("Elegí al menos un pedido", "", "e"); return; }
+    setAgrCreando(true);
+    try {
+      var res = await sb.rpc("rpc_crear_pedido_agrupado", { p_pedido_ids: pedidoIds });
+      if (res.error) { toast("Error", res.error.message, "e"); setAgrCreando(false); return; }
+      toast("✅ Pedido agrupado creado", "", "s");
+      setAgrSeleccion({});
+      await loadPedidosParaAgrupar();
+    } catch(e) { toast("Error", e.message, "e"); }
+    setAgrCreando(false);
+  }
+
   async function loadRecordatorios() {
     if (!me) return;
     setRecordatoriosLoading(true);
@@ -2290,7 +2318,9 @@ export default function App() {
         p_activa_cobranzas: !!reglasForm.activa_cobranzas,
         p_activa_vendedoras: !!reglasForm.activa_vendedoras_inactivas,
         p_monto_minimo: parseFloat(reglasForm.monto_minimo_envio)||0,
-        p_activa_monto_minimo: !!reglasForm.activa_monto_minimo
+        p_activa_monto_minimo: !!reglasForm.activa_monto_minimo,
+        p_monto_minimo_lider: parseFloat(reglasForm.monto_minimo_envio_lider)||0,
+        p_activa_envio_lider: !!reglasForm.activa_envio_lider
       });
       if (res.error) { toast("Error", res.error.message, "e"); setReglasSaving(false); return; }
       toast("✅ Reglas guardadas", "", "s");
@@ -2924,6 +2954,11 @@ export default function App() {
       y += 24 + 6;
 
       // ── DESTINATARIO (+ QR de referencia interna) ──
+      // Si el pedido es parte de un agrupado que llegó al mínimo, el destino
+      // pasa a ser el líder en vez de la empresaria.
+      var dest = o.envia_a_lider
+        ? { nombre: o.lider_nombre, codigo: null, direccion: o.lider_direccion, cp: o.lider_cp, localidad: o.lider_localidad, zona: o.lider_zona, telefono: o.lider_telefono }
+        : { nombre: o.empresaria_nombre, codigo: o.empresaria_codigo, direccion: o.empresaria_direccion, cp: o.empresaria_cp, localidad: o.empresaria_localidad, zona: o.empresaria_zona, telefono: o.empresaria_telefono };
       var destH = 44;
       doc.setDrawColor(180,180,180);
       doc.rect(margin, y, boxW, destH, "D");
@@ -2933,15 +2968,15 @@ export default function App() {
       doc.addImage(qrDataUrl, "PNG", pageW-margin-4-30, y+4, 30, 30);
 
       doc.setFontSize(8); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
-      doc.text("DESTINATARIO", margin+4, y+7);
+      doc.text(o.envia_a_lider ? "DESTINATARIO (LÍDER)" : "DESTINATARIO", margin+4, y+7);
       doc.setFontSize(13); doc.setTextColor(30,30,30); doc.setFont(undefined,"bold");
-      doc.text(o.empresaria_nombre || "-", margin+4, y+14);
+      doc.text(dest.nombre || "-", margin+4, y+14);
       doc.setFontSize(9); doc.setFont(undefined,"normal");
       var y2 = y+20;
-      if (o.empresaria_codigo) { doc.text("Código: " + o.empresaria_codigo, margin+4, y2); y2 += 5.5; }
-      doc.text((o.empresaria_direccion || "-"), margin+4, y2); y2 += 5.5;
-      doc.text("CP: " + (o.empresaria_cp || "-") + "   ·   " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin+4, y2); y2 += 5.5;
-      doc.text("Tel: " + (o.empresaria_telefono || "-"), margin+4, y2);
+      if (dest.codigo) { doc.text("Código: " + dest.codigo, margin+4, y2); y2 += 5.5; }
+      doc.text((dest.direccion || "-"), margin+4, y2); y2 += 5.5;
+      doc.text("CP: " + (dest.cp || "-") + "   ·   " + (dest.localidad || "-") + (dest.zona ? "  ·  Zona: " + dest.zona : ""), margin+4, y2); y2 += 5.5;
+      doc.text("Tel: " + (dest.telefono || "-"), margin+4, y2);
 
       y += destH + 8;
       doc.setDrawColor(220,220,220);
@@ -3000,16 +3035,19 @@ export default function App() {
       var qrDataUrl = await QRCode.toDataURL(qrTexto, { margin: 1, width: 200 });
       doc.addImage(qrDataUrl, "PNG", pageW-margin-32, y, 32, 32);
 
+      var dest2 = o.envia_a_lider
+        ? { nombre: o.lider_nombre, codigo: null, direccion: o.lider_direccion, cp: o.lider_cp, localidad: o.lider_localidad, zona: o.lider_zona, telefono: o.lider_telefono }
+        : { nombre: o.empresaria_nombre, codigo: o.empresaria_codigo, direccion: o.empresaria_direccion, cp: o.empresaria_cp, localidad: o.empresaria_localidad, zona: o.empresaria_zona, telefono: o.empresaria_telefono };
       doc.setFontSize(9); doc.setFont(undefined,"bold"); doc.setTextColor(120,120,120);
-      doc.text("DESTINATARIO", margin, y+4);
+      doc.text(o.envia_a_lider ? "DESTINATARIO (LÍDER)" : "DESTINATARIO", margin, y+4);
       doc.setFontSize(14); doc.setTextColor(30,30,30);
-      doc.text(o.empresaria_nombre || "-", margin, y+12);
+      doc.text(dest2.nombre || "-", margin, y+12);
       doc.setFontSize(10); doc.setFont(undefined,"normal");
       var y2 = y+19;
-      if (o.empresaria_codigo) { doc.text("Código: " + o.empresaria_codigo, margin, y2); y2 += 6; }
-      doc.text("Dirección: " + (o.empresaria_direccion || "-"), margin, y2); y2 += 6;
-      doc.text("CP: " + (o.empresaria_cp || "-") + "  ·  Localidad: " + (o.empresaria_localidad || "-") + (o.empresaria_zona ? "  ·  Zona: " + o.empresaria_zona : ""), margin, y2); y2 += 6;
-      doc.text("Teléfono: " + (o.empresaria_telefono || "-"), margin, y2); y2 += 6;
+      if (dest2.codigo) { doc.text("Código: " + dest2.codigo, margin, y2); y2 += 6; }
+      doc.text("Dirección: " + (dest2.direccion || "-"), margin, y2); y2 += 6;
+      doc.text("CP: " + (dest2.cp || "-") + "  ·  Localidad: " + (dest2.localidad || "-") + (dest2.zona ? "  ·  Zona: " + dest2.zona : ""), margin, y2); y2 += 6;
+      doc.text("Teléfono: " + (dest2.telefono || "-"), margin, y2); y2 += 6;
 
       y = Math.max(y2, y+38) + 8;
       doc.setDrawColor(220,220,220);
@@ -4485,6 +4523,7 @@ export default function App() {
             ]},
             {titulo:"Operación", items:[
               {id:"pedesp", lbl:"Pedidos", ico:"list", dot: pedPendCount>0},
+              {id:"agrupados", lbl:"Agrupar Pedidos", ico:"box"},
               {id:"consigna", lbl:"Consigna", ico:"send"},
             ]},
             {titulo:"Equipo", items:[
@@ -6789,7 +6828,7 @@ export default function App() {
                           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontSize:14,fontWeight:800}}>Orden #{o.numero} <span style={{fontWeight:400,fontSize:11,color:"var(--t3)"}}>· Pedido #{o.pedido?o.pedido.numero_pedido:"-"}</span></div>
-                              <div style={{fontSize:11,color:"var(--t3)"}}>🏢 {o.empresaria_nombre||"-"}{o.empresaria_localidad?" · "+o.empresaria_localidad:""}</div>
+                              <div style={{fontSize:11,color:"var(--t3)"}}>{o.envia_a_lider?"⭐ ":"🏢 "}{o.envia_a_lider?(o.lider_nombre||"-")+(o.lider_localidad?" · "+o.lider_localidad:""):(o.empresaria_nombre||"-")+(o.empresaria_localidad?" · "+o.empresaria_localidad:"")}{o.envia_a_lider&&<span style={{marginLeft:6,background:"#f3e8ff",color:"#6d28d9",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:800}}>ENVÍA A LÍDER</span>}</div>
                               <div style={{fontSize:10,color:"var(--t3)"}}>{new Date(o.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} · {o.pedido?o.pedido.qty:0} u. · {fmtARS(o.pedido?o.pedido.total:0)}</div>
                             </div>
                             <span style={{background:ei.bg,color:ei.col,borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ei.lbl}</span>
@@ -6979,6 +7018,55 @@ export default function App() {
                     })}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ AGRUPAR PEDIDOS (empresaria) ══ */}
+          {tab==="agrupados"&&me.role==="empresaria"&&(
+            <div>
+              <div className="ph">
+                <div><div className="ph-h">📦 Agrupar Pedidos</div><div className="ph-s">Juntá los pedidos aprobados de cada líder antes de enviarlos</div></div>
+                <button className="btn btn-xs b-ghost" onClick={loadPedidosParaAgrupar}><Ic n="undo" s={13}/></button>
+              </div>
+              <div className="pc">
+                {agrLoading&&<div className="empty">Cargando...</div>}
+                {!agrLoading&&agrPedidos.length===0&&<div className="empty">No hay pedidos aprobados esperando para agrupar</div>}
+                {!agrLoading&&(function(){
+                  var porLider = {};
+                  agrPedidos.forEach(function(p){
+                    var k = p.lider_id;
+                    if (!porLider[k]) porLider[k] = {nombre: p.lider_nombre, items: []};
+                    porLider[k].items.push(p);
+                  });
+                  return Object.keys(porLider).map(function(liderId){
+                    var g = porLider[liderId];
+                    var seleccionados = g.items.filter(function(p){ return agrSeleccion[p.pedido_id]; });
+                    var totalSel = seleccionados.reduce(function(s,p){ return s+p.total; }, 0);
+                    return (
+                      <div key={liderId} className="card" style={{marginBottom:14}}>
+                        <div style={{padding:"14px 16px"}}>
+                          <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>⭐ {g.nombre}</div>
+                          {g.items.map(function(p){
+                            return (
+                              <label key={p.pedido_id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",fontSize:12,cursor:"pointer",borderTop:"1px solid var(--brd)"}}>
+                                <input type="checkbox" checked={!!agrSeleccion[p.pedido_id]} onChange={function(e){setAgrSeleccion(function(prev){return Object.assign({},prev,{[p.pedido_id]:e.target.checked});});}} style={{width:18,height:18}}/>
+                                <span style={{flex:1}}>Pedido #{p.numero_pedido} — {p.vendedor_nombre}</span>
+                                <span style={{fontWeight:700}}>{fmtARS(p.total)}</span>
+                              </label>
+                            );
+                          })}
+                          {seleccionados.length>0&&(
+                            <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--brd)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                              <div style={{fontSize:12,color:"var(--t3)"}}>{seleccionados.length} elegido(s) · <b style={{color:"var(--t1)"}}>{fmtARS(totalSel)}</b></div>
+                              <button className="btn btn-xs b-pri" style={{padding:"8px 14px"}} disabled={agrCreando} onClick={function(){doCrearPedidoAgrupado(seleccionados.map(function(p){return p.pedido_id;}));}}>{agrCreando?"Creando...":"Crear agrupado"}</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -7301,6 +7389,21 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
                       <span style={{fontSize:14,color:"var(--t3)"}}>$</span>
                       <input type="number" value={reglasForm.monto_minimo_envio} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{monto_minimo_envio:e.target.value}));}} style={{width:110,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:13,fontWeight:700}}>⭐ Envío directo al líder (pedido agrupado)</label>
+                      <input type="checkbox" checked={reglasForm.activa_envio_lider} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{activa_envio_lider:e.target.checked}));}} style={{width:20,height:20}}/>
+                    </div>
+                    <label style={{fontSize:11,color:"var(--t3)"}}>Cuando la empresaria agrupa los pedidos de un líder y el total llega a</label>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                      <span style={{fontSize:14,color:"var(--t3)"}}>$</span>
+                      <input type="number" value={reglasForm.monto_minimo_envio_lider} onChange={function(e){setReglasForm(Object.assign({},reglasForm,{monto_minimo_envio_lider:e.target.value}));}} style={{width:110,border:"1.5px solid var(--brd)",borderRadius:9,padding:"8px 10px",fontSize:14,fontFamily:"inherit"}}/>
+                      <span style={{fontSize:11,color:"var(--t3)"}}>, depósito despacha directo a su domicilio en vez del de la empresaria.</span>
                     </div>
                   </div>
                 </div>
@@ -8274,6 +8377,9 @@ export default function App() {
                       return false;
                     }).length;
                     items.push({id:"pedesp", lbl:"Pedidos", ico:"send", col:"var(--am-d)", badge:pePend});
+                  }
+                  if (me.role==="empresaria") {
+                    items.push({id:"agrupados", lbl:"Agrupar Pedidos", ico:"box", col:"#6d28d9"});
                   }
                   if (me.role!=="deposito" && me.role!=="administracion") {
                     items.push({id:"metas", lbl:"Metas", ico:"chart", col:"#c2185b"});
