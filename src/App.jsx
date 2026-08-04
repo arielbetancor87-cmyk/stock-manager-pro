@@ -1679,6 +1679,9 @@ export default function App() {
     if (me.role==="reseller" && (!ctaDni.trim() || !ctaDir.trim() || !ctaLocalidad.trim() || !ctaCP.trim())) {
       toast("Faltan datos obligatorios", "DNI, Dirección, Localidad y Código Postal son requeridos", "e"); return;
     }
+    if (me.role==="lider" && (!ctaDir.trim() || !ctaLocalidad.trim() || !ctaCP.trim())) {
+      toast("Faltan datos obligatorios", "Dirección, Localidad y Código Postal son requeridos", "e"); return;
+    }
     var emailNuevo = ctaEmail.trim().toLowerCase();
     if (!emailNuevo || !emailNuevo.includes("@")) { toast("El email no es válido", "", "e"); return; }
     setCtaSaving(true);
@@ -6110,8 +6113,8 @@ export default function App() {
                     {ctaEmail.trim().toLowerCase()===(me.email||"").toLowerCase()&&<div style={{marginBottom:12}}/>}
                     <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Teléfono</label>
                     <input value={ctaTel} onChange={function(e){setCtaTel(e.target.value);}} placeholder="Opcional" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
-                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección{me.role==="reseller"?" *":""}</label>
-                    <input value={ctaDir} onChange={function(e){setCtaDir(e.target.value);}} placeholder={me.role==="reseller"?"Requerido":"Opcional"} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                    <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Dirección{(me.role==="reseller"||me.role==="lider")?" *":""}</label>
+                    <input value={ctaDir} onChange={function(e){setCtaDir(e.target.value);}} placeholder={(me.role==="reseller"||me.role==="lider")?"Requerido":"Opcional"} style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
 
                     {me.role==="reseller"&&(<>
                       <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>DNI *</label>
@@ -6122,6 +6125,13 @@ export default function App() {
                       <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Requerido" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
                       <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Código Postal *</label>
                       <input value={ctaCP} onChange={function(e){setCtaCP(e.target.value);}} placeholder="Requerido" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                    </>)}
+                    {me.role==="lider"&&(<>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad *</label>
+                      <input value={ctaLocalidad} onChange={function(e){setCtaLocalidad(e.target.value);}} placeholder="Requerido" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:12,fontFamily:"inherit"}}/>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Código Postal *</label>
+                      <input value={ctaCP} onChange={function(e){setCtaCP(e.target.value);}} placeholder="Requerido" style={{width:"100%",boxSizing:"border-box",border:"1.5px solid var(--brd)",borderRadius:10,padding:"10px 12px",fontSize:14,marginTop:4,marginBottom:16,fontFamily:"inherit"}}/>
+                      <div style={{fontSize:10,color:"var(--t3)",marginTop:-10,marginBottom:16}}>Estos datos son los que se usan si te llega un pedido agrupado por envío directo.</div>
                     </>)}
                     {me.role==="empresaria"&&(<>
                       <label style={{fontSize:11,fontWeight:700,color:"var(--t3)"}}>Localidad</label>
